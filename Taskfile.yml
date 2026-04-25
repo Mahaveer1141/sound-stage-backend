@@ -1,0 +1,94 @@
+version: "3"
+
+vars:
+  BINARY_NAME: "sound-stage-backend"
+  GOCMD: "go"
+  GOBUILD: "{{.GOCMD}} build"
+  GORUN: "{{.GOCMD}} run"
+  GOTEST: "{{.GOCMD}} test"
+  GOMOD: "{{.GOCMD}} mod"
+  GOFMT: "gofmt"
+  MIGRATIONS_DIR: "{{.TASKFILE_DIR}}/internal/database/migrations"
+
+tasks:
+  build:
+    cmds:
+      - "{{.GOBUILD}} -o bin/{{.BINARY_NAME}} -v ./cmd/main.go"
+
+  run:
+    cmds:
+      - "{{.GORUN}} ./cmd/main.go"
+
+  dev:
+    cmds:
+      - air
+    env:
+      GO111MODULE: "on"
+
+  debug:
+    cmds:
+      - "{{.GOBUILD}} -gcflags='all=-N -l' -o bin/{{.BINARY_NAME}}-debug ./cmd/main.go"
+      - dlv exec ./bin/{{.BINARY_NAME}}-debug --listen=:2345 --api-version=2
+    env:
+      GO111MODULE: "on"
+
+  test:
+    cmds:
+      - "{{.GOTEST}} -v -race -cover ./..."
+
+  test-coverage:
+    cmds:
+      - "{{.GOTEST}} -v -race -coverprofile=coverage.out ./..."
+      - "{{.GOCMD}} tool cover -html=coverage.out -o coverage.html"
+
+  clean:
+    cmds:
+      - rm -rf bin/
+      - rm -f coverage.out coverage.html
+
+  deps:
+    cmds:
+      - "{{.GOMOD}} download"
+      - "{{.GOMOD}} tidy"
+
+  fmt:
+    cmds:
+      - "{{.GOFMT}} -s -w ."
+
+  lint:
+    cmds:
+      - golangci-lint run ./...
+
+  docker-build:
+    cmds:
+      - docker compose build
+
+  docker-up:
+    cmds:
+      - docker compose up -d
+
+  docker-down:
+    cmds:
+      - docker compose down
+
+  docker-logs:
+    cmds:
+      - docker compose logs -f
+
+  help:
+    cmds:
+      - echo "Available commands:"
+      - echo "  build          - Build the application"
+      - echo "  run            - Run the application"
+      - echo "  dev            - Run with hot reload (requires air)"
+      - echo "  debug          - Run with debugger (requires dlv)"
+      - echo "  test           - Run tests"
+      - echo "  test-coverage  - Run tests with coverage report"
+      - echo "  clean          - Clean build artifacts"
+      - echo "  deps           - Download and tidy dependencies"
+      - echo "  fmt            - Format code"
+      - echo "  lint           - Lint code (requires golangci-lint)"
+      - echo "  docker-build   - Build Docker image"
+      - echo "  docker-up      - Start Docker containers"
+      - echo "  docker-down    - Stop Docker containers"
+      - echo "  docker-logs    - View Docker logs"

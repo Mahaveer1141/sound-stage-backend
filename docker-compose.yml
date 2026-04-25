@@ -1,0 +1,64 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sound_stage_app
+    ports:
+      - "${SERVER_PORT:-8000}:8000"
+    environment:
+      - SERVER_PORT=${SERVER_PORT:-8000}
+      - APP_ENV=${APP_ENV:-development}
+      - LOGGER_LEVEL=${LOGGER_LEVEL:-debug}
+      - MAILGUN_DOMAIN=${MAILGUN_DOMAIN}
+      - MAILGUN_API_KEY=${MAILGUN_API_KEY}
+      - MAILGUN_FROM_EMAIL=${MAILGUN_FROM_EMAIL}
+      - MAILGUN_FROM_NAME=${MAILGUN_FROM_NAME:-Sound Stage}
+      - GOOSE_DRIVER=${GOOSE_DRIVER:-postgres}
+      - GOOSE_DBSTRING=user=${POSTGRES_USER:-postgres} password=${POSTGRES_PASSWORD:-postgres} dbname=${POSTGRES_DB:-sound_stage} host=postgres port=5432 sslmode=disable
+      - GOOSE_MIGRATION_DIR=${GOOSE_MIGRATION_DIR:-internal/infra/database/migrations}
+      - JWT_ACCESS_TOKEN_SECRET=${JWT_ACCESS_TOKEN_SECRET}
+      - JWT_REFRESH_TOKEN_SECRET=${JWT_REFRESH_TOKEN_SECRET}
+      - JWT_ISSUER=${JWT_ISSUER:-sound-stage}
+      - REDIS_ADDR=redis:6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - REDIS_DB=${REDIS_DB:-0}
+      - WORKER_CONCURRENCY=${WORKER_CONCURRENCY:-5}
+      - WORKER_DEFAULT_QUEUE=${WORKER_DEFAULT_QUEUE:-1}
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - sound_stage_network
+
+  postgres:
+    image: postgres:18-alpine
+    container_name: sound_stage_db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-sound_stage}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - sound_stage_network
+
+  redis:
+    image: redis:8-alpine
+    container_name: sound_stage_redis
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - sound_stage_network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  sound_stage_network:
+    driver: bridge

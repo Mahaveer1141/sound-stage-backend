@@ -1,0 +1,9 @@
+.git
+.env
+bin/
+tmp/
+*.log
+.DS_Store
+.air.toml
+coverage.out
+coverage.html

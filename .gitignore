@@ -1,0 +1,12 @@
+# Environment
+.env
+
+# Binary
+bin/
+tmp/
+
+# OS
+.DS_Store
+
+# Logs
+*.log
