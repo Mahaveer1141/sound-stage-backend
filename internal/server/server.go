@@ -16,6 +16,7 @@ import (
 	"sound-stage-backend/internal/infra/redis"
 	"sound-stage-backend/internal/infra/worker"
 	otprequest "sound-stage-backend/internal/otp_request"
+	"sound-stage-backend/internal/room"
 	"sound-stage-backend/internal/router"
 	"sound-stage-backend/internal/user"
 	"syscall"
@@ -52,11 +53,13 @@ func (s *Server) Run() error {
 	userRepo := user.NewRepo(db)
 	otpRequestRepo := otprequest.NewRepo(db)
 	apiTokenRepo := apitoken.NewRepo(db)
+	roomRepo := room.NewRepo(db)
 
 	apiTokenService := apitoken.NewService(s.cfg, apiTokenRepo)
 	userService := user.NewService(userRepo)
 	otpRequestService := otprequest.NewService(otpRequestRepo)
 	authService := auth.NewService(userService, otpRequestService, apiTokenService, mailService)
+	roomService := room.NewService(roomRepo)
 
 	registrar := worker.NewTaskRegistrar(pool, s.logger)
 	registrar.RegisterAll(worker.TaskDeps{
@@ -70,11 +73,13 @@ func (s *Server) Run() error {
 	healthHandler := health.NewHandler(db)
 	authHandler := auth.NewHandler(authService)
 	userHandler := user.NewHandler(userService)
+	roomHandler := room.NewHandler(roomService)
 
 	handlers := &router.Handlers{
 		Health: healthHandler,
 		Auth:   authHandler,
 		User:   userHandler,
+		Room:   roomHandler,
 	}
 
 	r := router.Setup(s.cfg, handlers, apiTokenService, s.logger)

@@ -7,6 +7,7 @@ import (
 	"sound-stage-backend/internal/config"
 	"sound-stage-backend/internal/health"
 	"sound-stage-backend/internal/middleware"
+	"sound-stage-backend/internal/room"
 	"sound-stage-backend/internal/user"
 
 	"github.com/gin-contrib/cors"
@@ -17,6 +18,7 @@ type Handlers struct {
 	Health health.Handler
 	Auth   auth.Handler
 	User   user.Handler
+	Room   room.Handler
 }
 
 func Setup(cfg *config.Config, handlers *Handlers, apiTokenService apitoken.Service, logger *slog.Logger) *gin.Engine {
@@ -49,6 +51,14 @@ func Setup(cfg *config.Config, handlers *Handlers, apiTokenService apitoken.Serv
 	{
 		users.GET("/current", middleware.AuthMiddleware(apiTokenService), handlers.User.CurrentUser)
 		users.PUT("/profile", middleware.AuthMiddleware(apiTokenService), handlers.User.UpdateProfile)
+	}
+
+	rooms := router.Group("/rooms")
+	{
+		rooms.GET("", middleware.AuthMiddleware(apiTokenService), handlers.Room.List)
+		rooms.GET("/:id", middleware.AuthMiddleware(apiTokenService), handlers.Room.FindByID)
+		rooms.POST("", middleware.AuthMiddleware(apiTokenService), handlers.Room.Create)
+		rooms.PUT("/:id", middleware.AuthMiddleware(apiTokenService), handlers.Room.Update)
 	}
 
 	return router

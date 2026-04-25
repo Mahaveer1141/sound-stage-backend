@@ -14,15 +14,15 @@ type Response struct {
 
 type PaginatedResponse struct {
 	Success    bool       `json:"success"`
-	Data       any        `json:"data"`
+	Message    string     `json:"message,omitempty"`
+	Data       any        `json:"data,omitempty"`
 	Pagination Pagination `json:"pagination"`
 }
 
 type Pagination struct {
-	Page       uint `json:"page"`
-	PageSize   uint `json:"page_size"`
-	TotalItems uint `json:"total_items"`
-	TotalPages uint `json:"total_pages"`
+	Page       int `json:"page"`
+	TotalItems int `json:"total_items"`
+	TotalPages int `json:"total_pages"`
 }
 
 func SuccessResponse(c *gin.Context, statusCode int, message string, data any) {
@@ -40,18 +40,18 @@ func ErrorResponse(c *gin.Context, statusCode int, message string) {
 	})
 }
 
-func PaginatedSuccessResponse(c *gin.Context, data any, page, pageSize uint, totalItems uint) {
-	totalPages := uint(totalItems) / pageSize
-	if uint(totalItems)%pageSize > 0 {
+func PaginatedSuccessResponse(c *gin.Context, message string, data any, page, pageSize, totalItems int) {
+	totalPages := totalItems / pageSize
+	if totalItems%pageSize > 0 {
 		totalPages++
 	}
 
 	c.JSON(http.StatusOK, PaginatedResponse{
 		Success: true,
 		Data:    data,
+		Message: message,
 		Pagination: Pagination{
 			Page:       page,
-			PageSize:   pageSize,
 			TotalItems: totalItems,
 			TotalPages: totalPages,
 		},
