@@ -40,7 +40,7 @@ func (h *handler) Create(c *gin.Context) {
 
 	room, err := h.service.Create(&input)
 	if err != nil {
-		httpx.ErrorResponse(c, http.StatusInternalServerError, "Failed to create room")
+		httpx.ErrorResponse(c, http.StatusUnprocessableEntity, "Failed to create room")
 		return
 	}
 
@@ -68,7 +68,7 @@ func (h *handler) Update(c *gin.Context) {
 
 	room, err := h.service.Update(uint(roomId), &input)
 	if err != nil {
-		httpx.ErrorResponse(c, http.StatusInternalServerError, "Failed to update room")
+		httpx.ErrorResponse(c, http.StatusUnprocessableEntity, "Failed to update room")
 		return
 	}
 
@@ -113,7 +113,7 @@ func (h *handler) FindByID(c *gin.Context) {
 
 	room, err := h.service.FindByID(uint(roomId))
 	if err != nil {
-		httpx.ErrorResponse(c, http.StatusInternalServerError, "Failed to fetch room")
+		httpx.ErrorResponse(c, http.StatusNotFound, "Failed to fetch room")
 		return
 	}
 

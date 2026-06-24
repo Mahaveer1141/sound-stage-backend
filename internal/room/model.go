@@ -14,6 +14,7 @@ type Room struct {
 	CreatorID   uint      `json:"creatorID" validate:"required"`
 	Creator     user.User `gorm:"foreignKey:CreatorID" json:"creator"`
 	DeletedAt   gorm.DeletedAt
+	Users       []user.User `gorm:"many2many:room_users" json:"users"`
 }
 
 func (Room) TableName() string {

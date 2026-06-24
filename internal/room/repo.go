@@ -36,7 +36,7 @@ func (r *repo) List(page, pageSize int) ([]Room, error) {
 	var rooms []Room
 	offset := (page - 1) * pageSize
 
-	err := r.db.Limit(pageSize).Offset(offset).Find(&rooms).Error
+	err := r.db.Preload("Creator").Limit(pageSize).Offset(offset).Find(&rooms).Error
 
 	if err != nil {
 		return nil, err
@@ -46,7 +46,7 @@ func (r *repo) List(page, pageSize int) ([]Room, error) {
 
 func (r *repo) FindByID(id uint) (*Room, error) {
 	var room *Room
-	result := r.db.Where("id = ?", id).First(&room)
+	result := r.db.Preload("Creator").Where("id = ?", id).First(&room)
 	if result.Error != nil {
 		return nil, result.Error
 	}

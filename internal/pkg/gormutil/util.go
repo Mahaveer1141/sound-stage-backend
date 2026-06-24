@@ -6,6 +6,8 @@ import (
 	"gorm.io/gorm"
 )
 
+var ErrRecordNotFound = errors.New("record not found")
+
 func NilIfNotFound[T any](v *T, err error) (*T, error) {
 	if err == nil {
 		return v, nil
