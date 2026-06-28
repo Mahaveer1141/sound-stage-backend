@@ -53,13 +53,13 @@ func (r *repo) UpdateActivity(ru *RoomUser, activity Activity) error {
 	var err error
 	if activity == ActivityJoin {
 		err = r.db.Model(ru).
-			Updates(map[string]interface{}{
+			Updates(map[string]any{
 				"last_joined_at": time.Now(),
 				"is_online":      true,
 			}).Error
 	} else {
 		err = r.db.Model(ru).
-			Updates(map[string]interface{}{
+			Updates(map[string]any{
 				"last_left_at": time.Now(),
 				"is_online":    true,
 			}).Error

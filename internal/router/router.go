@@ -9,12 +9,14 @@ import (
 	"sound-stage-backend/internal/middleware"
 	"sound-stage-backend/internal/room"
 	"sound-stage-backend/internal/user"
+	"sound-stage-backend/internal/ws"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 )
 
 type Handlers struct {
+	WS     ws.Handler
 	Health health.Handler
 	Auth   auth.Handler
 	User   user.Handler
@@ -47,19 +49,21 @@ func Setup(cfg *config.Config, handlers *Handlers, apiTokenService apitoken.Serv
 		auth.POST("/logout", middleware.AuthMiddleware(apiTokenService), handlers.Auth.Logout)
 	}
 
-	users := router.Group("/users")
+	users := router.Group("/users", middleware.AuthMiddleware(apiTokenService))
 	{
-		users.GET("/current", middleware.AuthMiddleware(apiTokenService), handlers.User.CurrentUser)
-		users.PUT("/profile", middleware.AuthMiddleware(apiTokenService), handlers.User.UpdateProfile)
+		users.GET("/current", handlers.User.CurrentUser)
+		users.PUT("/profile", handlers.User.UpdateProfile)
 	}
 
-	rooms := router.Group("/rooms")
+	rooms := router.Group("/rooms", middleware.AuthMiddleware(apiTokenService))
 	{
-		rooms.GET("", middleware.AuthMiddleware(apiTokenService), handlers.Room.List)
-		rooms.GET("/:id", middleware.AuthMiddleware(apiTokenService), handlers.Room.FindByID)
-		rooms.POST("", middleware.AuthMiddleware(apiTokenService), handlers.Room.Create)
-		rooms.PUT("/:id", middleware.AuthMiddleware(apiTokenService), handlers.Room.Update)
+		rooms.GET("", handlers.Room.List)
+		rooms.GET("/:id", handlers.Room.FindByID)
+		rooms.POST("", handlers.Room.Create)
+		rooms.PUT("/:id", handlers.Room.Update)
 	}
+
+	router.GET("/ws/rooms/:roomId", middleware.AuthMiddleware(apiTokenService), handlers.WS.ServeWS)
 
 	return router
 }

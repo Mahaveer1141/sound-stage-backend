@@ -13,6 +13,9 @@ func AuthMiddleware(apiTokenService apitoken.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
 		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+		if tokenString == "" {
+			tokenString = c.Query("token")
+		}
 
 		if tokenString == "" {
 			httpx.ErrorResponse(c, http.StatusUnauthorized, "Unauthorized")
