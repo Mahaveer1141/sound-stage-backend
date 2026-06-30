@@ -29,7 +29,7 @@ func NewRepo(db *gorm.DB) Repo {
 }
 
 func (r *repo) FindByEmail(email string) (*OTPRequest, error) {
-	var otpRequest *OTPRequest
+	var otpRequest OTPRequest
 	result := r.db.Joins("User").
 		Where("(otp_requests.email = @email or \"User\".email = @email) AND otp_requests.is_active = @is_active",
 			sql.Named("email", strings.ToLower(email)),
@@ -41,7 +41,7 @@ func (r *repo) FindByEmail(email string) (*OTPRequest, error) {
 		return nil, result.Error
 	}
 
-	return otpRequest, nil
+	return &otpRequest, nil
 }
 
 func (r *repo) Create(otpInput CreateOTPRequestInput) (*OTPRequest, error) {

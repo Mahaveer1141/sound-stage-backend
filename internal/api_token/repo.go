@@ -27,7 +27,7 @@ func NewRepo(db *gorm.DB) Repo {
 }
 
 func (r *repo) FindByToken(token string) (*APIToken, error) {
-	var at *APIToken
+	var at APIToken
 	result := r.db.
 		Where("token = @token AND is_active = @is_active",
 			sql.Named("token", token),
@@ -38,7 +38,7 @@ func (r *repo) FindByToken(token string) (*APIToken, error) {
 		return nil, result.Error
 	}
 
-	return at, nil
+	return &at, nil
 }
 
 func (r *repo) CreateToken(input CreateAPITokenInput) (*APIToken, error) {

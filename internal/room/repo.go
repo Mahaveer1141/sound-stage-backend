@@ -45,17 +45,17 @@ func (r *repo) List(page, pageSize int) ([]Room, error) {
 }
 
 func (r *repo) FindByID(id uint) (*Room, error) {
-	var room *Room
-	result := r.db.Preload("Creator").Where("id = ?", id).First(&room)
+	var room Room
+	result := r.db.Preload("Creator").Preload("Users").Where("id = ?", id).First(&room)
 	if result.Error != nil {
 		return nil, result.Error
 	}
 
-	return room, nil
+	return &room, nil
 }
 
 func (r *repo) Update(id uint, input *UpdateRoomParams) (*Room, error) {
-	var room *Room
+	var room Room
 	result := r.db.Where("id = ?", id).First(&room)
 	if result.Error != nil {
 		return nil, result.Error
@@ -66,7 +66,7 @@ func (r *repo) Update(id uint, input *UpdateRoomParams) (*Room, error) {
 	if err := r.db.Save(&room).Error; err != nil {
 		return nil, err
 	}
-	return room, nil
+	return &room, nil
 }
 
 func (r *repo) Count() (int, error) {

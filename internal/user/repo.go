@@ -37,17 +37,15 @@ func (r *repo) Create(input *CreateUserParams) (*User, error) {
 }
 
 func (r *repo) FindByEmail(email string) (*User, error) {
-	var user *User
+	var user User
 	result := r.db.Where("email = ?", strings.ToLower(email)).First(&user)
-	user, err := gormutil.NilIfNotFound(user, result.Error)
-	return user, err
+	return gormutil.NilIfNotFound(&user, result.Error)
 }
 
 func (r *repo) FindByID(id uint) (*User, error) {
-	var user *User
+	var user User
 	result := r.db.Where("id = ?", id).First(&user)
-	user, err := gormutil.NilIfNotFound(user, result.Error)
-	return user, err
+	return gormutil.NilIfNotFound(&user, result.Error)
 }
 
 func (r *repo) UpdateLastLoginAt(id uint) error {
@@ -55,7 +53,7 @@ func (r *repo) UpdateLastLoginAt(id uint) error {
 }
 
 func (r *repo) Update(id uint, input *UpdateUserParams) (*User, error) {
-	var user *User
+	var user User
 	result := r.db.Where("id = ?", id).First(&user)
 	if result.Error != nil {
 		return nil, result.Error
@@ -67,5 +65,5 @@ func (r *repo) Update(id uint, input *UpdateUserParams) (*User, error) {
 	if err := r.db.Save(&user).Error; err != nil {
 		return nil, err
 	}
-	return user, nil
+	return &user, nil
 }

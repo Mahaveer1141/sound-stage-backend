@@ -40,13 +40,9 @@ func (r *repo) Create(userID uint, roomID uint) (*RoomUser, error) {
 }
 
 func (r *repo) FindBy(userID uint, roomID uint) (*RoomUser, error) {
-	var ru *RoomUser
+	var ru RoomUser
 	result := r.db.Where("user_id = ? AND room_id = ?", userID, roomID).First(&ru)
-	ru, err := gormutil.NilIfNotFound(ru, result.Error)
-	if err != nil {
-		return nil, err
-	}
-	return ru, nil
+	return gormutil.NilIfNotFound(&ru, result.Error)
 }
 
 func (r *repo) UpdateActivity(ru *RoomUser, activity Activity) error {
