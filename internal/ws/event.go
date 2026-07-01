@@ -7,6 +7,11 @@ type EventName string
 var (
 	EventJoinRoom  EventName = "join_room"
 	EventLeaveRoom EventName = "leave_room"
+
+	EventWebRTCOffer     EventName = "webrtc_offer"
+	EventWebRTCCandidate EventName = "webrtc_candidate"
+	EventWebRTCAddTrack  EventName = "webrtc_add_track"
+	EventWebRTCAnswer    EventName = "webrtc_answer"
 )
 
 type Event struct {

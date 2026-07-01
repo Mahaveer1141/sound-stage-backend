@@ -52,3 +52,17 @@ func (h *Hub) BroadcastToRoom(roomID uint, eventName EventName, payload any) {
 	}
 	h.broadcast <- roomMessage{roomID: roomID, data: data}
 }
+
+func (h *Hub) ForEachClientInRoom(roomID uint, fn func(*Client)) {
+	for c := range h.rooms[roomID] {
+		fn(c)
+	}
+}
+
+func (h *Hub) SendToClient(c *Client, eventName EventName, payload any) {
+	data, err := Encode(eventName, payload)
+	if err != nil {
+		return
+	}
+	c.Send(data)
+}

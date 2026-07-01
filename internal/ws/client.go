@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 
 	"github.com/gorilla/websocket"
+	"github.com/pion/webrtc/v4"
 )
 
 type Client struct {
@@ -12,6 +13,7 @@ type Client struct {
 	hub    *Hub
 	send   chan []byte
 	conn   *websocket.Conn
+	PC     *webrtc.PeerConnection
 }
 
 func newClient(roomID, userID uint, hub *Hub, conn *websocket.Conn) *Client {
