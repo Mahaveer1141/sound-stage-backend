@@ -15,6 +15,7 @@ type Config struct {
 	JWT      JWTConfig
 	Redis    RedisConfig
 	Worker   WorkerConfig
+	Turn     TurnConfig
 }
 
 type ServerConfig struct {
@@ -59,6 +60,11 @@ type RedisConfig struct {
 type WorkerConfig struct {
 	Concurrency  int
 	DefaultQueue int
+}
+
+type TurnConfig struct {
+	Username   string
+	Credential string
 }
 
 func Load() *Config {
@@ -107,6 +113,10 @@ func Load() *Config {
 		Worker: WorkerConfig{
 			Concurrency:  env.GetEnvInt("WORKER_CONCURRENCY", 5),
 			DefaultQueue: env.GetEnvInt("WORKER_DEFAULT_QUEUE", 1),
+		},
+		Turn: TurnConfig{
+			Username:   env.GetEnv("TURN_USERNAME", ""),
+			Credential: env.GetEnv("TURN_CREDENTIAL", ""),
 		},
 	}
 }

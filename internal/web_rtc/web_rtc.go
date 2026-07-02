@@ -1,18 +1,40 @@
 package webrtcservie
 
-import "github.com/pion/webrtc/v4"
+import (
+	"sound-stage-backend/internal/config"
 
-var config = webrtc.Configuration{
-	ICEServers: []webrtc.ICEServer{
-		{URLs: []string{"stun:stun.l.google.com:19302"}},
-	},
-}
+	"github.com/pion/webrtc/v4"
+)
 
 func NewPeerConnection(
+	turn config.TurnConfig,
 	onICECandidate func(webrtc.ICECandidateInit),
 	onNegotiationNeeded func(webrtc.SessionDescription),
 ) (*webrtc.PeerConnection, error) {
-	pc, err := webrtc.NewPeerConnection(config)
+	webrtcConfig := webrtc.Configuration{
+		ICEServers: []webrtc.ICEServer{
+			{
+				URLs: []string{"stun:stun.relay.metered.ca:80"},
+			},
+		},
+	}
+
+	if turn.Username != "" && turn.Credential != "" {
+		webrtcConfig.ICEServers = append(webrtcConfig.ICEServers,
+			webrtc.ICEServer{
+				URLs:       []string{"turn:global.relay.metered.ca:80?transport=tcp"},
+				Username:   turn.Username,
+				Credential: turn.Credential,
+			},
+			webrtc.ICEServer{
+				URLs:       []string{"turns:global.relay.metered.ca:443?transport=tcp"},
+				Username:   turn.Username,
+				Credential: turn.Credential,
+			},
+		)
+	}
+
+	pc, err := webrtc.NewPeerConnection(webrtcConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -82,6 +104,9 @@ func ForwardRTP(remote *webrtc.TrackRemote, local *webrtc.TrackLocalStaticRTP, s
 }
 
 func AddTrack(pc *webrtc.PeerConnection, trk *webrtc.TrackLocalStaticRTP) (*webrtc.RTPSender, error) {
+	if pc == nil {
+		return nil, nil
+	}
 	return pc.AddTrack(trk)
 }
 

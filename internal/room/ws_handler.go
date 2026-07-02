@@ -2,6 +2,7 @@ package room
 
 import (
 	"encoding/json"
+	"sound-stage-backend/internal/config"
 	roomuser "sound-stage-backend/internal/room_user"
 	webrtc "sound-stage-backend/internal/web_rtc"
 	"sound-stage-backend/internal/ws"
@@ -21,12 +22,14 @@ type WSHandler interface {
 type wsHandler struct {
 	hub             *ws.Hub
 	roomUserService roomuser.Service
+	turn            config.TurnConfig
 }
 
-func NewWSHandler(hub *ws.Hub, roomUserService roomuser.Service) WSHandler {
+func NewWSHandler(hub *ws.Hub, roomUserService roomuser.Service, turn config.TurnConfig) WSHandler {
 	return &wsHandler{
 		hub:             hub,
 		roomUserService: roomUserService,
+		turn:            turn,
 	}
 }
 
@@ -45,6 +48,7 @@ func (h *wsHandler) handleUserJoined(c *ws.Client, evt ws.Event) {
 	}
 
 	pc, err := webrtc.NewPeerConnection(
+		h.turn,
 		func(ice pion.ICECandidateInit) {
 			h.hub.SendToClient(c, ws.EventWebRTCCandidate, ice)
 		},

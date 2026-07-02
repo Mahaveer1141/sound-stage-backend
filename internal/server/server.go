@@ -78,7 +78,7 @@ func (s *Server) Run() error {
 	}
 
 	wsHandler := ws.NewHandler(hub)
-	roomWsHandler := room.NewWSHandler(hub, roomUserService)
+	roomWsHandler := room.NewWSHandler(hub, roomUserService, s.cfg.Turn)
 
 	roomWsHandler.Register(wsHandler)
 
