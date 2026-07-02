@@ -5,6 +5,8 @@ RUN apk add --no-cache git ca-certificates
 
 WORKDIR /app
 
+RUN go install github.com/pressly/goose/v3/cmd/goose@latest
+
 COPY go.mod go.sum ./
 RUN go mod download
 
@@ -22,9 +24,16 @@ RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 WORKDIR /app
 
 COPY --from=builder /app/bin/sound-stage-backend .
+COPY --from=builder /go/bin/goose /usr/local/bin/goose
+COPY --from=builder /app/entrypoint.sh .
+COPY --from=builder /app/internal/infra/database/migrations ./migrations
+
+RUN chmod +x entrypoint.sh
 
 USER appuser
 
 EXPOSE 8000
 
-ENTRYPOINT ["./sound-stage-backend"]
+ENTRYPOINT ["./entrypoint.sh"]
+
+CMD ["./sound-stage-backend"]
