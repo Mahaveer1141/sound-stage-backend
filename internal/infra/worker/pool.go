@@ -18,6 +18,7 @@ type Pool struct {
 func NewPool(cfg *config.Config, logger *slog.Logger) *Pool {
 	redisOpts := asynq.RedisClientOpt{
 		Addr:     cfg.Redis.Addr,
+		Username: cfg.Redis.Username,
 		Password: cfg.Redis.Password,
 		DB:       cfg.Redis.DB,
 	}

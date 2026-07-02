@@ -13,6 +13,7 @@ import (
 func Connect(cfg *config.Config, logger *slog.Logger) (*redis.Client, error) {
 	rdb := redis.NewClient(&redis.Options{
 		Addr:     cfg.Redis.Addr,
+		Username: cfg.Redis.Username,
 		Password: cfg.Redis.Password,
 		DB:       cfg.Redis.DB,
 	})

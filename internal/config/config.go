@@ -52,6 +52,7 @@ type JWTConfig struct {
 type RedisConfig struct {
 	Addr     string
 	Password string
+	Username string
 	DB       int
 }
 
@@ -99,6 +100,7 @@ func Load() *Config {
 		},
 		Redis: RedisConfig{
 			Addr:     env.GetEnv("REDIS_ADDR", "localhost:6379"),
+			Username: env.GetEnv("REDIS_USERNAME", ""),
 			Password: env.GetEnv("REDIS_PASSWORD", ""),
 			DB:       env.GetEnvInt("REDIS_DB", 0),
 		},
