@@ -7,32 +7,11 @@ import (
 )
 
 func NewPeerConnection(
-	turn config.TurnConfig,
+	cfg *config.Config,
 	onICECandidate func(webrtc.ICECandidateInit),
 	onNegotiationNeeded func(webrtc.SessionDescription),
 ) (*webrtc.PeerConnection, error) {
-	webrtcConfig := webrtc.Configuration{
-		ICEServers: []webrtc.ICEServer{
-			{
-				URLs: []string{"stun:stun.relay.metered.ca:80"},
-			},
-		},
-	}
-
-	if turn.Username != "" && turn.Credential != "" {
-		webrtcConfig.ICEServers = append(webrtcConfig.ICEServers,
-			webrtc.ICEServer{
-				URLs:       []string{"turn:global.relay.metered.ca:80?transport=tcp"},
-				Username:   turn.Username,
-				Credential: turn.Credential,
-			},
-			webrtc.ICEServer{
-				URLs:       []string{"turns:global.relay.metered.ca:443?transport=tcp"},
-				Username:   turn.Username,
-				Credential: turn.Credential,
-			},
-		)
-	}
+	webrtcConfig := webrtc.Configuration{ICEServers: buildIceServers(cfg)}
 
 	pc, err := webrtc.NewPeerConnection(webrtcConfig)
 	if err != nil {
@@ -112,4 +91,28 @@ func AddTrack(pc *webrtc.PeerConnection, trk *webrtc.TrackLocalStaticRTP) (*webr
 
 func RemoveTrack(pc *webrtc.PeerConnection, sender *webrtc.RTPSender) error {
 	return pc.RemoveTrack(sender)
+}
+
+func buildIceServers(cfg *config.Config) []webrtc.ICEServer {
+	iceServers := []webrtc.ICEServer{
+		{
+			URLs: []string{cfg.WebRTC.StunURL},
+		},
+	}
+	if cfg.Server.Environment != "development" && cfg.WebRTC.TurnUsername != "" &&
+		cfg.WebRTC.TurnCredential != "" && cfg.WebRTC.TurnURL != "" {
+		iceServers = append(iceServers,
+			webrtc.ICEServer{
+				URLs:       []string{"turn:" + cfg.WebRTC.TurnURL + ":80?transport=tcp"},
+				Username:   cfg.WebRTC.TurnUsername,
+				Credential: cfg.WebRTC.TurnCredential,
+			},
+			webrtc.ICEServer{
+				URLs:       []string{"turns:" + cfg.WebRTC.TurnURL + ":443?transport=tcp"},
+				Username:   cfg.WebRTC.TurnUsername,
+				Credential: cfg.WebRTC.TurnCredential,
+			},
+		)
+	}
+	return iceServers
 }

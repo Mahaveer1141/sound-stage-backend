@@ -77,8 +77,8 @@ func (s *Server) Run() error {
 		return fmt.Errorf("Worker Error: %w", err)
 	}
 
-	wsHandler := ws.NewHandler(hub)
-	roomWsHandler := room.NewWSHandler(hub, roomUserService, s.cfg.Turn)
+	wsHandler := ws.NewHandler(hub, s.cfg)
+	roomWsHandler := room.NewWSHandler(hub, roomUserService, s.cfg)
 
 	roomWsHandler.Register(wsHandler)
 

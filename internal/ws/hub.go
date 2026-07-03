@@ -5,11 +5,23 @@ type roomMessage struct {
 	data   []byte
 }
 
+type clientMessage struct {
+	client *Client
+	data   []byte
+}
+
+type roomMethod struct {
+	roomID uint
+	fn     func(*Client)
+}
+
 type Hub struct {
 	rooms      map[uint]map[*Client]struct{}
 	register   chan *Client
 	unregister chan *Client
 	broadcast  chan roomMessage
+	direct     chan clientMessage
+	roomMethod chan roomMethod
 }
 
 func NewHub() *Hub {
@@ -18,6 +30,8 @@ func NewHub() *Hub {
 		register:   make(chan *Client),
 		unregister: make(chan *Client),
 		broadcast:  make(chan roomMessage),
+		direct:     make(chan clientMessage),
+		roomMethod: make(chan roomMethod),
 	}
 }
 
@@ -41,6 +55,12 @@ func (h *Hub) Run() {
 			for c := range h.rooms[m.roomID] {
 				c.Send(m.data)
 			}
+		case cm := <-h.direct:
+			cm.client.Send(cm.data)
+		case rm := <-h.roomMethod:
+			for c := range h.rooms[rm.roomID] {
+				rm.fn(c)
+			}
 		}
 	}
 }
@@ -54,9 +74,7 @@ func (h *Hub) BroadcastToRoom(roomID uint, eventName EventName, payload any) {
 }
 
 func (h *Hub) ForEachClientInRoom(roomID uint, fn func(*Client)) {
-	for c := range h.rooms[roomID] {
-		fn(c)
-	}
+	h.roomMethod <- roomMethod{roomID: roomID, fn: fn}
 }
 
 func (h *Hub) SendToClient(c *Client, eventName EventName, payload any) {
@@ -64,5 +82,5 @@ func (h *Hub) SendToClient(c *Client, eventName EventName, payload any) {
 	if err != nil {
 		return
 	}
-	c.Send(data)
+	h.direct <- clientMessage{client: c, data: data}
 }

@@ -2,6 +2,7 @@ package ws
 
 import (
 	"net/http"
+	"sound-stage-backend/internal/config"
 	"sound-stage-backend/internal/pkg/httpx"
 	"strconv"
 
@@ -11,12 +12,6 @@ import (
 
 type EventHandler func(c *Client, evt Event)
 
-var upgrader = websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
-	CheckOrigin:     func(r *http.Request) bool { return true },
-}
-
 type Handler interface {
 	On(en EventName, handler EventHandler)
 	ServeWS(ctx *gin.Context)
@@ -25,12 +20,14 @@ type Handler interface {
 type handler struct {
 	hub      *Hub
 	handlers map[EventName]EventHandler
+	cfg      *config.Config
 }
 
-func NewHandler(hub *Hub) Handler {
+func NewHandler(hub *Hub, cfg *config.Config) Handler {
 	return &handler{
 		hub:      hub,
 		handlers: make(map[EventName]EventHandler),
+		cfg:      cfg,
 	}
 }
 
@@ -42,12 +39,19 @@ func (h *handler) ServeWS(ctx *gin.Context) {
 	roomID := ctx.Param("roomId")
 	userID, _ := ctx.Get("userId")
 	parsedRoomID, err := strconv.ParseUint(roomID, 10, 0)
+
+	var upgrader = websocket.Upgrader{
+		ReadBufferSize:  h.cfg.WebSocket.ReadBufferSize,
+		WriteBufferSize: h.cfg.WebSocket.WriteBufferSize,
+		CheckOrigin:     func(r *http.Request) bool { return true },
+	}
+
 	conn, err := upgrader.Upgrade(ctx.Writer, ctx.Request, nil)
 	if err != nil {
 		httpx.ErrorResponse(ctx, http.StatusInternalServerError, "Failed to upgrade to WebSocket")
 		return
 	}
-	client := newClient(uint(parsedRoomID), userID.(uint), h.hub, conn)
+	client := newClient(uint(parsedRoomID), userID.(uint), h.hub, conn, h.cfg)
 	h.hub.register <- client
 
 	go client.writePump()

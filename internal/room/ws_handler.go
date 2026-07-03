@@ -22,14 +22,14 @@ type WSHandler interface {
 type wsHandler struct {
 	hub             *ws.Hub
 	roomUserService roomuser.Service
-	turn            config.TurnConfig
+	cfg             *config.Config
 }
 
-func NewWSHandler(hub *ws.Hub, roomUserService roomuser.Service, turn config.TurnConfig) WSHandler {
+func NewWSHandler(hub *ws.Hub, roomUserService roomuser.Service, cfg *config.Config) WSHandler {
 	return &wsHandler{
 		hub:             hub,
 		roomUserService: roomUserService,
-		turn:            turn,
+		cfg:             cfg,
 	}
 }
 
@@ -48,7 +48,7 @@ func (h *wsHandler) handleUserJoined(c *ws.Client, evt ws.Event) {
 	}
 
 	pc, err := webrtc.NewPeerConnection(
-		h.turn,
+		h.cfg,
 		func(ice pion.ICECandidateInit) {
 			h.hub.SendToClient(c, ws.EventWebRTCCandidate, ice)
 		},

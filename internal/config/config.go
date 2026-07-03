@@ -8,14 +8,15 @@ import (
 )
 
 type Config struct {
-	Server   ServerConfig
-	Database DatabaseConfig
-	Logger   LoggerConfig
-	Mailer   MailerConfig
-	JWT      JWTConfig
-	Redis    RedisConfig
-	Worker   WorkerConfig
-	Turn     TurnConfig
+	Server    ServerConfig
+	Database  DatabaseConfig
+	Logger    LoggerConfig
+	Mailer    MailerConfig
+	JWT       JWTConfig
+	Redis     RedisConfig
+	Worker    WorkerConfig
+	WebSocket WebSocketConfig
+	WebRTC    WebRTCConfig
 }
 
 type ServerConfig struct {
@@ -62,9 +63,20 @@ type WorkerConfig struct {
 	DefaultQueue int
 }
 
-type TurnConfig struct {
-	Username   string
-	Credential string
+type WebSocketConfig struct {
+	ReadBufferSize  int
+	WriteBufferSize int
+	PingInterval    time.Duration
+	PongWait        time.Duration
+	WriteWait       time.Duration
+	MaxMessageSize  int64
+}
+
+type WebRTCConfig struct {
+	StunURL        string
+	TurnURL        string
+	TurnUsername   string
+	TurnCredential string
 }
 
 func Load() *Config {
@@ -114,9 +126,19 @@ func Load() *Config {
 			Concurrency:  env.GetEnvInt("WORKER_CONCURRENCY", 5),
 			DefaultQueue: env.GetEnvInt("WORKER_DEFAULT_QUEUE", 1),
 		},
-		Turn: TurnConfig{
-			Username:   env.GetEnv("TURN_USERNAME", ""),
-			Credential: env.GetEnv("TURN_CREDENTIAL", ""),
+		WebSocket: WebSocketConfig{
+			ReadBufferSize:  env.GetEnvInt("WS_READ_BUFFER_SIZE", 1024),
+			WriteBufferSize: env.GetEnvInt("WS_WRITE_BUFFER_SIZE", 1024),
+			PingInterval:    time.Duration(env.GetEnvInt("WS_PING_INTERVAL", 40)) * time.Second,
+			PongWait:        time.Duration(env.GetEnvInt("WS_PONG_WAIT", 60)) * time.Second,
+			WriteWait:       time.Duration(env.GetEnvInt("WS_WRITE_WAIT", 10)) * time.Second,
+			MaxMessageSize:  int64(env.GetEnvInt("WS_MAX_MESSAGE_SIZE", 4*1024)), // 4KB
+		},
+		WebRTC: WebRTCConfig{
+			StunURL:        env.GetEnv("STUN_URL", "stun:stun.l.google.com:19302"),
+			TurnURL:        env.GetEnv("TURN_URL", ""),
+			TurnUsername:   env.GetEnv("TURN_USERNAME", ""),
+			TurnCredential: env.GetEnv("TURN_CREDENTIAL", ""),
 		},
 	}
 }
