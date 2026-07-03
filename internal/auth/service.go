@@ -3,17 +3,14 @@ package auth
 import (
 	"context"
 	"crypto/rand"
-	"errors"
 	"fmt"
 	"math/big"
 	apitoken "sound-stage-backend/internal/api_token"
 	"sound-stage-backend/internal/infra/mailer"
 	otprequest "sound-stage-backend/internal/otp_request"
+	"sound-stage-backend/internal/pkg/httpx"
 	"sound-stage-backend/internal/user"
 )
-
-var ErrInvalidOTP = errors.New("Invalid OTP")
-var ErrInvalidRefreshToken = errors.New("Invalid Refresh Token")
 
 type Service interface {
 	RequestOTP(email string) (*otprequest.OTPRequest, error)
@@ -74,7 +71,7 @@ func (s *service) VerifyOTP(params VerifyOTPParams) (*apitoken.TokenResult, erro
 	}
 
 	if !otpRequest.VerifyOTP(params.OTP) {
-		return nil, ErrInvalidOTP
+		return nil, httpx.ErrInvalidOTP
 	}
 
 	err = s.otpRequestService.Deactivate(otpRequest.ID)
@@ -136,7 +133,7 @@ func (s *service) SignUp(input *SignUpParams) (*apitoken.TokenResult, error) {
 func (s *service) RefreshToken(refreshToken string) (*apitoken.TokenResult, error) {
 	userID, err := s.apiTokenService.ValidateToken(refreshToken, apitoken.RefreshToken)
 	if err != nil {
-		return nil, ErrInvalidRefreshToken
+		return nil, httpx.ErrInvalidRefreshToken
 	}
 
 	accessToken, err := s.apiTokenService.CreateToken(userID, apitoken.AccessToken)

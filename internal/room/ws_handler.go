@@ -2,6 +2,7 @@ package room
 
 import (
 	"encoding/json"
+	"net/http"
 	"sound-stage-backend/internal/config"
 	roomuser "sound-stage-backend/internal/room_user"
 	webrtc "sound-stage-backend/internal/web_rtc"
@@ -45,6 +46,8 @@ func (h *wsHandler) Register(wsh ws.Handler) {
 func (h *wsHandler) handleUserJoined(c *ws.Client, evt ws.Event) {
 	ru, err := h.roomUserService.AddUser(c.UserID, c.RoomID)
 	if err != nil {
+		h.hub.ErrorToClient(c, "Failed to add user to room", http.StatusUnprocessableEntity)
+		return
 	}
 
 	pc, err := webrtc.NewPeerConnection(
@@ -56,15 +59,29 @@ func (h *wsHandler) handleUserJoined(c *ws.Client, evt ws.Event) {
 			h.hub.SendToClient(c, ws.EventWebRTCOffer, sd)
 		})
 
+	if err != nil {
+		h.hub.ErrorToClient(c, "Failed to create peer connection", http.StatusInternalServerError)
+		return
+	}
+
 	c.PC = pc
 
 	pc.OnTrack(func(tr *pion.TrackRemote, r *pion.RTPReceiver) {
-		localTrack, _ := webrtc.NewForwardingTrack(tr)
+		localTrack, err := webrtc.NewForwardingTrack(tr)
+		if err != nil {
+			h.hub.ErrorToClient(c, "Failed to get track", http.StatusInternalServerError)
+			return
+		}
+
 		stop := make(chan struct{})
 		go webrtc.ForwardRTP(tr, localTrack, stop)
+
 		h.hub.ForEachClientInRoom(c.RoomID, func(client *ws.Client) {
 			if client != c {
-				webrtc.AddTrack(client.PC, localTrack)
+				_, err := webrtc.AddTrack(client.PC, localTrack)
+				if err != nil {
+					h.hub.ErrorToClient(client, "Failed to add track", http.StatusInternalServerError)
+				}
 			}
 		})
 	})
@@ -73,20 +90,20 @@ func (h *wsHandler) handleUserJoined(c *ws.Client, evt ws.Event) {
 }
 
 func (h *wsHandler) handleUserLeft(c *ws.Client, evt ws.Event) {
-	h.roomUserService.RemoveUser(c.UserID, c.RoomID)
+	err := h.roomUserService.RemoveUser(c.UserID, c.RoomID)
+	if err != nil {
+		h.hub.ErrorToClient(c, "Failed to remove user from room", http.StatusUnprocessableEntity)
+		return
+	}
 	h.hub.BroadcastToRoom(c.RoomID, ws.EventLeaveRoom, nil)
 }
 
 func (h *wsHandler) handleWebRTCOffer(c *ws.Client, evt ws.Event) {
-	if c.PC == nil {
-		return
-	}
 	var offer pion.SessionDescription
 	err := json.Unmarshal(evt.Payload, &offer)
-	if err != nil {
-	}
 	answer, err := webrtc.HandleOffer(c.PC, offer)
 	if err != nil {
+		h.hub.ErrorToClient(c, "Failed to create offer answer", http.StatusUnprocessableEntity)
 	}
 	h.hub.SendToClient(c, ws.EventWebRTCAnswer, answer)
 }
@@ -94,15 +111,18 @@ func (h *wsHandler) handleWebRTCOffer(c *ws.Client, evt ws.Event) {
 func (h *wsHandler) handleWebRTCCandidate(c *ws.Client, evt ws.Event) {
 	var ice pion.ICECandidateInit
 	err := json.Unmarshal(evt.Payload, &ice)
+	err = webrtc.AddICECandidate(c.PC, ice)
 	if err != nil {
+		h.hub.ErrorToClient(c, "Failed to add ICE candidate", http.StatusUnprocessableEntity)
 	}
-	webrtc.AddICECandidate(c.PC, ice)
 }
 
 func (h *wsHandler) handleWebRTCAnswer(c *ws.Client, evt ws.Event) {
 	var answer pion.SessionDescription
 	err := json.Unmarshal(evt.Payload, &answer)
+	err = webrtc.HandleAnswer(c.PC, answer)
 	if err != nil {
+		h.hub.ErrorToClient(c, "Failed to handle answer", http.StatusUnprocessableEntity)
+		return
 	}
-	webrtc.HandleAnswer(c.PC, answer)
 }

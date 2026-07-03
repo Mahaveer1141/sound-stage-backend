@@ -47,7 +47,7 @@ func (s *Server) Run() error {
 
 	pool := worker.NewPool(s.cfg, s.logger)
 
-	hub := ws.NewHub()
+	hub := ws.NewHub(s.logger)
 	go hub.Run()
 
 	mailService, err := mailer.NewService(s.cfg, s.logger, pool)

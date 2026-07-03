@@ -1,8 +1,8 @@
 package otprequest
 
 import (
-	"errors"
 	"sound-stage-backend/internal/model"
+	"sound-stage-backend/internal/pkg/httpx"
 	"sound-stage-backend/internal/user"
 	"time"
 
@@ -41,7 +41,7 @@ func (or *OTPRequest) BeforeCreate(tx *gorm.DB) error {
 	} else if or.Email != nil {
 		query = query.Where("email = ?", or.Email)
 	} else {
-		return errors.New("either user_id or email must be provided")
+		return httpx.ErrUserOrEmailRequired
 	}
 
 	var count int64
@@ -50,7 +50,7 @@ func (or *OTPRequest) BeforeCreate(tx *gorm.DB) error {
 	}
 
 	if count > 0 {
-		return errors.New("OTP request already made within the last minute, please wait")
+		return httpx.ErrOTPRequestAlreadyMade
 	}
 
 	return nil

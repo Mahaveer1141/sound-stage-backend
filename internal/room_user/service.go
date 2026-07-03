@@ -1,6 +1,8 @@
 package roomuser
 
-import "sound-stage-backend/internal/pkg/gormutil"
+import (
+	"sound-stage-backend/internal/pkg/httpx"
+)
 
 type Service interface {
 	AddUser(userID uint, roomID uint) (*RoomUser, error)
@@ -35,7 +37,7 @@ func (s *service) RemoveUser(userID uint, roomID uint) error {
 		return err
 	}
 	if ru == nil {
-		return gormutil.ErrRecordNotFound
+		return httpx.ErrRecordNotFound
 	}
 	return s.repo.UpdateActivity(ru, ActivityLeave)
 }
