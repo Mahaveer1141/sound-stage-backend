@@ -72,6 +72,7 @@ func (h *wsHandler) handleUserJoined(c *ws.Client, evt ws.Event) {
 			h.hub.ErrorToClient(c, "Failed to get track", http.StatusInternalServerError)
 			return
 		}
+		c.LocalTrack = localTrack
 
 		stop := make(chan struct{})
 		go webrtc.ForwardRTP(tr, localTrack, stop)
@@ -79,6 +80,14 @@ func (h *wsHandler) handleUserJoined(c *ws.Client, evt ws.Event) {
 		h.hub.ForEachClientInRoom(c.RoomID, func(client *ws.Client) {
 			if client != c {
 				_, err := webrtc.AddTrack(client.PC, localTrack)
+				if err != nil {
+					h.hub.ErrorToClient(client, "Failed to add track", http.StatusInternalServerError)
+				}
+			}
+		})
+		h.hub.ForEachClientInRoom(c.RoomID, func(client *ws.Client) {
+			if client != c {
+				_, err := webrtc.AddTrack(c.PC, client.LocalTrack)
 				if err != nil {
 					h.hub.ErrorToClient(client, "Failed to add track", http.StatusInternalServerError)
 				}
@@ -104,6 +113,7 @@ func (h *wsHandler) handleWebRTCOffer(c *ws.Client, evt ws.Event) {
 	answer, err := webrtc.HandleOffer(c.PC, offer)
 	if err != nil {
 		h.hub.ErrorToClient(c, "Failed to create offer answer", http.StatusUnprocessableEntity)
+		return
 	}
 	h.hub.SendToClient(c, ws.EventWebRTCAnswer, answer)
 }
@@ -123,6 +133,5 @@ func (h *wsHandler) handleWebRTCAnswer(c *ws.Client, evt ws.Event) {
 	err = webrtc.HandleAnswer(c.PC, answer)
 	if err != nil {
 		h.hub.ErrorToClient(c, "Failed to handle answer", http.StatusUnprocessableEntity)
-		return
 	}
 }

@@ -10,23 +10,26 @@ import (
 )
 
 type Client struct {
-	RoomID uint
-	UserID uint
-	hub    *Hub
-	send   chan []byte
-	conn   *websocket.Conn
-	PC     *webrtc.PeerConnection
-	cfg    *config.Config
+	RoomID     uint
+	UserID     uint
+	hub        *Hub
+	send       chan []byte
+	conn       *websocket.Conn
+	PC         *webrtc.PeerConnection
+	LocalTrack *webrtc.TrackLocalStaticRTP
+	cfg        *config.Config
 }
 
 func newClient(roomID, userID uint, hub *Hub, conn *websocket.Conn, cfg *config.Config) *Client {
 	return &Client{
-		RoomID: roomID,
-		UserID: userID,
-		hub:    hub,
-		send:   make(chan []byte, 256),
-		conn:   conn,
-		cfg:    cfg,
+		RoomID:     roomID,
+		UserID:     userID,
+		hub:        hub,
+		send:       make(chan []byte, 256),
+		conn:       conn,
+		PC:         nil,
+		LocalTrack: nil,
+		cfg:        cfg,
 	}
 }
 
