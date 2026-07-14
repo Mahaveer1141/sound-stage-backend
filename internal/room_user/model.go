@@ -9,6 +9,7 @@ type RoomUser struct {
 	model.BaseModel
 	UserID       uint
 	RoomID       uint
+	RoleID       uint
 	LastJoinedAt time.Time `json:"lastJoinedAt"`
 	LastLeftAt   time.Time `json:"lastLeftAt"`
 	IsOnline     bool      `json:"isOnline"`

@@ -1,5 +1,12 @@
 package room
 
+import (
+	"sound-stage-backend/internal/role"
+	roomuser "sound-stage-backend/internal/room_user"
+
+	"gorm.io/gorm"
+)
+
 type Service interface {
 	FindByID(id uint) (*Room, error)
 	Create(input *CreateRoomParams) (*Room, error)
@@ -9,11 +16,13 @@ type Service interface {
 }
 
 type service struct {
-	repo Repo
+	repo            Repo
+	roomUserService roomuser.Service
+	db              *gorm.DB
 }
 
-func NewService(repo Repo) Service {
-	return &service{repo: repo}
+func NewService(repo Repo, roomUserService roomuser.Service, db *gorm.DB) Service {
+	return &service{repo: repo, roomUserService: roomUserService, db: db}
 }
 
 func (s *service) FindByID(id uint) (*Room, error) {
@@ -21,7 +30,20 @@ func (s *service) FindByID(id uint) (*Room, error) {
 }
 
 func (s *service) Create(input *CreateRoomParams) (*Room, error) {
-	return s.repo.Create(input)
+	var room *Room
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		var err error
+		room, err = s.repo.Create(tx, input)
+		if err != nil {
+			return err
+		}
+		_, err = s.roomUserService.AddUserWithTx(tx, input.CreatorID, room.ID, role.RoleAdmin)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return room, nil
 }
 
 func (s *service) Update(id uint, input *UpdateRoomParams) (*Room, error) {

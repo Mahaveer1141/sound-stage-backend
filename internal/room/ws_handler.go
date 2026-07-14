@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"sound-stage-backend/internal/config"
+	"sound-stage-backend/internal/role"
 	roomuser "sound-stage-backend/internal/room_user"
 	webrtc "sound-stage-backend/internal/web_rtc"
 	"sound-stage-backend/internal/ws"
@@ -44,7 +45,7 @@ func (h *wsHandler) Register(wsh ws.Handler) {
 }
 
 func (h *wsHandler) handleUserJoined(c *ws.Client, evt ws.Event) {
-	ru, err := h.roomUserService.AddUser(c.UserID, c.RoomID)
+	ru, err := h.roomUserService.AddUser(c.UserID, c.RoomID, role.RoleListener)
 	if err != nil {
 		h.hub.ErrorToClient(c, "Failed to add user to room", http.StatusUnprocessableEntity)
 		return

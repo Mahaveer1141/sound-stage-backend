@@ -5,7 +5,7 @@ import (
 )
 
 type Repo interface {
-	Create(input *CreateRoomParams) (*Room, error)
+	Create(tx *gorm.DB, input *CreateRoomParams) (*Room, error)
 	Update(id uint, input *UpdateRoomParams) (*Room, error)
 	FindByID(id uint) (*Room, error)
 	List(page, pageSize int) ([]Room, error)
@@ -20,13 +20,13 @@ func NewRepo(db *gorm.DB) Repo {
 	return &repo{db: db}
 }
 
-func (r *repo) Create(input *CreateRoomParams) (*Room, error) {
+func (r *repo) Create(tx *gorm.DB, input *CreateRoomParams) (*Room, error) {
 	room := Room{
 		Name:        input.Name,
 		Description: input.Description,
 		CreatorID:   input.CreatorID,
 	}
-	if err := r.db.Create(&room).Error; err != nil {
+	if err := tx.Create(&room).Error; err != nil {
 		return nil, err
 	}
 	return &room, nil

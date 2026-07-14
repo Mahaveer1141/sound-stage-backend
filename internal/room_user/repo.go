@@ -15,9 +15,11 @@ const (
 )
 
 type Repo interface {
-	Create(userID uint, roomID uint) (*RoomUser, error)
+	Create(tx *gorm.DB, userID uint, roomID uint, roleID uint) (*RoomUser, error)
 	FindBy(userID uint, roomID uint) (*RoomUser, error)
 	UpdateActivity(ru *RoomUser, activity Activity) error
+	HasPermission(userID uint, roomID uint, permission string) (bool, error)
+	SetRole(userID uint, roomID uint, roleName string) error
 }
 
 type repo struct {
@@ -28,15 +30,16 @@ func NewRepo(db *gorm.DB) Repo {
 	return &repo{db: db}
 }
 
-func (r *repo) Create(userID uint, roomID uint) (*RoomUser, error) {
-	user := RoomUser{
-		RoomID: roomID,
-		UserID: userID,
+func (r *repo) Create(tx *gorm.DB, userID uint, roomID uint, roleID uint) (*RoomUser, error) {
+	if tx == nil {
+		tx = r.db
 	}
-	if err := r.db.Create(&user).Error; err != nil {
+
+	ru := RoomUser{RoomID: roomID, UserID: userID, RoleID: roleID}
+	if err := tx.Create(&ru).Error; err != nil {
 		return nil, err
 	}
-	return &user, nil
+	return &ru, nil
 }
 
 func (r *repo) FindBy(userID uint, roomID uint) (*RoomUser, error) {
@@ -61,4 +64,27 @@ func (r *repo) UpdateActivity(ru *RoomUser, activity Activity) error {
 			}).Error
 	}
 	return err
+}
+
+func (r *repo) HasPermission(userID, roomID uint, permission string) (bool, error) {
+	var count int64
+	err := r.db.
+		Table("room_users").
+		Joins("JOIN role_permissions ON role_permissions.role_id = room_users.role_id").
+		Joins("JOIN permissions ON permissions.id = role_permissions.permission_id").
+		Where("room_users.user_id = ? AND room_users.room_id = ? AND permissions.name = ?", userID, roomID, permission).
+		Count(&count).Error
+
+	return count > 0, err
+}
+
+func (r *repo) SetRole(userID, roomID uint, roleName string) error {
+	return r.SetRoleTx(r.db, userID, roomID, roleName)
+}
+
+func (r *repo) SetRoleTx(tx *gorm.DB, userID, roomID uint, roleName string) error {
+	return tx.
+		Table("room_users").
+		Where("user_id = ? AND room_id = ?", userID, roomID).
+		Update("role_id", tx.Table("roles").Select("id").Where("name = ?", roleName)).Error
 }
