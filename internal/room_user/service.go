@@ -2,6 +2,7 @@ package roomuser
 
 import (
 	"sound-stage-backend/internal/pkg/httpx"
+	"sound-stage-backend/internal/pkg/listopts"
 	"sound-stage-backend/internal/role"
 
 	"gorm.io/gorm"
@@ -13,6 +14,7 @@ type Service interface {
 	RemoveUser(userID uint, roomID uint) error
 	HasPermission(userID uint, roomID uint, permission string) (bool, error)
 	SetRole(userID uint, roomID uint, roleName string) error
+	ListByRoomID(roomID uint, filter RoomUserFilter, sort listopts.Sort, p listopts.Pagination) ([]RoomUser, int64, error)
 }
 
 type service struct {
@@ -37,6 +39,7 @@ func (s *service) AddUserWithTx(tx *gorm.DB, userID uint, roomID uint, roleName 
 		if err := s.repo.UpdateActivity(ru, ActivityJoin); err != nil {
 			return nil, err
 		}
+		return ru, nil
 	}
 	if roleName == "" {
 		roleName = role.RoleListener
@@ -65,4 +68,16 @@ func (s *service) HasPermission(userID, roomID uint, permission string) (bool, e
 
 func (s *service) SetRole(userID, roomID uint, roleName string) error {
 	return s.repo.SetRole(userID, roomID, roleName)
+}
+
+func (s *service) ListByRoomID(roomID uint, filter RoomUserFilter, sort listopts.Sort, p listopts.Pagination) ([]RoomUser, int64, error) {
+	users, err := s.repo.ListByRoomID(roomID, filter, sort, p)
+	if err != nil {
+		return nil, 0, err
+	}
+	count, err := s.repo.CountByRoomID(roomID, filter)
+	if err != nil {
+		return nil, 0, err
+	}
+	return users, count, nil
 }

@@ -1,6 +1,7 @@
 package room
 
 import (
+	"sound-stage-backend/internal/pkg/listopts"
 	"sound-stage-backend/internal/role"
 	roomuser "sound-stage-backend/internal/room_user"
 
@@ -11,8 +12,8 @@ type Service interface {
 	FindByID(id uint) (*Room, error)
 	Create(input *CreateRoomParams) (*Room, error)
 	Update(id uint, input *UpdateRoomParams) (*Room, error)
-	List(page, pageSize int) ([]Room, error)
-	Count() (int, error)
+	List(filter RoomFilter, sort listopts.Sort, p listopts.Pagination) ([]Room, int64, error)
+	ListUsers(roomID uint, filter roomuser.RoomUserFilter, sort listopts.Sort, p listopts.Pagination) ([]roomuser.RoomUser, int64, error)
 }
 
 type service struct {
@@ -50,10 +51,18 @@ func (s *service) Update(id uint, input *UpdateRoomParams) (*Room, error) {
 	return s.repo.Update(id, input)
 }
 
-func (s *service) List(page, pageSize int) ([]Room, error) {
-	return s.repo.List(page, pageSize)
+func (s *service) List(filter RoomFilter, sort listopts.Sort, p listopts.Pagination) ([]Room, int64, error) {
+	rooms, err := s.repo.List(filter, sort, p)
+	if err != nil {
+		return nil, 0, err
+	}
+	count, err := s.repo.Count(filter)
+	if err != nil {
+		return nil, 0, err
+	}
+	return rooms, count, nil
 }
 
-func (s *service) Count() (int, error) {
-	return s.repo.Count()
+func (s *service) ListUsers(roomID uint, filter roomuser.RoomUserFilter, sort listopts.Sort, p listopts.Pagination) ([]roomuser.RoomUser, int64, error) {
+	return s.roomUserService.ListByRoomID(roomID, filter, sort, p)
 }

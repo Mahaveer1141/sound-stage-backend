@@ -1,7 +1,7 @@
 package roomuser
 
 import (
-	"sound-stage-backend/internal/pkg/gormutil"
+	"sound-stage-backend/internal/pkg/listopts"
 	"time"
 
 	"gorm.io/gorm"
@@ -20,6 +20,8 @@ type Repo interface {
 	UpdateActivity(ru *RoomUser, activity Activity) error
 	HasPermission(userID uint, roomID uint, permission string) (bool, error)
 	SetRole(userID uint, roomID uint, roleName string) error
+	ListByRoomID(roomID uint, filter RoomUserFilter, sort listopts.Sort, p listopts.Pagination) ([]RoomUser, error)
+	CountByRoomID(roomID uint, filter RoomUserFilter) (int64, error)
 }
 
 type repo struct {
@@ -45,7 +47,7 @@ func (r *repo) Create(tx *gorm.DB, userID uint, roomID uint, roleID uint) (*Room
 func (r *repo) FindBy(userID uint, roomID uint) (*RoomUser, error) {
 	var ru RoomUser
 	result := r.db.Where("user_id = ? AND room_id = ?", userID, roomID).First(&ru)
-	return gormutil.NilIfNotFound(&ru, result.Error)
+	return &ru, result.Error
 }
 
 func (r *repo) UpdateActivity(ru *RoomUser, activity Activity) error {
@@ -60,7 +62,7 @@ func (r *repo) UpdateActivity(ru *RoomUser, activity Activity) error {
 		err = r.db.Model(ru).
 			Updates(map[string]any{
 				"last_left_at": time.Now(),
-				"is_online":    true,
+				"is_online":    false,
 			}).Error
 	}
 	return err
@@ -87,4 +89,25 @@ func (r *repo) SetRoleTx(tx *gorm.DB, userID, roomID uint, roleName string) erro
 		Table("room_users").
 		Where("user_id = ? AND room_id = ?", userID, roomID).
 		Update("role_id", tx.Table("roles").Select("id").Where("name = ?", roleName)).Error
+}
+
+func (r *repo) ListByRoomID(roomID uint, filter RoomUserFilter, sort listopts.Sort, p listopts.Pagination) ([]RoomUser, error) {
+	var roomUsers []RoomUser
+	err := r.db.
+		Preload("User").
+		Preload("Role").
+		Where("room_users.room_id = ?", roomID).
+		Scopes(Filters(filter), Sort(sort), p.Scope()).
+		Find(&roomUsers).Error
+	return roomUsers, err
+}
+
+func (r *repo) CountByRoomID(roomID uint, filter RoomUserFilter) (int64, error) {
+	var count int64
+	err := r.db.
+		Table("room_users").
+		Where("room_users.room_id = ?", roomID).
+		Scopes(Filters(filter)).
+		Count(&count).Error
+	return count, err
 }

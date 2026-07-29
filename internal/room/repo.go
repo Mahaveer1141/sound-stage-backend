@@ -1,6 +1,8 @@
 package room
 
 import (
+	"sound-stage-backend/internal/pkg/listopts"
+
 	"gorm.io/gorm"
 )
 
@@ -8,8 +10,8 @@ type Repo interface {
 	Create(tx *gorm.DB, input *CreateRoomParams) (*Room, error)
 	Update(id uint, input *UpdateRoomParams) (*Room, error)
 	FindByID(id uint) (*Room, error)
-	List(page, pageSize int) ([]Room, error)
-	Count() (int, error)
+	List(filter RoomFilter, sort listopts.Sort, p listopts.Pagination) ([]Room, error)
+	Count(filter RoomFilter) (int64, error)
 }
 
 type repo struct {
@@ -32,16 +34,13 @@ func (r *repo) Create(tx *gorm.DB, input *CreateRoomParams) (*Room, error) {
 	return &room, nil
 }
 
-func (r *repo) List(page, pageSize int) ([]Room, error) {
+func (r *repo) List(filter RoomFilter, sort listopts.Sort, p listopts.Pagination) ([]Room, error) {
 	var rooms []Room
-	offset := (page - 1) * pageSize
-
-	err := r.db.Preload("Creator").Limit(pageSize).Offset(offset).Find(&rooms).Error
-
-	if err != nil {
-		return nil, err
-	}
-	return rooms, nil
+	err := r.db.
+		Preload("Creator").
+		Scopes(Filters(filter), Sort(sort), p.Scope()).
+		Find(&rooms).Error
+	return rooms, err
 }
 
 func (r *repo) FindByID(id uint) (*Room, error) {
@@ -69,12 +68,8 @@ func (r *repo) Update(id uint, input *UpdateRoomParams) (*Room, error) {
 	return &room, nil
 }
 
-func (r *repo) Count() (int, error) {
+func (r *repo) Count(filter RoomFilter) (int64, error) {
 	var count int64
-	err := r.db.Model(&Room{}).Count(&count).Error
-	if err != nil {
-		return 0, err
-	}
-
-	return int(count), nil
+	err := r.db.Model(&Room{}).Scopes(Filters(filter)).Count(&count).Error
+	return count, err
 }

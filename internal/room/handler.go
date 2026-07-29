@@ -3,6 +3,8 @@ package room
 import (
 	"net/http"
 	"sound-stage-backend/internal/pkg/httpx"
+	"sound-stage-backend/internal/pkg/listopts"
+	roomuser "sound-stage-backend/internal/room_user"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -14,6 +16,7 @@ type Handler interface {
 	FindByID(c *gin.Context)
 	Create(c *gin.Context)
 	Update(c *gin.Context)
+	ListUsers(c *gin.Context)
 }
 
 type handler struct {
@@ -76,31 +79,35 @@ func (h *handler) Update(c *gin.Context) {
 }
 
 func (h *handler) List(c *gin.Context) {
-	page, err := strconv.Atoi(c.DefaultQuery("page", "1"))
-	if err != nil || page <= 0 {
-		httpx.ErrorResponse(c, http.StatusBadRequest, "Invalid page")
+	var p listopts.Pagination
+	if err := c.ShouldBindQuery(&p); err != nil {
+		httpx.ErrorResponse(c, http.StatusBadRequest, "Invalid pagination params")
+		return
+	}
+	if p.Page <= 0 || p.PageSize <= 0 {
+		httpx.ErrorResponse(c, http.StatusBadRequest, "page and pageSize must be positive")
 		return
 	}
 
-	pageSize, err := strconv.Atoi(c.DefaultQuery("pageSize", "10"))
-	if err != nil || pageSize <= 0 {
-		httpx.ErrorResponse(c, http.StatusBadRequest, "Invalid pageSize")
+	var filter RoomFilter
+	if err := c.ShouldBindQuery(&filter); err != nil {
+		httpx.ErrorResponse(c, http.StatusBadRequest, "Invalid filter")
 		return
 	}
 
-	rooms, err := h.service.List(page, pageSize)
+	var sort listopts.Sort
+	if err := c.ShouldBindQuery(&sort); err != nil {
+		httpx.ErrorResponse(c, http.StatusBadRequest, "Invalid sort")
+		return
+	}
+
+	rooms, count, err := h.service.List(filter, sort, p)
 	if err != nil {
 		httpx.ErrorResponse(c, http.StatusInternalServerError, "Failed to fetch rooms")
 		return
 	}
 
-	count, err := h.service.Count()
-	if err != nil {
-		httpx.ErrorResponse(c, http.StatusInternalServerError, "Failed to fetch rooms count")
-		return
-	}
-
-	httpx.PaginatedSuccessResponse(c, "Rooms fetched successfully", rooms, page, pageSize, count)
+	httpx.PaginatedSuccessResponse(c, "Rooms fetched successfully", rooms, p.Page, p.PageSize, int(count))
 }
 
 func (h *handler) FindByID(c *gin.Context) {
@@ -118,4 +125,43 @@ func (h *handler) FindByID(c *gin.Context) {
 	}
 
 	httpx.SuccessResponse(c, http.StatusOK, "Room fetched successfully", room)
+}
+
+func (h *handler) ListUsers(c *gin.Context) {
+	id := c.Param("id")
+	roomId, err := strconv.Atoi(id)
+	if err != nil {
+		httpx.ErrorResponse(c, http.StatusBadRequest, "Invalid room ID")
+		return
+	}
+
+	var p listopts.Pagination
+	if err := c.ShouldBindQuery(&p); err != nil {
+		httpx.ErrorResponse(c, http.StatusBadRequest, "Invalid pagination params")
+		return
+	}
+	if p.Page <= 0 || p.PageSize <= 0 {
+		httpx.ErrorResponse(c, http.StatusBadRequest, "page and pageSize must be positive")
+		return
+	}
+
+	var filter roomuser.RoomUserFilter
+	if err := c.ShouldBindQuery(&filter); err != nil {
+		httpx.ErrorResponse(c, http.StatusBadRequest, "Invalid filter")
+		return
+	}
+
+	var sort listopts.Sort
+	if err := c.ShouldBindQuery(&sort); err != nil {
+		httpx.ErrorResponse(c, http.StatusBadRequest, "Invalid sort")
+		return
+	}
+
+	users, count, err := h.service.ListUsers(uint(roomId), filter, sort, p)
+	if err != nil {
+		httpx.ErrorResponse(c, http.StatusInternalServerError, "Failed to fetch room users")
+		return
+	}
+
+	httpx.PaginatedSuccessResponse(c, "Room users fetched successfully", users, p.Page, p.PageSize, int(count))
 }

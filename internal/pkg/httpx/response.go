@@ -21,8 +21,8 @@ type PaginatedResponse struct {
 
 type Pagination struct {
 	Page       int `json:"page"`
-	TotalItems int `json:"total_items"`
-	TotalPages int `json:"total_pages"`
+	TotalCount int `json:"totalCount"`
+	TotalPages int `json:"totalPages"`
 }
 
 func SuccessResponse(c *gin.Context, statusCode int, message string, data any) {
@@ -40,9 +40,9 @@ func ErrorResponse(c *gin.Context, statusCode int, message string) {
 	})
 }
 
-func PaginatedSuccessResponse(c *gin.Context, message string, data any, page, pageSize, totalItems int) {
-	totalPages := totalItems / pageSize
-	if totalItems%pageSize > 0 {
+func PaginatedSuccessResponse(c *gin.Context, message string, data any, page, pageSize, totalCount int) {
+	totalPages := totalCount / pageSize
+	if totalCount%pageSize > 0 {
 		totalPages++
 	}
 
@@ -52,7 +52,7 @@ func PaginatedSuccessResponse(c *gin.Context, message string, data any, page, pa
 		Message: message,
 		Pagination: Pagination{
 			Page:       page,
-			TotalItems: totalItems,
+			TotalCount: totalCount,
 			TotalPages: totalPages,
 		},
 	})

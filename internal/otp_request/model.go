@@ -28,7 +28,7 @@ func (or *OTPRequest) IsExpired() bool {
 }
 
 func (or *OTPRequest) VerifyOTP(otp string) bool {
-	return !or.IsExpired() && or.IsActive
+	return !or.IsExpired() && or.IsActive && or.OTP == otp
 }
 
 func (or *OTPRequest) BeforeCreate(tx *gorm.DB) error {

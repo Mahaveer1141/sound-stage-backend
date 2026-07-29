@@ -87,7 +87,7 @@ func (h *wsHandler) handleUserJoined(c *ws.Client, evt ws.Event) {
 			}
 		})
 		h.hub.ForEachClientInRoom(c.RoomID, func(client *ws.Client) {
-			if client != c {
+			if client != c && client.LocalTrack != nil {
 				_, err := webrtc.AddTrack(c.PC, client.LocalTrack)
 				if err != nil {
 					h.hub.ErrorToClient(client, "Failed to add track", http.StatusInternalServerError)
