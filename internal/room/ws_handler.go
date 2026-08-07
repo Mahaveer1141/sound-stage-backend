@@ -15,6 +15,7 @@ import (
 
 type WSHandler interface {
 	Register(wsh ws.Handler)
+	RevokePublishing(roomID uint, userID uint)
 	handleUserJoined(c *ws.Client, evt ws.Event)
 	handleUserLeft(c *ws.Client, evt ws.Event)
 	handleClientDisconnected(c *ws.Client)
@@ -92,11 +93,11 @@ func (h *wsHandler) handleUserJoined(c *ws.Client, evt ws.Event) {
 			h.hub.ErrorToClient(c, "Failed to get track", http.StatusInternalServerError)
 			return
 		}
-		session.SetLocalTrack(localTrack)
 
-		go webrtc.ForwardRTP(tr, localTrack, session.Stop())
+		h.stopPublishing(c)
+		go webrtc.ForwardRTP(tr, localTrack, session.StartPublishing(localTrack))
 
-		h.fanOutTrack(c, localTrack)
+		h.fanOutTrack(c, session, localTrack)
 	})
 
 	h.hub.BroadcastToRoom(c.RoomID, ws.EventJoinRoom, ru)
@@ -113,13 +114,16 @@ func (h *wsHandler) subscribeToRoomTracks(c *ws.Client, session *webrtc.Session)
 			continue
 		}
 
-		if _, err := webrtc.AddTrack(session.PC, peer.LocalTrack()); err != nil {
+		sender, err := webrtc.AddTrack(session.PC, peer.LocalTrack())
+		if err != nil {
 			h.hub.ErrorToClient(c, "Failed to add track", http.StatusInternalServerError)
+			continue
 		}
+		peer.AddSender(c.ID, sender)
 	}
 }
 
-func (h *wsHandler) fanOutTrack(c *ws.Client, track *pion.TrackLocalStaticRTP) {
+func (h *wsHandler) fanOutTrack(c *ws.Client, session *webrtc.Session, track *pion.TrackLocalStaticRTP) {
 	for _, client := range h.hub.ClientsInRoom(c.RoomID) {
 		if client.ID == c.ID {
 			continue
@@ -130,8 +134,40 @@ func (h *wsHandler) fanOutTrack(c *ws.Client, track *pion.TrackLocalStaticRTP) {
 			continue
 		}
 
-		if _, err := webrtc.AddTrack(peer.PC, track); err != nil {
+		sender, err := webrtc.AddTrack(peer.PC, track)
+		if err != nil {
 			h.hub.ErrorToClient(client, "Failed to add track", http.StatusInternalServerError)
+			continue
+		}
+		session.AddSender(client.ID, sender)
+	}
+}
+
+func (h *wsHandler) RevokePublishing(roomID uint, userID uint) {
+	for _, c := range h.hub.ClientsInRoom(roomID) {
+		if c.UserID == userID {
+			h.stopPublishing(c)
+		}
+	}
+}
+
+func (h *wsHandler) stopPublishing(c *ws.Client) {
+	session := h.sessions.Get(c.ID)
+	if session == nil {
+		return
+	}
+
+	for clientID, sender := range session.StopPublishing() {
+		subscriber := h.sessions.Get(clientID)
+		if subscriber == nil {
+			continue
+		}
+
+		if err := webrtc.RemoveTrack(subscriber.PC, sender); err != nil {
+			h.logger.Error("Failed to detach track from subscriber",
+				slog.String("subscriberId", clientID),
+				slog.String("publisherId", c.ID),
+				slog.Any("error", err))
 		}
 	}
 }
@@ -143,6 +179,7 @@ func (h *wsHandler) handleUserLeft(c *ws.Client, evt ws.Event) {
 		return
 	}
 
+	h.stopPublishing(c)
 	_ = h.sessions.Remove(c.ID)
 	h.hub.BroadcastToRoom(c.RoomID, ws.EventLeaveRoom, nil)
 }
@@ -154,6 +191,8 @@ func (h *wsHandler) handleClientDisconnected(c *ws.Client) {
 			slog.Uint64("roomId", uint64(c.RoomID)),
 			slog.Any("error", err))
 	}
+
+	h.stopPublishing(c)
 
 	if err := h.sessions.Remove(c.ID); err != nil {
 		h.logger.Error("Failed to close session",

@@ -89,7 +89,7 @@ func (s *Server) Run() error {
 	healthHandler := health.NewHandler(db)
 	authHandler := auth.NewHandler(authService)
 	userHandler := user.NewHandler(userService)
-	roomHandler := room.NewHandler(roomService, hub)
+	roomHandler := room.NewHandler(roomService, hub, roomWsHandler)
 
 	handlers := &router.Handlers{
 		Health: healthHandler,

@@ -12,12 +12,33 @@ type Session struct {
 	mu         sync.RWMutex
 	localTrack *pion.TrackLocalStaticRTP
 	stop       chan struct{}
+	senders    map[string]*pion.RTPSender
 }
 
-func (s *Session) SetLocalTrack(track *pion.TrackLocalStaticRTP) {
+func (s *Session) StartPublishing(track *pion.TrackLocalStaticRTP) <-chan struct{} {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	s.localTrack = track
+	s.stop = make(chan struct{})
+
+	return s.stop
+}
+
+func (s *Session) StopPublishing() map[string]*pion.RTPSender {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.stop != nil {
+		close(s.stop)
+		s.stop = nil
+	}
+	s.localTrack = nil
+
+	senders := s.senders
+	s.senders = make(map[string]*pion.RTPSender)
+
+	return senders
 }
 
 func (s *Session) LocalTrack() *pion.TrackLocalStaticRTP {
@@ -26,12 +47,14 @@ func (s *Session) LocalTrack() *pion.TrackLocalStaticRTP {
 	return s.localTrack
 }
 
-func (s *Session) Stop() <-chan struct{} {
-	return s.stop
+func (s *Session) AddSender(clientID string, sender *pion.RTPSender) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.senders[clientID] = sender
 }
 
 func (s *Session) close() error {
-	close(s.stop)
+	s.StopPublishing()
 	return s.PC.Close()
 }
 
@@ -45,7 +68,7 @@ func NewSessionStore() *SessionStore {
 }
 
 func (s *SessionStore) Add(clientID string, pc *pion.PeerConnection) *Session {
-	session := &Session{PC: pc, stop: make(chan struct{})}
+	session := &Session{PC: pc, senders: make(map[string]*pion.RTPSender)}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()

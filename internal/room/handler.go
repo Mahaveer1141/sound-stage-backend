@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"sound-stage-backend/internal/pkg/httpx"
 	"sound-stage-backend/internal/pkg/listopts"
+	"sound-stage-backend/internal/role"
 	roomuser "sound-stage-backend/internal/room_user"
 	"sound-stage-backend/internal/ws"
 	"strconv"
@@ -21,14 +22,19 @@ type Handler interface {
 	UpdateUserRole(c *gin.Context)
 }
 
+type PublishRevoker interface {
+	RevokePublishing(roomID uint, userID uint)
+}
+
 type handler struct {
 	service  Service
 	validate *validator.Validate
 	hub      *ws.Hub
+	revoker  PublishRevoker
 }
 
-func NewHandler(service Service, hub *ws.Hub) Handler {
-	return &handler{service: service, validate: validator.New(), hub: hub}
+func NewHandler(service Service, hub *ws.Hub, revoker PublishRevoker) Handler {
+	return &handler{service: service, validate: validator.New(), hub: hub, revoker: revoker}
 }
 
 func (h *handler) Create(c *gin.Context) {
@@ -192,6 +198,10 @@ func (h *handler) UpdateUserRole(c *gin.Context) {
 	if err := h.service.UpdateUserRole(uint(roomID), uint(userID), input.Role); err != nil {
 		httpx.ErrorResponse(c, http.StatusUnprocessableEntity, "Failed to update user role")
 		return
+	}
+
+	if input.Role == role.RoleListener {
+		h.revoker.RevokePublishing(uint(roomID), uint(userID))
 	}
 
 	h.hub.BroadcastToRoom(uint(roomID), ws.EventUserRoleUpdated, gin.H{"userId": userID, "role": input.Role})
