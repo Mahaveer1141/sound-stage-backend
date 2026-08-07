@@ -15,6 +15,8 @@ type Service interface {
 	HasPermission(userID uint, roomID uint, permission string) (bool, error)
 	SetRole(userID uint, roomID uint, roleName string) error
 	ListByRoomID(roomID uint, filter RoomUserFilter, sort listopts.Sort, p listopts.Pagination) ([]RoomUser, int64, error)
+	FindBy(userID uint, roomID uint) (*RoomUser, error)
+	UpdateRole(roomID uint, userID uint, role string) error
 }
 
 type service struct {
@@ -51,6 +53,10 @@ func (s *service) AddUserWithTx(tx *gorm.DB, userID uint, roomID uint, roleName 
 	return s.repo.Create(tx, userID, roomID, role.ID)
 }
 
+func (s *service) FindBy(userID uint, roomID uint) (*RoomUser, error) {
+	return s.repo.FindBy(userID, roomID)
+}
+
 func (s *service) RemoveUser(userID uint, roomID uint) error {
 	ru, err := s.repo.FindBy(userID, roomID)
 	if err != nil {
@@ -80,4 +86,12 @@ func (s *service) ListByRoomID(roomID uint, filter RoomUserFilter, sort listopts
 		return nil, 0, err
 	}
 	return users, count, nil
+}
+
+func (s *service) UpdateRole(roomID uint, userID uint, role string) error {
+	r, err := s.roleService.FindByName(role)
+	if err != nil {
+		return err
+	}
+	return s.repo.UpdateRole(roomID, userID, r.ID)
 }

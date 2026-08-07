@@ -12,9 +12,9 @@ type clientMessage struct {
 	data   []byte
 }
 
-type roomMethod struct {
+type clientsQuery struct {
 	roomID uint
-	fn     func(*Client)
+	reply  chan []*Client
 }
 
 type ErrorPayload struct {
@@ -23,13 +23,13 @@ type ErrorPayload struct {
 }
 
 type Hub struct {
-	rooms      map[uint]map[*Client]struct{}
-	register   chan *Client
-	unregister chan *Client
-	broadcast  chan roomMessage
-	direct     chan clientMessage
-	roomMethod chan roomMethod
-	logger     *slog.Logger
+	rooms        map[uint]map[*Client]struct{}
+	register     chan *Client
+	unregister   chan *Client
+	broadcast    chan roomMessage
+	direct       chan clientMessage
+	clients      chan clientsQuery
+	logger       *slog.Logger
 }
 
 func NewHub(logger *slog.Logger) *Hub {
@@ -39,7 +39,7 @@ func NewHub(logger *slog.Logger) *Hub {
 		unregister: make(chan *Client),
 		broadcast:  make(chan roomMessage),
 		direct:     make(chan clientMessage),
-		roomMethod: make(chan roomMethod),
+		clients:    make(chan clientsQuery),
 		logger:     logger,
 	}
 }
@@ -65,11 +65,15 @@ func (h *Hub) Run() {
 				c.Send(m.data)
 			}
 		case cm := <-h.direct:
-			cm.client.Send(cm.data)
-		case rm := <-h.roomMethod:
-			for c := range h.rooms[rm.roomID] {
-				rm.fn(c)
+			if _, exists := h.rooms[cm.client.RoomID][cm.client]; exists {
+				cm.client.Send(cm.data)
 			}
+		case q := <-h.clients:
+			clients := make([]*Client, 0, len(h.rooms[q.roomID]))
+			for c := range h.rooms[q.roomID] {
+				clients = append(clients, c)
+			}
+			q.reply <- clients
 		}
 	}
 }
@@ -83,8 +87,10 @@ func (h *Hub) BroadcastToRoom(roomID uint, eventName EventName, payload any) {
 	h.broadcast <- roomMessage{roomID: roomID, data: data}
 }
 
-func (h *Hub) ForEachClientInRoom(roomID uint, fn func(*Client)) {
-	h.roomMethod <- roomMethod{roomID: roomID, fn: fn}
+func (h *Hub) ClientsInRoom(roomID uint) []*Client {
+	reply := make(chan []*Client, 1)
+	h.clients <- clientsQuery{roomID: roomID, reply: reply}
+	return <-reply
 }
 
 func (h *Hub) SendToClient(c *Client, eventName EventName, payload any) {

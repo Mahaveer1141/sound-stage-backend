@@ -14,6 +14,8 @@ var (
 	EventWebRTCCandidate EventName = "webrtc_candidate"
 	EventWebRTCAddTrack  EventName = "webrtc_add_track"
 	EventWebRTCAnswer    EventName = "webrtc_answer"
+
+	EventUserRoleUpdated EventName = "user_role_updated"
 )
 
 type Event struct {

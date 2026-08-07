@@ -5,6 +5,7 @@ import (
 	"sound-stage-backend/internal/pkg/httpx"
 	"sound-stage-backend/internal/pkg/listopts"
 	roomuser "sound-stage-backend/internal/room_user"
+	"sound-stage-backend/internal/ws"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -17,15 +18,17 @@ type Handler interface {
 	Create(c *gin.Context)
 	Update(c *gin.Context)
 	ListUsers(c *gin.Context)
+	UpdateUserRole(c *gin.Context)
 }
 
 type handler struct {
 	service  Service
 	validate *validator.Validate
+	hub      *ws.Hub
 }
 
-func NewHandler(service Service) Handler {
-	return &handler{service: service, validate: validator.New()}
+func NewHandler(service Service, hub *ws.Hub) Handler {
+	return &handler{service: service, validate: validator.New(), hub: hub}
 }
 
 func (h *handler) Create(c *gin.Context) {
@@ -164,4 +167,34 @@ func (h *handler) ListUsers(c *gin.Context) {
 	}
 
 	httpx.PaginatedSuccessResponse(c, "Room users fetched successfully", users, p.Page, p.PageSize, int(count))
+}
+
+func (h *handler) UpdateUserRole(c *gin.Context) {
+	id := c.Param("id")
+	roomID, err := strconv.Atoi(id)
+	userId := c.Param("userId")
+	userID, err := strconv.Atoi(userId)
+	if err != nil {
+		httpx.ErrorResponse(c, http.StatusBadRequest, "Invalid ID's")
+		return
+	}
+
+	var input UpdateUserRoleParams
+	if err := c.ShouldBindJSON(&input); err != nil {
+		httpx.ErrorResponse(c, http.StatusBadRequest, "Invalid request payload")
+		return
+	}
+	if err := h.validate.Struct(input); err != nil {
+		httpx.ErrorResponse(c, http.StatusUnprocessableEntity, "Validation error: "+err.Error())
+		return
+	}
+
+	if err := h.service.UpdateUserRole(uint(roomID), uint(userID), input.Role); err != nil {
+		httpx.ErrorResponse(c, http.StatusUnprocessableEntity, "Failed to update user role")
+		return
+	}
+
+	h.hub.BroadcastToRoom(uint(roomID), ws.EventUserRoleUpdated, gin.H{"userId": userID, "role": input.Role})
+
+	httpx.SuccessResponse(c, http.StatusOK, "User role updated successfully", nil)
 }

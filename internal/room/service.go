@@ -13,7 +13,9 @@ type Service interface {
 	Create(input *CreateRoomParams) (*Room, error)
 	Update(id uint, input *UpdateRoomParams) (*Room, error)
 	List(filter RoomFilter, sort listopts.Sort, p listopts.Pagination) ([]Room, int64, error)
-	ListUsers(roomID uint, filter roomuser.RoomUserFilter, sort listopts.Sort, p listopts.Pagination) ([]roomuser.RoomUser, int64, error)
+	ListUsers(roomID uint, filter roomuser.RoomUserFilter, sort listopts.Sort,
+		p listopts.Pagination) ([]roomuser.RoomUser, int64, error)
+	UpdateUserRole(roomID uint, userID uint, role string) error
 }
 
 type service struct {
@@ -63,6 +65,11 @@ func (s *service) List(filter RoomFilter, sort listopts.Sort, p listopts.Paginat
 	return rooms, count, nil
 }
 
-func (s *service) ListUsers(roomID uint, filter roomuser.RoomUserFilter, sort listopts.Sort, p listopts.Pagination) ([]roomuser.RoomUser, int64, error) {
+func (s *service) ListUsers(roomID uint, filter roomuser.RoomUserFilter,
+	sort listopts.Sort, p listopts.Pagination) ([]roomuser.RoomUser, int64, error) {
 	return s.roomUserService.ListByRoomID(roomID, filter, sort, p)
+}
+
+func (s *service) UpdateUserRole(roomID uint, userID uint, role string) error {
+	return s.roomUserService.UpdateRole(roomID, userID, role)
 }

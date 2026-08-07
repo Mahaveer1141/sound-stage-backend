@@ -49,7 +49,6 @@ func (s *Server) Run() error {
 	pool := worker.NewPool(s.cfg, s.logger)
 
 	hub := ws.NewHub(s.logger)
-	go hub.Run()
 
 	mailService, err := mailer.NewService(s.cfg, s.logger, pool)
 	if err != nil {
@@ -81,14 +80,16 @@ func (s *Server) Run() error {
 	}
 
 	wsHandler := ws.NewHandler(hub, s.cfg)
-	roomWsHandler := room.NewWSHandler(hub, roomUserService, s.cfg)
+	roomWsHandler := room.NewWSHandler(hub, roomUserService, s.cfg, s.logger)
 
 	roomWsHandler.Register(wsHandler)
+
+	go hub.Run()
 
 	healthHandler := health.NewHandler(db)
 	authHandler := auth.NewHandler(authService)
 	userHandler := user.NewHandler(userService)
-	roomHandler := room.NewHandler(roomService)
+	roomHandler := room.NewHandler(roomService, hub)
 
 	handlers := &router.Handlers{
 		Health: healthHandler,

@@ -62,6 +62,7 @@ func Setup(cfg *config.Config, handlers *Handlers, apiTokenService apitoken.Serv
 		rooms.POST("", handlers.Room.Create)
 		rooms.PUT("/:id", handlers.Room.Update)
 		rooms.GET("/:id/users", handlers.Room.ListUsers)
+		rooms.PUT("/:id/users/:userId/role", handlers.Room.UpdateUserRole)
 	}
 
 	router.GET("/ws/rooms/:roomId", middleware.AuthMiddleware(apiTokenService), handlers.WS.ServeWS)

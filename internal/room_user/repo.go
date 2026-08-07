@@ -22,6 +22,7 @@ type Repo interface {
 	SetRole(userID uint, roomID uint, roleName string) error
 	ListByRoomID(roomID uint, filter RoomUserFilter, sort listopts.Sort, p listopts.Pagination) ([]RoomUser, error)
 	CountByRoomID(roomID uint, filter RoomUserFilter) (int64, error)
+	UpdateRole(roomID uint, userID uint, roleID uint) error
 }
 
 type repo struct {
@@ -46,7 +47,7 @@ func (r *repo) Create(tx *gorm.DB, userID uint, roomID uint, roleID uint) (*Room
 
 func (r *repo) FindBy(userID uint, roomID uint) (*RoomUser, error) {
 	var ru RoomUser
-	result := r.db.Where("user_id = ? AND room_id = ?", userID, roomID).First(&ru)
+	result := r.db.Where("user_id = ? AND room_id = ?", userID, roomID).Preload("Role").First(&ru)
 	return &ru, result.Error
 }
 
@@ -110,4 +111,11 @@ func (r *repo) CountByRoomID(roomID uint, filter RoomUserFilter) (int64, error) 
 		Scopes(Filters(filter)).
 		Count(&count).Error
 	return count, err
+}
+
+func (r *repo) UpdateRole(roomID uint, userID uint, roleID uint) error {
+	return r.db.
+		Table("room_users").
+		Where("room_id = ? AND user_id = ?", roomID, userID).
+		Update("role_id", roleID).Error
 }

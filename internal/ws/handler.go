@@ -12,15 +12,19 @@ import (
 
 type EventHandler func(c *Client, evt Event)
 
+type DisconnectHandler func(c *Client)
+
 type Handler interface {
 	On(en EventName, handler EventHandler)
+	OnDisconnect(handler DisconnectHandler)
 	ServeWS(ctx *gin.Context)
 }
 
 type handler struct {
-	hub      *Hub
-	handlers map[EventName]EventHandler
-	cfg      *config.Config
+	hub         *Hub
+	handlers    map[EventName]EventHandler
+	disconnects []DisconnectHandler
+	cfg         *config.Config
 }
 
 func NewHandler(hub *Hub, cfg *config.Config) Handler {
@@ -33,6 +37,10 @@ func NewHandler(hub *Hub, cfg *config.Config) Handler {
 
 func (h *handler) On(en EventName, handler EventHandler) {
 	h.handlers[en] = handler
+}
+
+func (h *handler) OnDisconnect(handler DisconnectHandler) {
+	h.disconnects = append(h.disconnects, handler)
 }
 
 func (h *handler) ServeWS(ctx *gin.Context) {
@@ -56,6 +64,10 @@ func (h *handler) ServeWS(ctx *gin.Context) {
 
 	go client.writePump()
 	client.readPump(h.handleEvent)
+
+	for _, fn := range h.disconnects {
+		fn(client)
+	}
 }
 
 func (h *handler) handleEvent(c *Client, evt Event) {

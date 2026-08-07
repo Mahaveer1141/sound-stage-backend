@@ -36,6 +36,10 @@ var allowedUserSortFields = map[string]string{
 	"created_at": "room_users.created_at",
 }
 
+func (ru *RoomUser) IsListener() bool {
+	return ru.Role.Name == role.RoleListener
+}
+
 func FilterByRoles(roles []string) func(*gorm.DB) *gorm.DB {
 	return func(db *gorm.DB) *gorm.DB {
 		if len(roles) > 0 {

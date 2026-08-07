@@ -5,31 +5,29 @@ import (
 	"sound-stage-backend/internal/config"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
-	"github.com/pion/webrtc/v4"
 )
 
 type Client struct {
-	RoomID     uint
-	UserID     uint
-	hub        *Hub
-	send       chan []byte
-	conn       *websocket.Conn
-	PC         *webrtc.PeerConnection
-	LocalTrack *webrtc.TrackLocalStaticRTP
-	cfg        *config.Config
+	ID     string
+	RoomID uint
+	UserID uint
+	hub    *Hub
+	send   chan []byte
+	conn   *websocket.Conn
+	cfg    *config.Config
 }
 
 func newClient(roomID, userID uint, hub *Hub, conn *websocket.Conn, cfg *config.Config) *Client {
 	return &Client{
-		RoomID:     roomID,
-		UserID:     userID,
-		hub:        hub,
-		send:       make(chan []byte, 256),
-		conn:       conn,
-		PC:         nil,
-		LocalTrack: nil,
-		cfg:        cfg,
+		ID:     uuid.NewString(),
+		RoomID: roomID,
+		UserID: userID,
+		hub:    hub,
+		send:   make(chan []byte, 256),
+		conn:   conn,
+		cfg:    cfg,
 	}
 }
 

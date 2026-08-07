@@ -29,6 +29,10 @@ type CreateRoomParams struct {
 	CreatorID   uint   `json:"creatorID" validate:"required"`
 }
 
+type UpdateUserRoleParams struct {
+	Role string `json:"role" validate:"required"`
+}
+
 type UpdateRoomParams struct {
 	Name        string `json:"name" validate:"required"`
 	Description string `json:"description" validate:"omitempty"`
