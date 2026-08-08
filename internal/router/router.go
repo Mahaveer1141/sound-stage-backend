@@ -62,6 +62,7 @@ func Setup(cfg *config.Config, handlers *Handlers, apiTokenService apitoken.Serv
 		rooms.POST("", handlers.Room.Create)
 		rooms.PUT("/:id", handlers.Room.Update)
 		rooms.GET("/:id/users", handlers.Room.ListUsers)
+		rooms.GET("/:id/users/current", handlers.Room.CurrentRoomUser)
 		rooms.PUT("/:id/users/:userId/role", handlers.Room.UpdateUserRole)
 	}
 

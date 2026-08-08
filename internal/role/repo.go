@@ -5,7 +5,7 @@ import (
 )
 
 type Repo interface {
-	FindByName(name string) (*Role, error)
+	FindByName(name RoleName) (*Role, error)
 }
 
 type repo struct {
@@ -16,7 +16,7 @@ func NewRepo(db *gorm.DB) Repo {
 	return &repo{db: db}
 }
 
-func (r *repo) FindByName(name string) (*Role, error) {
+func (r *repo) FindByName(name RoleName) (*Role, error) {
 	var role Role
 	result := r.db.Where("name = ?", name).First(&role)
 	if result.Error != nil {

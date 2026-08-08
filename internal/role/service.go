@@ -1,7 +1,7 @@
 package role
 
 type Service interface {
-	FindByName(name string) (*Role, error)
+	FindByName(name RoleName) (*Role, error)
 }
 
 type service struct {
@@ -12,6 +12,6 @@ func NewService(repo Repo) Service {
 	return &service{repo: repo}
 }
 
-func (s *service) FindByName(name string) (*Role, error) {
+func (s *service) FindByName(name RoleName) (*Role, error) {
 	return s.repo.FindByName(name)
 }

@@ -1,6 +1,7 @@
 package room
 
 import (
+	"errors"
 	"net/http"
 	"sound-stage-backend/internal/pkg/httpx"
 	"sound-stage-backend/internal/pkg/listopts"
@@ -20,6 +21,7 @@ type Handler interface {
 	Update(c *gin.Context)
 	ListUsers(c *gin.Context)
 	UpdateUserRole(c *gin.Context)
+	CurrentRoomUser(c *gin.Context)
 }
 
 type PublishRevoker interface {
@@ -184,6 +186,8 @@ func (h *handler) UpdateUserRole(c *gin.Context) {
 		httpx.ErrorResponse(c, http.StatusBadRequest, "Invalid ID's")
 		return
 	}
+	actorId, _ := c.Get("userId")
+	actorID, _ := actorId.(uint)
 
 	var input UpdateUserRoleParams
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -195,7 +199,11 @@ func (h *handler) UpdateUserRole(c *gin.Context) {
 		return
 	}
 
-	if err := h.service.UpdateUserRole(uint(roomID), uint(userID), input.Role); err != nil {
+	if err := h.service.UpdateUserRole(uint(roomID), uint(userID), input.Role, actorID); err != nil {
+		if errors.Is(err, httpx.ErrForbidden) {
+			httpx.ErrorResponse(c, http.StatusForbidden, httpx.ErrForbidden.Error())
+			return
+		}
 		httpx.ErrorResponse(c, http.StatusUnprocessableEntity, "Failed to update user role")
 		return
 	}
@@ -207,4 +215,22 @@ func (h *handler) UpdateUserRole(c *gin.Context) {
 	h.hub.BroadcastToRoom(uint(roomID), ws.EventUserRoleUpdated, gin.H{"userId": userID, "role": input.Role})
 
 	httpx.SuccessResponse(c, http.StatusOK, "User role updated successfully", nil)
+}
+
+func (h *handler) CurrentRoomUser(c *gin.Context) {
+	id := c.Param("id")
+	roomId, err := strconv.Atoi(id)
+	if err != nil {
+		httpx.ErrorResponse(c, http.StatusBadRequest, "Invalid room ID")
+		return
+	}
+	userId, _ := c.Get("userId")
+	userID, _ := userId.(uint)
+
+	ru, err := h.service.CurrentRoomUser(uint(roomId), userID)
+	if err != nil {
+		httpx.ErrorResponse(c, http.StatusUnprocessableEntity, "Failed to fetch user")
+		return
+	}
+	httpx.SuccessResponse(c, http.StatusOK, "Successfully fetch the user", ru)
 }

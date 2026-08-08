@@ -3,6 +3,7 @@ package room
 import (
 	model "sound-stage-backend/internal/model"
 	"sound-stage-backend/internal/pkg/listopts"
+	"sound-stage-backend/internal/role"
 	user "sound-stage-backend/internal/user"
 	"strings"
 
@@ -30,7 +31,7 @@ type CreateRoomParams struct {
 }
 
 type UpdateUserRoleParams struct {
-	Role string `json:"role" validate:"required"`
+	Role role.RoleName `json:"role" validate:"required"`
 }
 
 type UpdateRoomParams struct {

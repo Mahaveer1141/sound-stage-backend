@@ -2,6 +2,12 @@ package httpx
 
 import "errors"
 
+// Auth errors
+var (
+	ErrUnauthorized = errors.New("unauthorized")
+	ErrForbidden    = errors.New("forbidden: user doesn't have permission")
+)
+
 // API Token errors
 var (
 	ErrInvalidOrExpiredToken  = errors.New("invalid or expired token")

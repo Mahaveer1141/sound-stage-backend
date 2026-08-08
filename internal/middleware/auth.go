@@ -18,7 +18,7 @@ func AuthMiddleware(apiTokenService apitoken.Service) gin.HandlerFunc {
 		}
 
 		if tokenString == "" {
-			httpx.ErrorResponse(c, http.StatusUnauthorized, "Unauthorized")
+			httpx.ErrorResponse(c, http.StatusUnauthorized, httpx.ErrUnauthorized.Error())
 			c.Abort()
 			return
 		}

@@ -113,7 +113,7 @@ func Load() *Config {
 			AccessTokenSecret:  env.GetEnv("JWT_ACCESS_TOKEN_SECRET", "access_token_secret"),
 			RefreshTokenSecret: env.GetEnv("JWT_REFRESH_TOKEN_SECRET", "refresh_token_secret"),
 			AccessTokenExpiry:  2 * time.Hour,
-			RefreshTokenExpiry: 7 * 24 * time.Hour, // 7 days
+			RefreshTokenExpiry: 30 * 24 * time.Hour, // 30 days
 			Issuer:             env.GetEnv("JWT_ISSUER", "sound-stage"),
 		},
 		Redis: RedisConfig{

@@ -9,14 +9,13 @@ import (
 )
 
 type Service interface {
-	AddUser(userID uint, roomID uint, roleName string) (*RoomUser, error)
-	AddUserWithTx(tx *gorm.DB, userID uint, roomID uint, roleName string) (*RoomUser, error)
+	AddUser(userID uint, roomID uint, roleName role.RoleName) (*RoomUser, error)
+	AddUserWithTx(tx *gorm.DB, userID uint, roomID uint, roleName role.RoleName) (*RoomUser, error)
 	RemoveUser(userID uint, roomID uint) error
-	HasPermission(userID uint, roomID uint, permission string) (bool, error)
-	SetRole(userID uint, roomID uint, roleName string) error
+	SetRole(userID uint, roomID uint, roleName role.RoleName) error
 	ListByRoomID(roomID uint, filter RoomUserFilter, sort listopts.Sort, p listopts.Pagination) ([]RoomUser, int64, error)
 	FindBy(userID uint, roomID uint) (*RoomUser, error)
-	UpdateRole(roomID uint, userID uint, role string) error
+	UpdateRole(roomID uint, userID uint, role role.RoleName, actorID uint) error
 }
 
 type service struct {
@@ -28,11 +27,11 @@ func NewService(repo Repo, roleService role.Service) Service {
 	return &service{repo: repo, roleService: roleService}
 }
 
-func (s *service) AddUser(userID uint, roomID uint, roleName string) (*RoomUser, error) {
+func (s *service) AddUser(userID uint, roomID uint, roleName role.RoleName) (*RoomUser, error) {
 	return s.AddUserWithTx(nil, userID, roomID, roleName)
 }
 
-func (s *service) AddUserWithTx(tx *gorm.DB, userID uint, roomID uint, roleName string) (*RoomUser, error) {
+func (s *service) AddUserWithTx(tx *gorm.DB, userID uint, roomID uint, roleName role.RoleName) (*RoomUser, error) {
 	ru, err := s.repo.FindBy(userID, roomID)
 	if err != nil {
 		return nil, err
@@ -68,11 +67,7 @@ func (s *service) RemoveUser(userID uint, roomID uint) error {
 	return s.repo.UpdateActivity(ru, ActivityLeave)
 }
 
-func (s *service) HasPermission(userID, roomID uint, permission string) (bool, error) {
-	return s.repo.HasPermission(userID, roomID, permission)
-}
-
-func (s *service) SetRole(userID, roomID uint, roleName string) error {
+func (s *service) SetRole(userID, roomID uint, roleName role.RoleName) error {
 	return s.repo.SetRole(userID, roomID, roleName)
 }
 
@@ -88,8 +83,15 @@ func (s *service) ListByRoomID(roomID uint, filter RoomUserFilter, sort listopts
 	return users, count, nil
 }
 
-func (s *service) UpdateRole(roomID uint, userID uint, role string) error {
-	r, err := s.roleService.FindByName(role)
+func (s *service) UpdateRole(roomID uint, userID uint, roleName role.RoleName, actorID uint) error {
+	hasPermission, err := s.repo.HasRoles(actorID, roomID, role.RoleAssignmentPermissions[roleName])
+	if err != nil {
+		return err
+	}
+	if !hasPermission {
+		return httpx.ErrForbidden
+	}
+	r, err := s.roleService.FindByName(roleName)
 	if err != nil {
 		return err
 	}

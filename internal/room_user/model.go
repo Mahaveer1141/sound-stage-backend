@@ -37,7 +37,7 @@ var allowedUserSortFields = map[string]string{
 }
 
 func (ru *RoomUser) IsListener() bool {
-	return ru.Role.Name == role.RoleListener
+	return ru.Role.Name == string(role.RoleListener)
 }
 
 func FilterByRoles(roles []string) func(*gorm.DB) *gorm.DB {

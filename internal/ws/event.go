@@ -4,7 +4,7 @@ import "encoding/json"
 
 type EventName string
 
-var (
+const (
 	EventJoinRoom  EventName = "join_room"
 	EventLeaveRoom EventName = "leave_room"
 
