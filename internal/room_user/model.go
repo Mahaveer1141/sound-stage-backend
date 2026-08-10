@@ -32,12 +32,52 @@ type RoomUserFilter struct {
 	Roles []string `form:"roles"`
 }
 
+type RoomUserResponse struct {
+	ID           uint      `json:"id"`
+	User         user.User `json:"user"`
+	Role         role.Role `json:"role"`
+	CreatedAt    time.Time `json:"createdAt"`
+	LastJoinedAt time.Time `json:"lastJoinedAt"`
+	LastLeftAt   time.Time `json:"lastLeftAt"`
+	IsOnline     bool      `json:"isOnline"`
+	CanManage    bool      `json:"canManage"`
+	CanSpeak     bool      `json:"canSpeak"`
+	IsAdmin      bool      `json:"isAdmin"`
+}
+
 var allowedUserSortFields = map[string]string{
 	"created_at": "room_users.created_at",
 }
 
 func (ru *RoomUser) IsListener() bool {
 	return ru.Role.Name == string(role.RoleListener)
+}
+
+func (ru *RoomUser) IsAdmin() bool {
+	return ru.Role.Name == string(role.RoleAdmin)
+}
+
+func (ru *RoomUser) CanManage() bool {
+	return ru.IsAdmin() || ru.Role.Name == string(role.RoleModerator)
+}
+
+func (ru *RoomUser) CanSpeak() bool {
+	return ru.CanManage() || ru.Role.Name == string(role.RoleSpeaker)
+}
+
+func (ru *RoomUser) ToResponse() RoomUserResponse {
+	return RoomUserResponse{
+		ID:           ru.ID,
+		User:         ru.User,
+		Role:         ru.Role,
+		CreatedAt:    ru.CreatedAt,
+		LastJoinedAt: ru.LastJoinedAt,
+		LastLeftAt:   ru.LastLeftAt,
+		IsOnline:     ru.IsOnline,
+		CanManage:    ru.CanManage(),
+		CanSpeak:     ru.CanSpeak(),
+		IsAdmin:      ru.IsAdmin(),
+	}
 }
 
 func FilterByRoles(roles []string) func(*gorm.DB) *gorm.DB {

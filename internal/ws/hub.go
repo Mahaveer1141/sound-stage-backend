@@ -23,13 +23,13 @@ type ErrorPayload struct {
 }
 
 type Hub struct {
-	rooms        map[uint]map[*Client]struct{}
-	register     chan *Client
-	unregister   chan *Client
-	broadcast    chan roomMessage
-	direct       chan clientMessage
-	clients      chan clientsQuery
-	logger       *slog.Logger
+	rooms      map[uint]map[*Client]struct{}
+	register   chan *Client
+	unregister chan *Client
+	broadcast  chan roomMessage
+	direct     chan clientMessage
+	clients    chan clientsQuery
+	logger     *slog.Logger
 }
 
 func NewHub(logger *slog.Logger) *Hub {

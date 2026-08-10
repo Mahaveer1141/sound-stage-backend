@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"sound-stage-backend/internal/pkg/httpx"
 	"sound-stage-backend/internal/pkg/listopts"
-	"sound-stage-backend/internal/role"
 	roomuser "sound-stage-backend/internal/room_user"
 	"sound-stage-backend/internal/ws"
 	"strconv"
@@ -24,19 +23,14 @@ type Handler interface {
 	CurrentRoomUser(c *gin.Context)
 }
 
-type PublishRevoker interface {
-	RevokePublishing(roomID uint, userID uint)
-}
-
 type handler struct {
 	service  Service
 	validate *validator.Validate
 	hub      *ws.Hub
-	revoker  PublishRevoker
 }
 
-func NewHandler(service Service, hub *ws.Hub, revoker PublishRevoker) Handler {
-	return &handler{service: service, validate: validator.New(), hub: hub, revoker: revoker}
+func NewHandler(service Service, hub *ws.Hub) Handler {
+	return &handler{service: service, validate: validator.New(), hub: hub}
 }
 
 func (h *handler) Create(c *gin.Context) {
@@ -174,7 +168,12 @@ func (h *handler) ListUsers(c *gin.Context) {
 		return
 	}
 
-	httpx.PaginatedSuccessResponse(c, "Room users fetched successfully", users, p.Page, p.PageSize, int(count))
+	userResponses := make([]roomuser.RoomUserResponse, len(users))
+	for i := range users {
+		userResponses[i] = users[i].ToResponse()
+	}
+
+	httpx.PaginatedSuccessResponse(c, "Room users fetched successfully", userResponses, p.Page, p.PageSize, int(count))
 }
 
 func (h *handler) UpdateUserRole(c *gin.Context) {
@@ -208,10 +207,6 @@ func (h *handler) UpdateUserRole(c *gin.Context) {
 		return
 	}
 
-	if input.Role == role.RoleListener {
-		h.revoker.RevokePublishing(uint(roomID), uint(userID))
-	}
-
 	h.hub.BroadcastToRoom(uint(roomID), ws.EventUserRoleUpdated, gin.H{"userId": userID, "role": input.Role})
 
 	httpx.SuccessResponse(c, http.StatusOK, "User role updated successfully", nil)
@@ -232,5 +227,5 @@ func (h *handler) CurrentRoomUser(c *gin.Context) {
 		httpx.ErrorResponse(c, http.StatusUnprocessableEntity, "Failed to fetch user")
 		return
 	}
-	httpx.SuccessResponse(c, http.StatusOK, "Successfully fetch the user", ru)
+	httpx.SuccessResponse(c, http.StatusOK, "Successfully fetch the user", ru.ToResponse())
 }

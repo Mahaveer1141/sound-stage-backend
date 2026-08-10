@@ -18,13 +18,18 @@ type Service interface {
 	UpdateRole(roomID uint, userID uint, role role.RoleName, actorID uint) error
 }
 
+type PublishRevoker interface {
+	RevokePublishing(roomID uint, userID uint)
+}
+
 type service struct {
 	repo        Repo
 	roleService role.Service
+	revoker     PublishRevoker
 }
 
-func NewService(repo Repo, roleService role.Service) Service {
-	return &service{repo: repo, roleService: roleService}
+func NewService(repo Repo, roleService role.Service, revoker PublishRevoker) Service {
+	return &service{repo: repo, roleService: roleService, revoker: revoker}
 }
 
 func (s *service) AddUser(userID uint, roomID uint, roleName role.RoleName) (*RoomUser, error) {
@@ -95,5 +100,13 @@ func (s *service) UpdateRole(roomID uint, userID uint, roleName role.RoleName, a
 	if err != nil {
 		return err
 	}
-	return s.repo.UpdateRole(roomID, userID, r.ID)
+	if err := s.repo.UpdateRole(roomID, userID, r.ID); err != nil {
+		return err
+	}
+
+	if roleName == role.RoleListener {
+		s.revoker.RevokePublishing(roomID, userID)
+	}
+
+	return nil
 }

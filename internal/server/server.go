@@ -15,6 +15,7 @@ import (
 	"sound-stage-backend/internal/infra/mailer"
 	"sound-stage-backend/internal/infra/redis"
 	"sound-stage-backend/internal/infra/worker"
+	mediarouter "sound-stage-backend/internal/media_router"
 	otprequest "sound-stage-backend/internal/otp_request"
 	"sound-stage-backend/internal/role"
 	"sound-stage-backend/internal/room"
@@ -50,6 +51,8 @@ func (s *Server) Run() error {
 
 	hub := ws.NewHub(s.logger)
 
+	mediaRouter := mediarouter.NewMediaRouter(hub, s.logger)
+
 	mailService, err := mailer.NewService(s.cfg, s.logger, pool)
 	if err != nil {
 		return fmt.Errorf("Mailer Error: %w", err)
@@ -67,8 +70,12 @@ func (s *Server) Run() error {
 	otpRequestService := otprequest.NewService(otpRequestRepo)
 	authService := auth.NewService(userService, otpRequestService, apiTokenService, mailService)
 	roleService := role.NewService(roleRepo)
-	roomUserService := roomuser.NewService(roomUserRepo, roleService)
+	roomUserService := roomuser.NewService(roomUserRepo, roleService, mediaRouter)
 	roomService := room.NewService(roomRepo, roomUserService, db)
+
+	wsHandler := ws.NewHandler(hub, s.cfg)
+	roomWsHandler := room.NewWSHandler(hub, roomUserService, mediaRouter, s.cfg, s.logger)
+	roomWsHandler.Register(wsHandler)
 
 	registrar := worker.NewTaskRegistrar(pool, s.logger)
 	registrar.RegisterAll(worker.TaskDeps{
@@ -79,17 +86,12 @@ func (s *Server) Run() error {
 		return fmt.Errorf("Worker Error: %w", err)
 	}
 
-	wsHandler := ws.NewHandler(hub, s.cfg)
-	roomWsHandler := room.NewWSHandler(hub, roomUserService, s.cfg, s.logger)
-
-	roomWsHandler.Register(wsHandler)
-
 	go hub.Run()
 
 	healthHandler := health.NewHandler(db)
 	authHandler := auth.NewHandler(authService)
 	userHandler := user.NewHandler(userService)
-	roomHandler := room.NewHandler(roomService, hub, roomWsHandler)
+	roomHandler := room.NewHandler(roomService, hub)
 
 	handlers := &router.Handlers{
 		Health: healthHandler,
