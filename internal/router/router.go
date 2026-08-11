@@ -37,6 +37,9 @@ func Setup(cfg *config.Config, handlers *Handlers, apiTokenService apitoken.Serv
 	}))
 	router.Use(middleware.Logger(logger))
 	router.Use(middleware.Recovery(logger))
+	router.Use(middleware.RateLimiter(logger))
+
+	go middleware.StartBucketCleanup()
 
 	router.GET("/health", handlers.Health.Health)
 
