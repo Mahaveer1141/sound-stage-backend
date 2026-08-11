@@ -223,7 +223,7 @@ func (h *handler) CurrentRoomUser(c *gin.Context) {
 	userID, _ := userId.(uint)
 
 	ru, err := h.service.CurrentRoomUser(uint(roomId), userID)
-	if err != nil {
+	if err != nil || ru == nil {
 		httpx.ErrorResponse(c, http.StatusUnprocessableEntity, "Failed to fetch user")
 		return
 	}

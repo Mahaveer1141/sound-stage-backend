@@ -7,6 +7,7 @@ import (
 type RoleName string
 
 const (
+	RoleOwner     RoleName = "owner"
 	RoleAdmin     RoleName = "admin"
 	RoleListener  RoleName = "listener"
 	RoleSpeaker   RoleName = "speaker"
@@ -14,10 +15,11 @@ const (
 )
 
 var RoleAssignmentPermissions = map[RoleName][]RoleName{
-	RoleListener:  {RoleAdmin, RoleModerator},
-	RoleSpeaker:   {RoleAdmin, RoleModerator},
-	RoleModerator: {RoleAdmin},
-	RoleAdmin:     {RoleAdmin},
+	RoleOwner:     {},
+	RoleListener:  {RoleOwner, RoleAdmin, RoleModerator},
+	RoleSpeaker:   {RoleOwner, RoleAdmin, RoleModerator},
+	RoleModerator: {RoleOwner, RoleAdmin},
+	RoleAdmin:     {RoleOwner, RoleAdmin},
 }
 
 type Role struct {

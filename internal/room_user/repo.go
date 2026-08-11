@@ -1,6 +1,7 @@
 package roomuser
 
 import (
+	"sound-stage-backend/internal/pkg/gormutil"
 	"sound-stage-backend/internal/pkg/listopts"
 	"sound-stage-backend/internal/role"
 	"time"
@@ -48,9 +49,9 @@ func (r *repo) Create(tx *gorm.DB, userID uint, roomID uint, roleID uint) (*Room
 
 func (r *repo) FindBy(userID uint, roomID uint) (*RoomUser, error) {
 	var ru RoomUser
-	result := r.db.Where("user_id = ? AND room_id = ?", userID, roomID).Preload("Role").
-		Preload("User").First(&ru)
-	return &ru, result.Error
+	result := r.db.Where("user_id = ? AND room_id = ?", userID, roomID).
+		Preload("User").Preload("Role").First(&ru)
+	return gormutil.NilIfNotFound(&ru, result.Error)
 }
 
 func (r *repo) UpdateActivity(ru *RoomUser, activity Activity) error {

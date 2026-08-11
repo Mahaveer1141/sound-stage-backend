@@ -41,7 +41,7 @@ func (s *service) Create(input *CreateRoomParams) (*Room, error) {
 		if err != nil {
 			return err
 		}
-		_, err = s.roomUserService.AddUserWithTx(tx, input.CreatorID, room.ID, role.RoleAdmin)
+		_, err = s.roomUserService.AddUserWithTx(tx, input.CreatorID, room.ID, role.RoleOwner)
 		return err
 	})
 	if err != nil {

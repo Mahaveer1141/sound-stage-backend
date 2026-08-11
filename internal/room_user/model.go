@@ -43,6 +43,7 @@ type RoomUserResponse struct {
 	CanManage    bool      `json:"canManage"`
 	CanSpeak     bool      `json:"canSpeak"`
 	IsAdmin      bool      `json:"isAdmin"`
+	IsOwner      bool      `json:"isOwner"`
 }
 
 var allowedUserSortFields = map[string]string{
@@ -54,7 +55,11 @@ func (ru *RoomUser) IsListener() bool {
 }
 
 func (ru *RoomUser) IsAdmin() bool {
-	return ru.Role.Name == string(role.RoleAdmin)
+	return ru.IsOwner() || ru.Role.Name == string(role.RoleAdmin)
+}
+
+func (ru *RoomUser) IsOwner() bool {
+	return ru.Role.Name == string(role.RoleOwner)
 }
 
 func (ru *RoomUser) CanManage() bool {
@@ -77,6 +82,7 @@ func (ru *RoomUser) ToResponse() RoomUserResponse {
 		CanManage:    ru.CanManage(),
 		CanSpeak:     ru.CanSpeak(),
 		IsAdmin:      ru.IsAdmin(),
+		IsOwner:      ru.IsOwner(),
 	}
 }
 

@@ -11,6 +11,7 @@ CREATE TABLE roles (
 );
 
 INSERT INTO roles (name, description) VALUES
+    ('owner', 'Full control over the room, including editing and deleting it'),
     ('admin', 'Full control over the room, including editing and deleting it'),
     ('moderator', 'Can promote and kick users, and can speak'),
     ('speaker', 'Can speak and listen'),
