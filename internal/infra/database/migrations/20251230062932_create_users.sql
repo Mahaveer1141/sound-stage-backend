@@ -7,10 +7,10 @@ CREATE TABLE users (
     email VARCHAR NOT NULL,
     first_name VARCHAR NOT NULL,
     last_name VARCHAR,
-    last_login_at TIMESTAMP,
-    deleted_at TIMESTAMP,
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW(),
+    last_login_at TIMESTAMPTZ,
+    deleted_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
 
     -- Constraints
     CONSTRAINT email_format CHECK (email ~* '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$'),
