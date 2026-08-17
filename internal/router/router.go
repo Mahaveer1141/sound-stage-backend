@@ -2,7 +2,6 @@ package router
 
 import (
 	"log/slog"
-	apitoken "sound-stage-backend/internal/api_token"
 	"sound-stage-backend/internal/auth"
 	"sound-stage-backend/internal/config"
 	"sound-stage-backend/internal/health"
@@ -17,13 +16,13 @@ import (
 
 type Handlers struct {
 	WS     ws.Handler
-	Health health.Handler
-	Auth   auth.Handler
-	User   user.Handler
-	Room   room.Handler
+	Health *health.Handler
+	Auth   *auth.Handler
+	User   *user.Handler
+	Room   *room.Handler
 }
 
-func Setup(cfg *config.Config, handlers *Handlers, apiTokenService apitoken.Service, logger *slog.Logger) *gin.Engine {
+func Setup(cfg *config.Config, handlers *Handlers, tokenValidator middleware.TokenValidator, logger *slog.Logger) *gin.Engine {
 	gin.SetMode(cfg.Server.Mode)
 
 	router := gin.New()
@@ -49,16 +48,16 @@ func Setup(cfg *config.Config, handlers *Handlers, apiTokenService apitoken.Serv
 		auth.POST("/verify_otp", handlers.Auth.VerifyOTP)
 		auth.POST("/sign_up", handlers.Auth.SignUp)
 		auth.POST("/refresh", handlers.Auth.RefreshToken)
-		auth.POST("/logout", middleware.AuthMiddleware(apiTokenService), handlers.Auth.Logout)
+		auth.POST("/logout", middleware.AuthMiddleware(tokenValidator), handlers.Auth.Logout)
 	}
 
-	users := router.Group("/users", middleware.AuthMiddleware(apiTokenService))
+	users := router.Group("/users", middleware.AuthMiddleware(tokenValidator))
 	{
 		users.GET("/current", handlers.User.CurrentUser)
 		users.PUT("/profile", handlers.User.UpdateProfile)
 	}
 
-	rooms := router.Group("/rooms", middleware.AuthMiddleware(apiTokenService))
+	rooms := router.Group("/rooms", middleware.AuthMiddleware(tokenValidator))
 	{
 		rooms.GET("", handlers.Room.List)
 		rooms.GET("/:id", handlers.Room.FindByID)
@@ -69,7 +68,7 @@ func Setup(cfg *config.Config, handlers *Handlers, apiTokenService apitoken.Serv
 		rooms.PUT("/:id/users/:userId/role", handlers.Room.UpdateUserRole)
 	}
 
-	router.GET("/ws/rooms/:roomId", middleware.AuthMiddleware(apiTokenService), handlers.WS.ServeWS)
+	router.GET("/ws/rooms/:roomId", middleware.AuthMiddleware(tokenValidator), handlers.WS.ServeWS)
 
 	return router
 }

@@ -9,7 +9,11 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func AuthMiddleware(apiTokenService apitoken.Service) gin.HandlerFunc {
+type TokenValidator interface {
+	ValidateToken(token string, tokenType apitoken.TokenType) (uint, error)
+}
+
+func AuthMiddleware(apiTokenService TokenValidator) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
 		tokenString := strings.TrimPrefix(authHeader, "Bearer ")

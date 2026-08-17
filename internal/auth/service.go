@@ -6,32 +6,45 @@ import (
 	"fmt"
 	"math/big"
 	apitoken "sound-stage-backend/internal/api_token"
-	"sound-stage-backend/internal/infra/mailer"
 	otprequest "sound-stage-backend/internal/otp_request"
 	"sound-stage-backend/internal/pkg/httpx"
 	"sound-stage-backend/internal/user"
 )
 
-type Service interface {
-	RequestOTP(email string) (*otprequest.OTPRequest, error)
-	VerifyOTP(params VerifyOTPParams) (*apitoken.TokenResult, error)
-	SignUp(input *SignUpParams) (*apitoken.TokenResult, error)
-	RefreshToken(refreshToken string) (*apitoken.TokenResult, error)
-	Logout(userID uint) error
+type userService interface {
+	FindByEmail(email string) (*user.User, error)
+	Create(input *user.CreateUserParams) (*user.User, error)
+	UpdateLastLoginAt(id uint) error
 }
 
-type service struct {
-	userService       user.Service
-	otpRequestService otprequest.Service
-	apiTokenService   apitoken.Service
-	mailer            mailer.Service
+type otpService interface {
+	FindByEmail(email string) (*otprequest.OTPRequest, error)
+	Create(input otprequest.CreateOTPRequestInput) (*otprequest.OTPRequest, error)
+	Deactivate(id uint) error
 }
 
-func NewService(userService user.Service, otpRequestService otprequest.Service, apiTokenService apitoken.Service, mailer mailer.Service) *service {
-	return &service{userService: userService, otpRequestService: otpRequestService, apiTokenService: apiTokenService, mailer: mailer}
+type tokenManager interface {
+	CreateToken(userID uint, tokenType apitoken.TokenType) (*apitoken.APIToken, error)
+	ValidateToken(token string, tokenType apitoken.TokenType) (uint, error)
+	Deactivate(userID uint) error
 }
 
-func (s *service) RequestOTP(email string) (*otprequest.OTPRequest, error) {
+type mailerService interface {
+	SendOTPEmail(ctx context.Context, to string, vars map[string]any)
+}
+
+type Service struct {
+	userService       userService
+	otpRequestService otpService
+	apiTokenService   tokenManager
+	mailer            mailerService
+}
+
+func NewService(userService userService, otpRequestService otpService, apiTokenService tokenManager, mailer mailerService) *Service {
+	return &Service{userService: userService, otpRequestService: otpRequestService, apiTokenService: apiTokenService, mailer: mailer}
+}
+
+func (s *Service) RequestOTP(email string) (*otprequest.OTPRequest, error) {
 	otp, err := generateOTP(6)
 	if err != nil {
 		return nil, err
@@ -64,7 +77,7 @@ func (s *service) RequestOTP(email string) (*otprequest.OTPRequest, error) {
 	return otpRequest, nil
 }
 
-func (s *service) VerifyOTP(params VerifyOTPParams) (*apitoken.TokenResult, error) {
+func (s *Service) VerifyOTP(params VerifyOTPParams) (*apitoken.TokenResult, error) {
 	otpRequest, err := s.otpRequestService.FindByEmail(params.Email)
 	if err != nil {
 		return nil, err
@@ -104,7 +117,7 @@ func (s *service) VerifyOTP(params VerifyOTPParams) (*apitoken.TokenResult, erro
 	}, nil
 }
 
-func (s *service) SignUp(input *SignUpParams) (*apitoken.TokenResult, error) {
+func (s *Service) SignUp(input *SignUpParams) (*apitoken.TokenResult, error) {
 	user, err := s.userService.Create(&user.CreateUserParams{
 		Email:     input.Email,
 		FirstName: input.FirstName,
@@ -130,7 +143,7 @@ func (s *service) SignUp(input *SignUpParams) (*apitoken.TokenResult, error) {
 	}, nil
 }
 
-func (s *service) RefreshToken(refreshToken string) (*apitoken.TokenResult, error) {
+func (s *Service) RefreshToken(refreshToken string) (*apitoken.TokenResult, error) {
 	userID, err := s.apiTokenService.ValidateToken(refreshToken, apitoken.RefreshToken)
 	if err != nil {
 		return nil, httpx.ErrInvalidRefreshToken
@@ -149,7 +162,7 @@ func (s *service) RefreshToken(refreshToken string) (*apitoken.TokenResult, erro
 	return &apitoken.TokenResult{AccessToken: accessToken, RefreshToken: newRefreshToken}, nil
 }
 
-func (s *service) Logout(userID uint) error {
+func (s *Service) Logout(userID uint) error {
 	return s.apiTokenService.Deactivate(userID)
 }
 

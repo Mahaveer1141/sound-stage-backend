@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"sound-stage-backend/internal/pkg/httpx"
 	"sound-stage-backend/internal/pkg/listopts"
+	"sound-stage-backend/internal/role"
 	roomuser "sound-stage-backend/internal/room_user"
 	"sound-stage-backend/internal/ws"
 	"strconv"
@@ -13,27 +14,31 @@ import (
 	"github.com/go-playground/validator/v10"
 )
 
-type Handler interface {
-	List(c *gin.Context)
-	FindByID(c *gin.Context)
-	Create(c *gin.Context)
-	Update(c *gin.Context)
-	ListUsers(c *gin.Context)
-	UpdateUserRole(c *gin.Context)
-	CurrentRoomUser(c *gin.Context)
+type roomService interface {
+	List(filter RoomFilter, sort listopts.Sort, p listopts.Pagination) ([]Room, int64, error)
+	FindByID(id uint) (*Room, error)
+	Create(input *CreateRoomParams) (*Room, error)
+	Update(id uint, input *UpdateRoomParams) (*Room, error)
+	ListUsers(roomID uint, filter roomuser.RoomUserFilter, sort listopts.Sort, p listopts.Pagination) ([]roomuser.RoomUser, int64, error)
+	UpdateUserRole(roomID uint, userID uint, newRole role.RoleName, actorID uint) error
+	CurrentRoomUser(roomID uint, userID uint) (*roomuser.RoomUser, error)
 }
 
-type handler struct {
-	service  Service
+type webSocketBroadcaster interface {
+	BroadcastToRoom(roomID uint, eventName ws.EventName, payload any)
+}
+
+type Handler struct {
+	service  roomService
 	validate *validator.Validate
-	hub      *ws.Hub
+	hub      webSocketBroadcaster
 }
 
-func NewHandler(service Service, hub *ws.Hub) Handler {
-	return &handler{service: service, validate: validator.New(), hub: hub}
+func NewHandler(service roomService, hub webSocketBroadcaster) *Handler {
+	return &Handler{service: service, validate: validator.New(), hub: hub}
 }
 
-func (h *handler) Create(c *gin.Context) {
+func (h *Handler) Create(c *gin.Context) {
 	userId, _ := c.Get("userId")
 	var input CreateRoomParams
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -55,7 +60,7 @@ func (h *handler) Create(c *gin.Context) {
 	httpx.SuccessResponse(c, http.StatusOK, "Room created successfully", room)
 }
 
-func (h *handler) Update(c *gin.Context) {
+func (h *Handler) Update(c *gin.Context) {
 	id := c.Param("id")
 	roomId, err := strconv.Atoi(id)
 	if err != nil {
@@ -83,7 +88,7 @@ func (h *handler) Update(c *gin.Context) {
 	httpx.SuccessResponse(c, http.StatusOK, "Room updated successfully", room)
 }
 
-func (h *handler) List(c *gin.Context) {
+func (h *Handler) List(c *gin.Context) {
 	var p listopts.Pagination
 	if err := c.ShouldBindQuery(&p); err != nil {
 		httpx.ErrorResponse(c, http.StatusBadRequest, "Invalid pagination params")
@@ -115,7 +120,7 @@ func (h *handler) List(c *gin.Context) {
 	httpx.PaginatedSuccessResponse(c, "Rooms fetched successfully", rooms, p.Page, p.PageSize, int(count))
 }
 
-func (h *handler) FindByID(c *gin.Context) {
+func (h *Handler) FindByID(c *gin.Context) {
 	id := c.Param("id")
 	roomId, err := strconv.Atoi(id)
 	if err != nil {
@@ -132,7 +137,7 @@ func (h *handler) FindByID(c *gin.Context) {
 	httpx.SuccessResponse(c, http.StatusOK, "Room fetched successfully", room)
 }
 
-func (h *handler) ListUsers(c *gin.Context) {
+func (h *Handler) ListUsers(c *gin.Context) {
 	id := c.Param("id")
 	roomId, err := strconv.Atoi(id)
 	if err != nil {
@@ -176,7 +181,7 @@ func (h *handler) ListUsers(c *gin.Context) {
 	httpx.PaginatedSuccessResponse(c, "Room users fetched successfully", userResponses, p.Page, p.PageSize, int(count))
 }
 
-func (h *handler) UpdateUserRole(c *gin.Context) {
+func (h *Handler) UpdateUserRole(c *gin.Context) {
 	id := c.Param("id")
 	roomID, err := strconv.Atoi(id)
 	userId := c.Param("userId")
@@ -212,7 +217,7 @@ func (h *handler) UpdateUserRole(c *gin.Context) {
 	httpx.SuccessResponse(c, http.StatusOK, "User role updated successfully", nil)
 }
 
-func (h *handler) CurrentRoomUser(c *gin.Context) {
+func (h *Handler) CurrentRoomUser(c *gin.Context) {
 	id := c.Param("id")
 	roomId, err := strconv.Atoi(id)
 	if err != nil {

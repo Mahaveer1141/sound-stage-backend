@@ -8,35 +8,40 @@ import (
 	"gorm.io/gorm"
 )
 
-type Service interface {
-	AddUser(userID uint, roomID uint, roleName role.RoleName) (*RoomUser, error)
-	AddUserWithTx(tx *gorm.DB, userID uint, roomID uint, roleName role.RoleName) (*RoomUser, error)
-	RemoveUser(userID uint, roomID uint) error
-	SetRole(userID uint, roomID uint, roleName role.RoleName) error
-	ListByRoomID(roomID uint, filter RoomUserFilter, sort listopts.Sort, p listopts.Pagination) ([]RoomUser, int64, error)
-	FindBy(userID uint, roomID uint) (*RoomUser, error)
-	UpdateRole(roomID uint, userID uint, role role.RoleName, actorID uint) error
+type roleFinder interface {
+	FindByName(name role.RoleName) (*role.Role, error)
 }
 
-type PublishRevoker interface {
+type publishRevoker interface {
 	RevokePublishing(roomID uint, userID uint)
 }
 
-type service struct {
-	repo        Repo
-	roleService role.Service
-	revoker     PublishRevoker
+type repo interface {
+	Create(tx *gorm.DB, userID uint, roomID uint, roleID uint) (*RoomUser, error)
+	FindBy(userID uint, roomID uint) (*RoomUser, error)
+	UpdateActivity(ru *RoomUser, activity Activity) error
+	HasRoles(userID uint, roomID uint, permissions []role.RoleName) (bool, error)
+	SetRole(userID uint, roomID uint, roleName role.RoleName) error
+	ListByRoomID(roomID uint, filter RoomUserFilter, sort listopts.Sort, p listopts.Pagination) ([]RoomUser, error)
+	CountByRoomID(roomID uint, filter RoomUserFilter) (int64, error)
+	UpdateRole(roomID uint, userID uint, roleID uint) error
 }
 
-func NewService(repo Repo, roleService role.Service, revoker PublishRevoker) Service {
-	return &service{repo: repo, roleService: roleService, revoker: revoker}
+type Service struct {
+	repo        repo
+	roleService roleFinder
+	revoker     publishRevoker
 }
 
-func (s *service) AddUser(userID uint, roomID uint, roleName role.RoleName) (*RoomUser, error) {
+func NewService(r repo, roleService roleFinder, revoker publishRevoker) *Service {
+	return &Service{repo: r, roleService: roleService, revoker: revoker}
+}
+
+func (s *Service) AddUser(userID uint, roomID uint, roleName role.RoleName) (*RoomUser, error) {
 	return s.AddUserWithTx(nil, userID, roomID, roleName)
 }
 
-func (s *service) AddUserWithTx(tx *gorm.DB, userID uint, roomID uint, roleName role.RoleName) (*RoomUser, error) {
+func (s *Service) AddUserWithTx(tx *gorm.DB, userID uint, roomID uint, roleName role.RoleName) (*RoomUser, error) {
 	ru, err := s.repo.FindBy(userID, roomID)
 	if err != nil {
 		return nil, err
@@ -57,11 +62,11 @@ func (s *service) AddUserWithTx(tx *gorm.DB, userID uint, roomID uint, roleName 
 	return s.repo.Create(tx, userID, roomID, role.ID)
 }
 
-func (s *service) FindBy(userID uint, roomID uint) (*RoomUser, error) {
+func (s *Service) FindBy(userID uint, roomID uint) (*RoomUser, error) {
 	return s.repo.FindBy(userID, roomID)
 }
 
-func (s *service) RemoveUser(userID uint, roomID uint) error {
+func (s *Service) RemoveUser(userID uint, roomID uint) error {
 	ru, err := s.repo.FindBy(userID, roomID)
 	if err != nil {
 		return err
@@ -72,11 +77,11 @@ func (s *service) RemoveUser(userID uint, roomID uint) error {
 	return s.repo.UpdateActivity(ru, ActivityLeave)
 }
 
-func (s *service) SetRole(userID, roomID uint, roleName role.RoleName) error {
+func (s *Service) SetRole(userID, roomID uint, roleName role.RoleName) error {
 	return s.repo.SetRole(userID, roomID, roleName)
 }
 
-func (s *service) ListByRoomID(roomID uint, filter RoomUserFilter, sort listopts.Sort, p listopts.Pagination) ([]RoomUser, int64, error) {
+func (s *Service) ListByRoomID(roomID uint, filter RoomUserFilter, sort listopts.Sort, p listopts.Pagination) ([]RoomUser, int64, error) {
 	users, err := s.repo.ListByRoomID(roomID, filter, sort, p)
 	if err != nil {
 		return nil, 0, err
@@ -88,7 +93,7 @@ func (s *service) ListByRoomID(roomID uint, filter RoomUserFilter, sort listopts
 	return users, count, nil
 }
 
-func (s *service) UpdateRole(roomID uint, userID uint, roleName role.RoleName, actorID uint) error {
+func (s *Service) UpdateRole(roomID uint, userID uint, roleName role.RoleName, actorID uint) error {
 	hasPermission, err := s.repo.HasRoles(actorID, roomID, role.RoleAssignmentPermissions[roleName])
 	if err != nil {
 		return err

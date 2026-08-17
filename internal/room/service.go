@@ -8,32 +8,38 @@ import (
 	"gorm.io/gorm"
 )
 
-type Service interface {
-	FindByID(id uint) (*Room, error)
-	Create(input *CreateRoomParams) (*Room, error)
-	Update(id uint, input *UpdateRoomParams) (*Room, error)
-	List(filter RoomFilter, sort listopts.Sort, p listopts.Pagination) ([]Room, int64, error)
-	ListUsers(roomID uint, filter roomuser.RoomUserFilter, sort listopts.Sort,
-		p listopts.Pagination) ([]roomuser.RoomUser, int64, error)
-	UpdateUserRole(roomID uint, userID uint, newRole role.RoleName, actorID uint) error
-	CurrentRoomUser(roomID uint, userID uint) (*roomuser.RoomUser, error)
+type roomUserService interface {
+	AddUser(userID uint, roomID uint, roleName role.RoleName) (*roomuser.RoomUser, error)
+	AddUserWithTx(tx *gorm.DB, userID uint, roomID uint, roleName role.RoleName) (*roomuser.RoomUser, error)
+	RemoveUser(userID uint, roomID uint) error
+	ListByRoomID(roomID uint, filter roomuser.RoomUserFilter, sort listopts.Sort, p listopts.Pagination) ([]roomuser.RoomUser, int64, error)
+	FindBy(userID uint, roomID uint) (*roomuser.RoomUser, error)
+	UpdateRole(roomID uint, userID uint, role role.RoleName, actorID uint) error
 }
 
-type service struct {
-	repo            Repo
-	roomUserService roomuser.Service
+type repository interface {
+	Create(tx *gorm.DB, input *CreateRoomParams) (*Room, error)
+	Update(id uint, input *UpdateRoomParams) (*Room, error)
+	FindByID(id uint) (*Room, error)
+	List(filter RoomFilter, sort listopts.Sort, p listopts.Pagination) ([]Room, error)
+	Count(filter RoomFilter) (int64, error)
+}
+
+type Service struct {
+	repo            repository
+	roomUserService roomUserService
 	db              *gorm.DB
 }
 
-func NewService(repo Repo, roomUserService roomuser.Service, db *gorm.DB) Service {
-	return &service{repo: repo, roomUserService: roomUserService, db: db}
+func NewService(r repository, roomUserSvc roomUserService, db *gorm.DB) *Service {
+	return &Service{repo: r, roomUserService: roomUserSvc, db: db}
 }
 
-func (s *service) FindByID(id uint) (*Room, error) {
+func (s *Service) FindByID(id uint) (*Room, error) {
 	return s.repo.FindByID(id)
 }
 
-func (s *service) Create(input *CreateRoomParams) (*Room, error) {
+func (s *Service) Create(input *CreateRoomParams) (*Room, error) {
 	var room *Room
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		var err error
@@ -50,11 +56,11 @@ func (s *service) Create(input *CreateRoomParams) (*Room, error) {
 	return room, nil
 }
 
-func (s *service) Update(id uint, input *UpdateRoomParams) (*Room, error) {
+func (s *Service) Update(id uint, input *UpdateRoomParams) (*Room, error) {
 	return s.repo.Update(id, input)
 }
 
-func (s *service) List(filter RoomFilter, sort listopts.Sort, p listopts.Pagination) ([]Room, int64, error) {
+func (s *Service) List(filter RoomFilter, sort listopts.Sort, p listopts.Pagination) ([]Room, int64, error) {
 	rooms, err := s.repo.List(filter, sort, p)
 	if err != nil {
 		return nil, 0, err
@@ -66,15 +72,15 @@ func (s *service) List(filter RoomFilter, sort listopts.Sort, p listopts.Paginat
 	return rooms, count, nil
 }
 
-func (s *service) ListUsers(roomID uint, filter roomuser.RoomUserFilter,
+func (s *Service) ListUsers(roomID uint, filter roomuser.RoomUserFilter,
 	sort listopts.Sort, p listopts.Pagination) ([]roomuser.RoomUser, int64, error) {
 	return s.roomUserService.ListByRoomID(roomID, filter, sort, p)
 }
 
-func (s *service) UpdateUserRole(roomID uint, userID uint, newRole role.RoleName, actorID uint) error {
+func (s *Service) UpdateUserRole(roomID uint, userID uint, newRole role.RoleName, actorID uint) error {
 	return s.roomUserService.UpdateRole(roomID, userID, newRole, actorID)
 }
 
-func (s *service) CurrentRoomUser(roomID, userID uint) (*roomuser.RoomUser, error) {
+func (s *Service) CurrentRoomUser(roomID, userID uint) (*roomuser.RoomUser, error) {
 	return s.roomUserService.FindBy(userID, roomID)
 }

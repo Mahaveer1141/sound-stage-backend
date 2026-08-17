@@ -24,7 +24,7 @@ var RoleAssignmentPermissions = map[RoleName][]RoleName{
 
 type Role struct {
 	model.BaseModel
-	Name        string  `gorm:"not null" json:"name" validate:"required"`
+	Name        string  `gorm:"not null;uniqueIndex" json:"name" validate:"required"`
 	Description *string `json:"description,omitempty"`
 }
 

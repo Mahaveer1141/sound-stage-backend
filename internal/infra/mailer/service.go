@@ -23,12 +23,6 @@ type mailgunProvider struct {
 	logger *slog.Logger
 }
 
-type Service interface {
-	SendOTPEmail(ctx context.Context, to string, vars map[string]any)
-
-	SendOTP(ctx context.Context, to []string, vars map[string]any) error
-}
-
 type Email struct {
 	To           []string
 	Subject      string
@@ -49,26 +43,26 @@ type EmailWithAttachments struct {
 	Attachments []Attachment
 }
 
-type service struct {
+type Service struct {
 	provider provider
 	logger   *slog.Logger
 	pool     *worker.Pool
 }
 
-func NewService(cfg *config.Config, logger *slog.Logger, pool *worker.Pool) (Service, error) {
+func NewService(cfg *config.Config, logger *slog.Logger, pool *worker.Pool) (*Service, error) {
 	provider, err := newMailGunProvider(cfg, logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create provider: %w", err)
 	}
 
-	return &service{
+	return &Service{
 		provider: provider,
 		logger:   logger,
 		pool:     pool,
 	}, nil
 }
 
-func (s *service) SendOTPEmail(ctx context.Context, to string, vars map[string]any) {
+func (s *Service) SendOTPEmail(ctx context.Context, to string, vars map[string]any) {
 	otp, ok := vars["otp"].(string)
 	if !ok {
 		s.logger.Error("OTP not found in vars")
@@ -86,7 +80,7 @@ func (s *service) SendOTPEmail(ctx context.Context, to string, vars map[string]a
 	}
 }
 
-func (s *service) SendOTP(ctx context.Context, to []string, vars map[string]any) error {
+func (s *Service) SendOTP(ctx context.Context, to []string, vars map[string]any) error {
 	otp, ok := vars["otp"].(string)
 	if !ok {
 		return fmt.Errorf("OTP not found in vars")

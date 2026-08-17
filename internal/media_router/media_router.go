@@ -9,13 +9,24 @@ import (
 	pion "github.com/pion/webrtc/v4"
 )
 
+type wsHub interface {
+	ClientsInRoom(roomID uint) []*ws.Client
+	ErrorToClient(c *ws.Client, message string, code int)
+}
+
+type webrtcSessionStore interface {
+	Get(clientID string) *webrtc.Session
+	Add(clientID string, pc *pion.PeerConnection) *webrtc.Session
+	Remove(clientID string) error
+}
+
 type MediaRouter struct {
-	hub      *ws.Hub
-	sessions *webrtc.SessionStore
+	hub      wsHub
+	sessions webrtcSessionStore
 	logger   *slog.Logger
 }
 
-func NewMediaRouter(hub *ws.Hub, logger *slog.Logger) *MediaRouter {
+func NewMediaRouter(hub wsHub, logger *slog.Logger) *MediaRouter {
 	return &MediaRouter{hub: hub, sessions: webrtc.NewSessionStore(), logger: logger}
 }
 

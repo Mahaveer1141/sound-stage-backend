@@ -3,6 +3,7 @@ package auth
 import (
 	"net/http"
 	apitoken "sound-stage-backend/internal/api_token"
+	otprequest "sound-stage-backend/internal/otp_request"
 	"sound-stage-backend/internal/pkg/httpx"
 	"strings"
 
@@ -10,16 +11,16 @@ import (
 	"github.com/go-playground/validator/v10"
 )
 
-type Handler interface {
-	RequestOTP(c *gin.Context)
-	VerifyOTP(c *gin.Context)
-	SignUp(c *gin.Context)
-	RefreshToken(c *gin.Context)
-	Logout(c *gin.Context)
+type authService interface {
+	RequestOTP(email string) (*otprequest.OTPRequest, error)
+	VerifyOTP(params VerifyOTPParams) (*apitoken.TokenResult, error)
+	SignUp(input *SignUpParams) (*apitoken.TokenResult, error)
+	RefreshToken(refreshToken string) (*apitoken.TokenResult, error)
+	Logout(userID uint) error
 }
 
-type handler struct {
-	service  Service
+type Handler struct {
+	service  authService
 	validate *validator.Validate
 }
 
@@ -42,11 +43,11 @@ type SignUpParams struct {
 	LastName  string `json:"lastName,omitempty"`
 }
 
-func NewHandler(service Service) Handler {
-	return &handler{service: service, validate: validator.New()}
+func NewHandler(service authService) *Handler {
+	return &Handler{service: service, validate: validator.New()}
 }
 
-func (h *handler) RequestOTP(c *gin.Context) {
+func (h *Handler) RequestOTP(c *gin.Context) {
 	var input RequestOTPParams
 
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -70,7 +71,7 @@ func (h *handler) RequestOTP(c *gin.Context) {
 	httpx.SuccessResponse(c, http.StatusOK, "OTP requested successfully", nil)
 }
 
-func (h *handler) VerifyOTP(c *gin.Context) {
+func (h *Handler) VerifyOTP(c *gin.Context) {
 	var input VerifyOTPParams
 
 	if err := c.ShouldBindBodyWithJSON(&input); err != nil {
@@ -101,7 +102,7 @@ func (h *handler) VerifyOTP(c *gin.Context) {
 	httpx.SuccessResponse(c, http.StatusOK, "OTP verified successfully", apitoken.ToTokenResponse(result))
 }
 
-func (h *handler) RefreshToken(c *gin.Context) {
+func (h *Handler) RefreshToken(c *gin.Context) {
 	var input RefreshTokenParams
 
 	if err := c.ShouldBindBodyWithJSON(&input); err != nil {
@@ -123,7 +124,7 @@ func (h *handler) RefreshToken(c *gin.Context) {
 	httpx.SuccessResponse(c, http.StatusOK, "Token refreshed successfully", apitoken.ToTokenResponse(result))
 }
 
-func (h *handler) Logout(c *gin.Context) {
+func (h *Handler) Logout(c *gin.Context) {
 	userId := c.GetUint("userId")
 	err := h.service.Logout(userId)
 	if err != nil {
@@ -134,7 +135,7 @@ func (h *handler) Logout(c *gin.Context) {
 	httpx.SuccessResponse(c, http.StatusOK, "Logout successful", nil)
 }
 
-func (h *handler) SignUp(c *gin.Context) {
+func (h *Handler) SignUp(c *gin.Context) {
 	var input SignUpParams
 
 	if err := c.ShouldBindJSON(&input); err != nil {

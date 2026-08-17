@@ -1,27 +1,27 @@
 package otprequest
 
-type Service interface {
+type repository interface {
 	FindByEmail(email string) (*OTPRequest, error)
-	Create(input CreateOTPRequestInput) (*OTPRequest, error)
+	Create(otpInput CreateOTPRequestInput) (*OTPRequest, error)
 	Deactivate(id uint) error
 }
 
-type service struct {
-	repo Repo
+type Service struct {
+	repo repository
 }
 
-func NewService(repo Repo) Service {
-	return &service{repo: repo}
+func NewService(r repository) *Service {
+	return &Service{repo: r}
 }
 
-func (s *service) FindByEmail(email string) (*OTPRequest, error) {
+func (s *Service) FindByEmail(email string) (*OTPRequest, error) {
 	return s.repo.FindByEmail(email)
 }
 
-func (s *service) Create(input CreateOTPRequestInput) (*OTPRequest, error) {
+func (s *Service) Create(input CreateOTPRequestInput) (*OTPRequest, error) {
 	return s.repo.Create(input)
 }
 
-func (s *service) Deactivate(id uint) error {
+func (s *Service) Deactivate(id uint) error {
 	return s.repo.Deactivate(id)
 }

@@ -9,15 +9,15 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-type Service interface {
-	CreateToken(userID uint, tokenType TokenType) (*APIToken, error)
+type repository interface {
+	FindByToken(token string) (*APIToken, error)
+	CreateToken(inputs CreateAPITokenInput) (*APIToken, error)
 	Deactivate(userID uint) error
-	ValidateToken(token string, tokenType TokenType) (uint, error)
 }
 
-type service struct {
+type Service struct {
 	cfg  *config.Config
-	repo Repo
+	repo repository
 }
 
 type TokenType string
@@ -27,11 +27,11 @@ const (
 	RefreshToken TokenType = "refresh"
 )
 
-func NewService(cfg *config.Config, repo Repo) *service {
-	return &service{cfg: cfg, repo: repo}
+func NewService(cfg *config.Config, r repository) *Service {
+	return &Service{cfg: cfg, repo: r}
 }
 
-func (s *service) CreateToken(userID uint, tokenType TokenType) (*APIToken, error) {
+func (s *Service) CreateToken(userID uint, tokenType TokenType) (*APIToken, error) {
 	if tokenType == "" {
 		tokenType = "access"
 	}
@@ -48,11 +48,11 @@ func (s *service) CreateToken(userID uint, tokenType TokenType) (*APIToken, erro
 	return s.repo.CreateToken(inputs)
 }
 
-func (s *service) Deactivate(userID uint) error {
+func (s *Service) Deactivate(userID uint) error {
 	return s.repo.Deactivate(userID)
 }
 
-func (s *service) ValidateToken(token string, tokenType TokenType) (uint, error) {
+func (s *Service) ValidateToken(token string, tokenType TokenType) (uint, error) {
 	if tokenType == "" {
 		tokenType = AccessToken
 	}
@@ -92,7 +92,7 @@ func (s *service) ValidateToken(token string, tokenType TokenType) (uint, error)
 	return at.UserID, nil
 }
 
-func (s *service) generateJWT(userID uint, typ string) (string, error) {
+func (s *Service) generateJWT(userID uint, typ string) (string, error) {
 	if typ != "access" && typ != "refresh" {
 		return "", fmt.Errorf("invalid token type: %s", typ)
 	}

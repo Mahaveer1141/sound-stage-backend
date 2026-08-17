@@ -7,20 +7,20 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-type Handler interface {
-	CurrentUser(c *gin.Context)
-	UpdateProfile(c *gin.Context)
+type userService interface {
+	FindByID(userId uint) (*User, error)
+	UpdateProfile(id uint, input *UpdateUserParams) (*User, error)
 }
 
-type handler struct {
-	service Service
+type Handler struct {
+	service userService
 }
 
-func NewHandler(service Service) Handler {
-	return &handler{service: service}
+func NewHandler(service userService) *Handler {
+	return &Handler{service: service}
 }
 
-func (h *handler) CurrentUser(c *gin.Context) {
+func (h *Handler) CurrentUser(c *gin.Context) {
 	userId, _ := c.Get("userId")
 	user, err := h.service.FindByID(userId.(uint))
 	if err != nil {
@@ -31,7 +31,7 @@ func (h *handler) CurrentUser(c *gin.Context) {
 	httpx.SuccessResponse(c, http.StatusOK, "User fetched successfully", user)
 }
 
-func (h *handler) UpdateProfile(c *gin.Context) {
+func (h *Handler) UpdateProfile(c *gin.Context) {
 	userId, _ := c.Get("userId")
 
 	var input UpdateUserParams

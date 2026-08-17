@@ -6,13 +6,7 @@ import (
 	"gorm.io/gorm"
 )
 
-type Repo interface {
-	FindByToken(token string) (*APIToken, error)
-	CreateToken(inputs CreateAPITokenInput) (*APIToken, error)
-	Deactivate(userID uint) error
-}
-
-type repo struct {
+type Repo struct {
 	db *gorm.DB
 }
 
@@ -22,11 +16,11 @@ type CreateAPITokenInput struct {
 	UserID uint
 }
 
-func NewRepo(db *gorm.DB) Repo {
-	return &repo{db: db}
+func NewRepo(db *gorm.DB) *Repo {
+	return &Repo{db: db}
 }
 
-func (r *repo) FindByToken(token string) (*APIToken, error) {
+func (r *Repo) FindByToken(token string) (*APIToken, error) {
 	var at APIToken
 	result := r.db.
 		Where("token = @token AND is_active = @is_active",
@@ -41,7 +35,7 @@ func (r *repo) FindByToken(token string) (*APIToken, error) {
 	return &at, nil
 }
 
-func (r *repo) CreateToken(input CreateAPITokenInput) (*APIToken, error) {
+func (r *Repo) CreateToken(input CreateAPITokenInput) (*APIToken, error) {
 	at := APIToken{
 		Token:    input.Token,
 		Type:     string(input.Type),
@@ -55,7 +49,7 @@ func (r *repo) CreateToken(input CreateAPITokenInput) (*APIToken, error) {
 	return &at, nil
 }
 
-func (r *repo) Deactivate(userID uint) error {
+func (r *Repo) Deactivate(userID uint) error {
 	return r.db.Model(&APIToken{}).
 		Where("user_id = ? AND is_active = ?", userID, true).
 		Update("is_active", false).Error

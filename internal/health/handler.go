@@ -8,19 +8,15 @@ import (
 	"gorm.io/gorm"
 )
 
-type Handler interface {
-	Health(c *gin.Context)
-}
-
-type handler struct {
+type Handler struct {
 	db *gorm.DB
 }
 
-func NewHandler(db *gorm.DB) Handler {
-	return &handler{db: db}
+func NewHandler(db *gorm.DB) *Handler {
+	return &Handler{db: db}
 }
 
-func (h *handler) Health(c *gin.Context) {
+func (h *Handler) Health(c *gin.Context) {
 	sqlDB, err := h.db.DB()
 
 	if err != nil || sqlDB.Ping() != nil {

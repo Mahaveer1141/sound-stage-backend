@@ -1,17 +1,17 @@
 package role
 
-type Service interface {
+type repository interface {
 	FindByName(name RoleName) (*Role, error)
 }
 
-type service struct {
-	repo Repo
+type Service struct {
+	repo repository
 }
 
-func NewService(repo Repo) Service {
-	return &service{repo: repo}
+func NewService(r repository) *Service {
+	return &Service{repo: r}
 }
 
-func (s *service) FindByName(name RoleName) (*Role, error) {
+func (s *Service) FindByName(name RoleName) (*Role, error) {
 	return s.repo.FindByName(name)
 }

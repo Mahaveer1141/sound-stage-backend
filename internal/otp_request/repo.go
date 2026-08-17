@@ -8,13 +8,7 @@ import (
 	"gorm.io/gorm"
 )
 
-type Repo interface {
-	FindByEmail(email string) (*OTPRequest, error)
-	Create(otpInput CreateOTPRequestInput) (*OTPRequest, error)
-	Deactivate(id uint) error
-}
-
-type repo struct {
+type Repo struct {
 	db *gorm.DB
 }
 
@@ -24,11 +18,11 @@ type CreateOTPRequestInput struct {
 	OTP    string
 }
 
-func NewRepo(db *gorm.DB) Repo {
-	return &repo{db: db}
+func NewRepo(db *gorm.DB) *Repo {
+	return &Repo{db: db}
 }
 
-func (r *repo) FindByEmail(email string) (*OTPRequest, error) {
+func (r *Repo) FindByEmail(email string) (*OTPRequest, error) {
 	var otpRequest OTPRequest
 	result := r.db.Joins("User").
 		Where("(otp_requests.email = @email or \"User\".email = @email) AND otp_requests.is_active = @is_active",
@@ -44,7 +38,7 @@ func (r *repo) FindByEmail(email string) (*OTPRequest, error) {
 	return &otpRequest, nil
 }
 
-func (r *repo) Create(otpInput CreateOTPRequestInput) (*OTPRequest, error) {
+func (r *Repo) Create(otpInput CreateOTPRequestInput) (*OTPRequest, error) {
 	var otpRequest OTPRequest
 
 	err := r.db.Transaction(func(tx *gorm.DB) error {
@@ -81,6 +75,6 @@ func (r *repo) Create(otpInput CreateOTPRequestInput) (*OTPRequest, error) {
 	return &otpRequest, nil
 }
 
-func (r *repo) Deactivate(id uint) error {
+func (r *Repo) Deactivate(id uint) error {
 	return r.db.Model(&OTPRequest{}).Where("id = ?", id).Update("is_active", false).Error
 }

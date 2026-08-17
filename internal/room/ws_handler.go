@@ -5,45 +5,48 @@ import (
 	"log/slog"
 	"net/http"
 	"sound-stage-backend/internal/config"
-	mediarouter "sound-stage-backend/internal/media_router"
 	"sound-stage-backend/internal/role"
-	roomuser "sound-stage-backend/internal/room_user"
 	webrtc "sound-stage-backend/internal/web_rtc"
 	"sound-stage-backend/internal/ws"
 
 	pion "github.com/pion/webrtc/v4"
 )
 
-type WSHandler interface {
-	Register(wsh ws.Handler)
-	handleUserJoined(c *ws.Client, evt ws.Event)
-	handleUserLeft(c *ws.Client, evt ws.Event)
-	handleClientDisconnected(c *ws.Client)
-	handleWebRTCOffer(c *ws.Client, evt ws.Event)
-	handleWebRTCCandidate(c *ws.Client, evt ws.Event)
-	handleWebRTCAnswer(c *ws.Client, evt ws.Event)
+type mediaRouter interface {
+	Session(clientID string) *webrtc.Session
+	AddSession(clientID string, pc *pion.PeerConnection) *webrtc.Session
+	FanOutTrack(c *ws.Client, session *webrtc.Session, track *pion.TrackLocalStaticRTP)
+	SubscribeToRoomTracks(c *ws.Client, session *webrtc.Session)
+	StopPublishing(c *ws.Client)
+	CloseSession(clientID string) error
 }
 
-type wsHandler struct {
-	hub             *ws.Hub
-	roomUserService roomuser.Service
-	media           *mediarouter.MediaRouter
+type webSocketHub interface {
+	BroadcastToRoom(roomID uint, eventName ws.EventName, payload any)
+	ErrorToClient(c *ws.Client, message string, statusCode int)
+	SendToClient(c *ws.Client, eventName ws.EventName, payload any)
+}
+
+type WsHandler struct {
+	hub             webSocketHub
+	roomUserService roomUserService
+	media           mediaRouter
 	cfg             *config.Config
 	logger          *slog.Logger
 }
 
-func NewWSHandler(hub *ws.Hub, roomUserService roomuser.Service, media *mediarouter.MediaRouter,
-	cfg *config.Config, logger *slog.Logger) WSHandler {
-	return &wsHandler{
+func NewWSHandler(hub webSocketHub, roomUserSvc roomUserService, media mediaRouter,
+	cfg *config.Config, logger *slog.Logger) *WsHandler {
+	return &WsHandler{
 		hub:             hub,
-		roomUserService: roomUserService,
+		roomUserService: roomUserSvc,
 		media:           media,
 		cfg:             cfg,
 		logger:          logger,
 	}
 }
 
-func (h *wsHandler) Register(wsh ws.Handler) {
+func (h *WsHandler) Register(wsh ws.Handler) {
 	wsh.On(ws.EventJoinRoom, h.handleUserJoined)
 	wsh.On(ws.EventLeaveRoom, h.handleUserLeft)
 
@@ -54,7 +57,7 @@ func (h *wsHandler) Register(wsh ws.Handler) {
 	wsh.OnDisconnect(h.handleClientDisconnected)
 }
 
-func (h *wsHandler) handleUserJoined(c *ws.Client, evt ws.Event) {
+func (h *WsHandler) handleUserJoined(c *ws.Client, evt ws.Event) {
 	ru, err := h.roomUserService.AddUser(c.UserID, c.RoomID, role.RoleListener)
 	if err != nil {
 		h.hub.ErrorToClient(c, "Failed to add user to room", http.StatusUnprocessableEntity)
@@ -104,7 +107,7 @@ func (h *wsHandler) handleUserJoined(c *ws.Client, evt ws.Event) {
 	h.hub.BroadcastToRoom(c.RoomID, ws.EventJoinRoom, ru)
 }
 
-func (h *wsHandler) handleUserLeft(c *ws.Client, evt ws.Event) {
+func (h *WsHandler) handleUserLeft(c *ws.Client, evt ws.Event) {
 	err := h.roomUserService.RemoveUser(c.UserID, c.RoomID)
 	if err != nil {
 		h.hub.ErrorToClient(c, "Failed to remove user from room", http.StatusUnprocessableEntity)
@@ -116,7 +119,7 @@ func (h *wsHandler) handleUserLeft(c *ws.Client, evt ws.Event) {
 	h.hub.BroadcastToRoom(c.RoomID, ws.EventLeaveRoom, nil)
 }
 
-func (h *wsHandler) handleClientDisconnected(c *ws.Client) {
+func (h *WsHandler) handleClientDisconnected(c *ws.Client) {
 	if err := h.roomUserService.RemoveUser(c.UserID, c.RoomID); err != nil {
 		h.logger.Error("Failed to remove disconnected user from room",
 			slog.Uint64("userId", uint64(c.UserID)),
@@ -134,7 +137,7 @@ func (h *wsHandler) handleClientDisconnected(c *ws.Client) {
 	h.hub.BroadcastToRoom(c.RoomID, ws.EventLeaveRoom, nil)
 }
 
-func (h *wsHandler) handleWebRTCOffer(c *ws.Client, evt ws.Event) {
+func (h *WsHandler) handleWebRTCOffer(c *ws.Client, evt ws.Event) {
 	var offer pion.SessionDescription
 	if err := json.Unmarshal(evt.Payload, &offer); err != nil {
 		h.hub.ErrorToClient(c, "Invalid offer payload", http.StatusUnprocessableEntity)
@@ -154,7 +157,7 @@ func (h *wsHandler) handleWebRTCOffer(c *ws.Client, evt ws.Event) {
 	h.hub.SendToClient(c, ws.EventWebRTCAnswer, answer)
 }
 
-func (h *wsHandler) handleWebRTCCandidate(c *ws.Client, evt ws.Event) {
+func (h *WsHandler) handleWebRTCCandidate(c *ws.Client, evt ws.Event) {
 	var ice pion.ICECandidateInit
 	if err := json.Unmarshal(evt.Payload, &ice); err != nil {
 		h.hub.ErrorToClient(c, "Invalid ICE candidate payload", http.StatusUnprocessableEntity)
@@ -171,7 +174,7 @@ func (h *wsHandler) handleWebRTCCandidate(c *ws.Client, evt ws.Event) {
 	}
 }
 
-func (h *wsHandler) handleWebRTCAnswer(c *ws.Client, evt ws.Event) {
+func (h *WsHandler) handleWebRTCAnswer(c *ws.Client, evt ws.Event) {
 	var answer pion.SessionDescription
 	if err := json.Unmarshal(evt.Payload, &answer); err != nil {
 		h.hub.ErrorToClient(c, "Invalid answer payload", http.StatusUnprocessableEntity)
