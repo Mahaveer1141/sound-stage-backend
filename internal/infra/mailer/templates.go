@@ -8,7 +8,7 @@ import (
 )
 
 // baseLayout is the shared email layout. Content-specific templates inject their
-// markup via the {{.Content}} slot, keeping duplication to zero.
+// markup via the {{.Content}} slot.
 const baseLayout = `<!DOCTYPE html>
 <html>
 <head>
@@ -85,10 +85,6 @@ func renderWithBaseLayout(title string, content string) string {
 
 	return buf.String()
 }
-
-// ---------------------------------------------------------------------------
-// Content renderers — each returns ONLY the inner HTML for its email type.
-// ---------------------------------------------------------------------------
 
 func renderOTPEmailHTML(otp string) string {
 	content := fmt.Sprintf(`<p style="margin:0 0 12px 0;">Hi,</p>

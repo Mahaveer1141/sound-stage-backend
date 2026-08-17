@@ -21,7 +21,6 @@ type repo interface {
 	FindBy(userID uint, roomID uint) (*RoomUser, error)
 	UpdateActivity(ru *RoomUser, activity Activity) error
 	HasRoles(userID uint, roomID uint, permissions []role.RoleName) (bool, error)
-	SetRole(userID uint, roomID uint, roleName role.RoleName) error
 	ListByRoomID(roomID uint, filter RoomUserFilter, sort listopts.Sort, p listopts.Pagination) ([]RoomUser, error)
 	CountByRoomID(roomID uint, filter RoomUserFilter) (int64, error)
 	UpdateRole(roomID uint, userID uint, roleID uint) error
@@ -75,10 +74,6 @@ func (s *Service) RemoveUser(userID uint, roomID uint) error {
 		return httpx.ErrRecordNotFound
 	}
 	return s.repo.UpdateActivity(ru, ActivityLeave)
-}
-
-func (s *Service) SetRole(userID, roomID uint, roleName role.RoleName) error {
-	return s.repo.SetRole(userID, roomID, roleName)
 }
 
 func (s *Service) ListByRoomID(roomID uint, filter RoomUserFilter, sort listopts.Sort, p listopts.Pagination) ([]RoomUser, int64, error) {

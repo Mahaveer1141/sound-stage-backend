@@ -18,7 +18,7 @@ func NewRepo(db *gorm.DB) *Repo {
 
 func (r *Repo) Create(input *CreateUserParams) (*User, error) {
 	user := User{
-		Email:     input.Email,
+		Email:     strings.ToLower(input.Email),
 		FirstName: input.FirstName,
 		LastName:  &input.LastName,
 	}

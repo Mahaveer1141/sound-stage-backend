@@ -73,17 +73,6 @@ func (r *Repo) HasRoles(userID, roomID uint, roles []role.RoleName) (bool, error
 	return count > 0, err
 }
 
-func (r *Repo) SetRole(userID, roomID uint, roleName role.RoleName) error {
-	return r.SetRoleTx(r.db, userID, roomID, roleName)
-}
-
-func (r *Repo) SetRoleTx(tx *gorm.DB, userID, roomID uint, roleName role.RoleName) error {
-	return tx.
-		Table("room_users").
-		Where("user_id = ? AND room_id = ?", userID, roomID).
-		Update("role_id", tx.Table("roles").Select("id").Where("name = ?", roleName)).Error
-}
-
 func (r *Repo) ListByRoomID(roomID uint, filter RoomUserFilter, sort listopts.Sort, p listopts.Pagination) ([]RoomUser, error) {
 	var roomUsers []RoomUser
 	err := r.db.

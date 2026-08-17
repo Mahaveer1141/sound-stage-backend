@@ -54,7 +54,7 @@ func FilterBySearch(query string) func(*gorm.DB) *gorm.DB {
 		if query == "" {
 			return db
 		}
-		return db.Where("rooms.name ILIKE ?", "%"+query+"%")
+		return db.Where("LOWER(rooms.name) LIKE LOWER(?)", "%"+query+"%")
 	}
 }
 
