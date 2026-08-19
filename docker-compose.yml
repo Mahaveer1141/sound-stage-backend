@@ -1,46 +1,24 @@
 services:
+  migration:
+    image: ghcr.io/mahaveer1141/sound-stage:latest
+    entrypoint: ["goose", "-dir", "/app/migrations", "up"]
+    env_file: .sound_stage.env
+    networks:
+      - ms_platforms_network
+
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ghcr.io/mahaveer1141/sound-stage:latest
     container_name: sound_stage_app
+    restart: unless-stopped
+    depends_on:
+      migration:
+        condition: service_completed_successfully
     ports:
       - "${SERVER_PORT:-8000}:8000"
-    env_file: .env
-    depends_on:
-      - postgres
-      - redis
+    env_file: .sound_stage.env
     networks:
-      - sound_stage_network
-
-  postgres:
-    image: postgres:18-alpine
-    container_name: sound_stage_db
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      POSTGRES_DB: ${POSTGRES_DB:-sound_stage}
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    networks:
-      - sound_stage_network
-
-  redis:
-    image: redis:8-alpine
-    container_name: sound_stage_redis
-    ports:
-      - "${REDIS_PORT:-6379}:6379"
-    volumes:
-      - redis_data:/data
-    networks:
-      - sound_stage_network
-
-volumes:
-  postgres_data:
-  redis_data:
+      - ms_platforms_network
 
 networks:
-  sound_stage_network:
-    driver: bridge
+  ms_platforms_network:
+    external: true
