@@ -29,7 +29,7 @@ func (r *Repo) Create(tx *gorm.DB, userID uint, roomID uint, roleID uint) (*Room
 		tx = r.db
 	}
 
-	ru := RoomUser{RoomID: roomID, UserID: userID, RoleID: roleID}
+	ru := RoomUser{RoomID: roomID, UserID: userID, RoleID: roleID, LastJoinedAt: time.Now(), LastLeftAt: time.Now()}
 	if err := tx.Create(&ru).Error; err != nil {
 		return nil, err
 	}

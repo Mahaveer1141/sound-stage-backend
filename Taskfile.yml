@@ -59,22 +59,6 @@ tasks:
     cmds:
       - golangci-lint run ./...
 
-  docker-build:
-    cmds:
-      - docker compose build
-
-  docker-up:
-    cmds:
-      - docker compose up -d
-
-  docker-down:
-    cmds:
-      - docker compose down
-
-  docker-logs:
-    cmds:
-      - docker compose logs -f
-
   help:
     cmds:
       - echo "Available commands:"
@@ -88,7 +72,3 @@ tasks:
       - echo "  deps           - Download and tidy dependencies"
       - echo "  fmt            - Format code"
       - echo "  lint           - Lint code (requires golangci-lint)"
-      - echo "  docker-build   - Build Docker image"
-      - echo "  docker-up      - Start Docker containers"
-      - echo "  docker-down    - Stop Docker containers"
-      - echo "  docker-logs    - View Docker logs"

@@ -4,6 +4,7 @@ import (
 	"database/sql/driver"
 	"regexp"
 	"testing"
+	"time"
 
 	"sound-stage-backend/internal/pkg/testutil"
 
@@ -58,7 +59,7 @@ func TestRepo_CreateToken_Unit(t *testing.T) {
 
 		mock.ExpectBegin()
 		mock.ExpectQuery(regexp.QuoteMeta(
-			`INSERT INTO "api_tokens" ("created_at","updated_at","token","type","is_active","user_id") VALUES ($1,$2,$3,$4,$5,$6) RETURNING "id"`)).
+			`INSERT INTO "api_tokens" ("created_at","updated_at","token","type","is_active","user_id","expires_at") VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING "id"`)).
 			WithArgs(
 				sqlmock.AnyArg(),
 				sqlmock.AnyArg(),
@@ -66,14 +67,16 @@ func TestRepo_CreateToken_Unit(t *testing.T) {
 				driver.Value(string(AccessToken)),
 				driver.Value(true),
 				driver.Value(uint(7)),
+				sqlmock.AnyArg(),
 			).
 			WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
 		mock.ExpectCommit()
 
 		got, err := repo.CreateToken(CreateAPITokenInput{
-			Token:  "tok-abc",
-			Type:   AccessToken,
-			UserID: 7,
+			Token:     "tok-abc",
+			Type:      AccessToken,
+			UserID:    7,
+			ExpiresAt: time.Now().Add(2 * time.Hour),
 		})
 
 		require.NoError(t, err)
@@ -90,7 +93,7 @@ func TestRepo_CreateToken_Unit(t *testing.T) {
 
 		mock.ExpectBegin()
 		mock.ExpectQuery(regexp.QuoteMeta(
-			`INSERT INTO "api_tokens" ("created_at","updated_at","token","type","is_active","user_id") VALUES ($1,$2,$3,$4,$5,$6) RETURNING "id"`)).
+			`INSERT INTO "api_tokens" ("created_at","updated_at","token","type","is_active","user_id","expires_at") VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING "id"`)).
 			WithArgs(
 				sqlmock.AnyArg(),
 				sqlmock.AnyArg(),
@@ -98,14 +101,16 @@ func TestRepo_CreateToken_Unit(t *testing.T) {
 				driver.Value(string(AccessToken)),
 				driver.Value(true),
 				driver.Value(uint(7)),
+				sqlmock.AnyArg(),
 			).
 			WillReturnError(assert.AnError)
 		mock.ExpectRollback()
 
 		got, err := repo.CreateToken(CreateAPITokenInput{
-			Token:  "tok-xyz",
-			Type:   AccessToken,
-			UserID: 7,
+			Token:     "tok-xyz",
+			Type:      AccessToken,
+			UserID:    7,
+			ExpiresAt: time.Now().Add(2 * time.Hour),
 		})
 
 		require.Error(t, err)

@@ -40,10 +40,17 @@ func (s *Service) CreateToken(userID uint, tokenType TokenType) (*APIToken, erro
 	if err != nil {
 		return nil, err
 	}
+
+	expiresAt := time.Now().Add(s.cfg.JWT.AccessTokenExpiry)
+	if tokenType == RefreshToken {
+		expiresAt = time.Now().Add(s.cfg.JWT.RefreshTokenExpiry)
+	}
+
 	inputs := CreateAPITokenInput{
-		UserID: userID,
-		Token:  token,
-		Type:   tokenType,
+		UserID:    userID,
+		Token:     token,
+		Type:      tokenType,
+		ExpiresAt: expiresAt,
 	}
 	return s.repo.CreateToken(inputs)
 }

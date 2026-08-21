@@ -2,6 +2,7 @@ package apitoken
 
 import (
 	"database/sql"
+	"time"
 
 	"gorm.io/gorm"
 )
@@ -11,9 +12,10 @@ type Repo struct {
 }
 
 type CreateAPITokenInput struct {
-	Token  string
-	Type   TokenType
-	UserID uint
+	Token     string
+	Type      TokenType
+	UserID    uint
+	ExpiresAt time.Time
 }
 
 func NewRepo(db *gorm.DB) *Repo {
@@ -37,10 +39,11 @@ func (r *Repo) FindByToken(token string) (*APIToken, error) {
 
 func (r *Repo) CreateToken(input CreateAPITokenInput) (*APIToken, error) {
 	at := APIToken{
-		Token:    input.Token,
-		Type:     string(input.Type),
-		UserID:   input.UserID,
-		IsActive: true,
+		Token:     input.Token,
+		Type:      string(input.Type),
+		UserID:    input.UserID,
+		IsActive:  true,
+		ExpiresAt: input.ExpiresAt,
 	}
 	if err := r.db.Create(&at).Error; err != nil {
 		return nil, err
