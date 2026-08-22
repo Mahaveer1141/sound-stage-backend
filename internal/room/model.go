@@ -1,9 +1,11 @@
 package room
 
 import (
+	"sound-stage-backend/internal/category"
 	model "sound-stage-backend/internal/model"
 	"sound-stage-backend/internal/pkg/listopts"
 	"sound-stage-backend/internal/role"
+	"sound-stage-backend/internal/tag"
 	user "sound-stage-backend/internal/user"
 	"strings"
 
@@ -12,12 +14,14 @@ import (
 
 type Room struct {
 	model.BaseModel
-	Name        string    `gorm:"not null" json:"name" validate:"required"`
-	Description string    `json:"description" validate:"required"`
-	CreatorID   uint      `json:"creatorID" validate:"required"`
-	Creator     user.User `gorm:"foreignKey:CreatorID" json:"creator"`
+	Name        string              `gorm:"not null" json:"name" validate:"required"`
+	Description string              `json:"description" validate:"required"`
+	CreatorID   uint                `json:"creatorID" validate:"required"`
+	Creator     user.User           `gorm:"foreignKey:CreatorID"`
+	Users       []user.User         `gorm:"many2many:room_users"`
+	Categories  []category.Category `gorm:"many2many:room_categories"`
+	Tags        []tag.Tag           `gorm:"-"`
 	DeletedAt   gorm.DeletedAt
-	Users       []user.User `gorm:"many2many:room_users" json:"users"`
 }
 
 func (Room) TableName() string {
@@ -28,6 +32,8 @@ type CreateRoomParams struct {
 	Name        string `json:"name" validate:"required"`
 	Description string `json:"description"`
 	CreatorID   uint   `json:"creatorID" validate:"required"`
+	CategoryIds []uint `json:"categoryIds" validate:"lte=3"`
+	TagIds      []uint `json:"tagIds" validate:"lte=5"`
 }
 
 type UpdateUserRoleParams struct {
@@ -37,6 +43,8 @@ type UpdateUserRoleParams struct {
 type UpdateRoomParams struct {
 	Name        string `json:"name" validate:"required"`
 	Description string `json:"description" validate:"omitempty"`
+	CategoryIds []uint `json:"categoryIds" validate:"lte=3"`
+	TagIds      []uint `json:"tagIds" validate:"lte=5"`
 }
 
 type RoomFilter struct {

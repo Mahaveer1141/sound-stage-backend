@@ -134,6 +134,12 @@ func TestRepo_List_Unit(t *testing.T) {
 					AddRow(1, time.Now(), time.Now(), "Foo Room", "", 1),
 			)
 
+		mock.ExpectQuery(`SELECT \* FROM "room_categories" WHERE "room_categories"\."room_id" = \$1.*`).
+			WithArgs(1).
+			WillReturnRows(
+				sqlmock.NewRows([]string{"id", "created_at", "updated_at", "room_id", "category_id"}),
+			)
+
 		mock.ExpectQuery(`SELECT \* FROM "users" WHERE "users"\."id" = \$1.*`).
 			WithArgs(1).
 			WillReturnRows(
@@ -249,7 +255,7 @@ func TestRepo_Update_Unit(t *testing.T) {
 		repo := NewRepo(gdb)
 
 		mock.ExpectQuery(
-			`(?s)SELECT \* FROM "rooms" WHERE id = \$1 AND "rooms"\."deleted_at" IS NULL ORDER BY "rooms"\."id" LIMIT \$2`,
+			`(?s)SELECT \* FROM "rooms" WHERE "rooms"\."id" = \$1 AND "rooms"\."deleted_at" IS NULL ORDER BY "rooms"\."id" LIMIT \$2`,
 		).
 			WithArgs(1, 1).
 			WillReturnError(gorm.ErrRecordNotFound)
@@ -259,6 +265,69 @@ func TestRepo_Update_Unit(t *testing.T) {
 		require.Error(t, err)
 		require.Nil(t, got)
 		assert.ErrorIs(t, err, gorm.ErrRecordNotFound)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+}
+
+func TestRepo_LoadTagsForRooms_Unit(t *testing.T) {
+	t.Run("returns tags grouped by room id", func(t *testing.T) {
+		gdb, mock := testutil.NewMockDB(t)
+		repo := NewRepo(gdb)
+
+		now := time.Now()
+
+		mock.ExpectQuery(regexp.QuoteMeta(
+			`SELECT tags.*, taggables.taggable_id as room_id FROM "tags" JOIN taggables ON taggables.tag_id = tags.id WHERE taggables.taggable_type = $1 AND taggables.taggable_id IN ($2,$3)`)).
+			WithArgs("Room", uint(1), uint(2)).
+			WillReturnRows(
+				sqlmock.NewRows([]string{"id", "created_at", "updated_at", "name", "room_id"}).
+					AddRow(1, now, now, "jazz", 1).
+					AddRow(2, now, now, "live", 1).
+					AddRow(3, now, now, "rock", 2),
+			)
+
+		got, err := repo.LoadTagsForRooms([]uint{1, 2})
+
+		require.NoError(t, err)
+		require.Len(t, got, 2)
+		require.Len(t, got[1], 2)
+		require.Len(t, got[2], 1)
+		assert.Equal(t, "jazz", got[1][0].Name)
+		assert.Equal(t, "live", got[1][1].Name)
+		assert.Equal(t, "rock", got[2][0].Name)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("returns empty map when no rooms have tags", func(t *testing.T) {
+		gdb, mock := testutil.NewMockDB(t)
+		repo := NewRepo(gdb)
+
+		mock.ExpectQuery(regexp.QuoteMeta(
+			`SELECT tags.*, taggables.taggable_id as room_id FROM "tags" JOIN taggables ON taggables.tag_id = tags.id WHERE taggables.taggable_type = $1 AND taggables.taggable_id IN ($2)`)).
+			WithArgs("Room", uint(1)).
+			WillReturnRows(sqlmock.NewRows([]string{"id", "created_at", "updated_at", "name", "room_id"}))
+
+		got, err := repo.LoadTagsForRooms([]uint{1})
+
+		require.NoError(t, err)
+		assert.Empty(t, got)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("returns error when query fails", func(t *testing.T) {
+		gdb, mock := testutil.NewMockDB(t)
+		repo := NewRepo(gdb)
+
+		mock.ExpectQuery(regexp.QuoteMeta(
+			`SELECT tags.*, taggables.taggable_id as room_id FROM "tags" JOIN taggables ON taggables.tag_id = tags.id WHERE taggables.taggable_type = $1 AND taggables.taggable_id IN ($2)`)).
+			WithArgs("Room", uint(1)).
+			WillReturnError(assert.AnError)
+
+		got, err := repo.LoadTagsForRooms([]uint{1})
+
+		require.Error(t, err)
+		require.Nil(t, got)
+		assert.ErrorIs(t, err, assert.AnError)
 		assert.NoError(t, mock.ExpectationsWereMet())
 	})
 }

@@ -4,6 +4,7 @@ import (
 	"sound-stage-backend/internal/pkg/listopts"
 	"sound-stage-backend/internal/role"
 	roomuser "sound-stage-backend/internal/room_user"
+	"sound-stage-backend/internal/tag"
 
 	"gorm.io/gorm"
 )
@@ -23,6 +24,7 @@ type repository interface {
 	FindByID(id uint) (*Room, error)
 	List(filter RoomFilter, sort listopts.Sort, p listopts.Pagination) ([]Room, error)
 	Count(filter RoomFilter) (int64, error)
+	LoadTagsForRooms(roomIds []uint) (map[uint][]tag.Tag, error)
 }
 
 type Service struct {
@@ -65,6 +67,19 @@ func (s *Service) List(filter RoomFilter, sort listopts.Sort, p listopts.Paginat
 	if err != nil {
 		return nil, 0, err
 	}
+
+	roomIds := make([]uint, len(rooms))
+	for i, room := range rooms {
+		roomIds[i] = room.ID
+	}
+	tagToRooms, err := s.repo.LoadTagsForRooms(roomIds)
+	if err != nil {
+		return nil, 0, err
+	}
+	for i, room := range rooms {
+		rooms[i].Tags = tagToRooms[room.ID]
+	}
+
 	count, err := s.repo.Count(filter)
 	if err != nil {
 		return nil, 0, err

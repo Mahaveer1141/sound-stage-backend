@@ -3,8 +3,12 @@ package room
 import (
 	"testing"
 
+	"sound-stage-backend/internal/category"
 	"sound-stage-backend/internal/pkg/listopts"
 	"sound-stage-backend/internal/pkg/testutil"
+	roomcategory "sound-stage-backend/internal/room_category"
+	"sound-stage-backend/internal/tag"
+	"sound-stage-backend/internal/tagging"
 	"sound-stage-backend/internal/user"
 
 	"github.com/stretchr/testify/require"
@@ -13,7 +17,7 @@ import (
 
 func TestRepo_Create_Integration(t *testing.T) {
 	t.Run("persists a new room and returns it", func(t *testing.T) {
-		db := testutil.NewIntegrationDB(t, &Room{}, &user.User{})
+		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{})
 		repo := NewRepo(db)
 
 		u := user.User{Email: "creator@example.com", FirstName: "Creator"}
@@ -36,11 +40,49 @@ func TestRepo_Create_Integration(t *testing.T) {
 		require.NoError(t, db.First(&fetched, got.ID).Error)
 		require.Equal(t, "Stage A", fetched.Name)
 	})
+
+	t.Run("creates a room with categories and tags", func(t *testing.T) {
+		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{})
+		repo := NewRepo(db)
+
+		u := user.User{Email: "creator2@example.com", FirstName: "Creator"}
+		require.NoError(t, db.Create(&u).Error)
+
+		c1 := category.Category{Name: "Concert"}
+		c2 := category.Category{Name: "Podcast"}
+		require.NoError(t, db.Create(&c1).Error)
+		require.NoError(t, db.Create(&c2).Error)
+
+		t1 := tag.Tag{Name: "jazz"}
+		t2 := tag.Tag{Name: "live"}
+		require.NoError(t, db.Create(&t1).Error)
+		require.NoError(t, db.Create(&t2).Error)
+
+		got, err := repo.Create(db, &CreateRoomParams{
+			Name:        "Tagged Room",
+			Description: "With tags",
+			CreatorID:   u.ID,
+			CategoryIds: []uint{c1.ID, c2.ID},
+			TagIds:      []uint{t1.ID, t2.ID},
+		})
+
+		require.NoError(t, err)
+		require.NotNil(t, got)
+		require.NotZero(t, got.ID)
+
+		var roomCategories []roomcategory.RoomCategory
+		require.NoError(t, db.Where("room_id = ?", got.ID).Find(&roomCategories).Error)
+		require.Len(t, roomCategories, 2)
+
+		var taggings []tagging.Tagging
+		require.NoError(t, db.Where("taggable_type = ? AND taggable_id = ?", "Room", got.ID).Find(&taggings).Error)
+		require.Len(t, taggings, 2)
+	})
 }
 
 func TestRepo_List_Integration(t *testing.T) {
 	t.Run("returns rooms sorted and paginated with preloaded creator", func(t *testing.T) {
-		db := testutil.NewIntegrationDB(t, &Room{}, &user.User{})
+		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{})
 		repo := NewRepo(db)
 
 		c1 := user.User{Email: "c1@example.com", FirstName: "C1"}
@@ -67,7 +109,7 @@ func TestRepo_List_Integration(t *testing.T) {
 	})
 
 	t.Run("filters rooms by name query", func(t *testing.T) {
-		db := testutil.NewIntegrationDB(t, &Room{}, &user.User{})
+		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{})
 		repo := NewRepo(db)
 
 		c := user.User{Email: "creator@example.com", FirstName: "Creator"}
@@ -92,7 +134,7 @@ func TestRepo_List_Integration(t *testing.T) {
 
 func TestRepo_Count_Integration(t *testing.T) {
 	t.Run("returns total count without filter", func(t *testing.T) {
-		db := testutil.NewIntegrationDB(t, &Room{}, &user.User{})
+		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{})
 		repo := NewRepo(db)
 
 		c := user.User{Email: "creator@example.com", FirstName: "Creator"}
@@ -107,7 +149,7 @@ func TestRepo_Count_Integration(t *testing.T) {
 	})
 
 	t.Run("returns count for matching filter", func(t *testing.T) {
-		db := testutil.NewIntegrationDB(t, &Room{}, &user.User{})
+		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{})
 		repo := NewRepo(db)
 
 		c := user.User{Email: "creator@example.com", FirstName: "Creator"}
@@ -124,7 +166,7 @@ func TestRepo_Count_Integration(t *testing.T) {
 
 func TestRepo_FindByID_Integration(t *testing.T) {
 	t.Run("finds a room with creator and users preloaded", func(t *testing.T) {
-		db := testutil.NewIntegrationDB(t, &Room{}, &user.User{})
+		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{})
 		repo := NewRepo(db)
 
 		c := user.User{Email: "creator@example.com", FirstName: "Creator"}
@@ -144,7 +186,7 @@ func TestRepo_FindByID_Integration(t *testing.T) {
 	})
 
 	t.Run("returns error when room does not exist", func(t *testing.T) {
-		db := testutil.NewIntegrationDB(t, &Room{}, &user.User{})
+		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{})
 		repo := NewRepo(db)
 
 		got, err := repo.FindByID(999)
@@ -157,7 +199,7 @@ func TestRepo_FindByID_Integration(t *testing.T) {
 
 func TestRepo_Update_Integration(t *testing.T) {
 	t.Run("updates a room's name and description", func(t *testing.T) {
-		db := testutil.NewIntegrationDB(t, &Room{}, &user.User{})
+		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{})
 		repo := NewRepo(db)
 
 		c := user.User{Email: "creator@example.com", FirstName: "Creator"}
@@ -183,7 +225,7 @@ func TestRepo_Update_Integration(t *testing.T) {
 	})
 
 	t.Run("returns error for non-existent room", func(t *testing.T) {
-		db := testutil.NewIntegrationDB(t, &Room{}, &user.User{})
+		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{})
 		repo := NewRepo(db)
 
 		got, err := repo.Update(999, &UpdateRoomParams{Name: "Name", Description: "Desc"})
@@ -191,5 +233,103 @@ func TestRepo_Update_Integration(t *testing.T) {
 		require.Error(t, err)
 		require.Nil(t, got)
 		require.ErrorIs(t, err, gorm.ErrRecordNotFound)
+	})
+
+	t.Run("replaces categories and tags", func(t *testing.T) {
+		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{})
+		repo := NewRepo(db)
+
+		u := user.User{Email: "creator3@example.com", FirstName: "Creator"}
+		require.NoError(t, db.Create(&u).Error)
+
+		oldCat := category.Category{Name: "Old Category"}
+		newCat := category.Category{Name: "New Category"}
+		require.NoError(t, db.Create(&oldCat).Error)
+		require.NoError(t, db.Create(&newCat).Error)
+
+		oldTag := tag.Tag{Name: "old-tag"}
+		newTag := tag.Tag{Name: "new-tag"}
+		require.NoError(t, db.Create(&oldTag).Error)
+		require.NoError(t, db.Create(&newTag).Error)
+
+		room := Room{Name: "Room", CreatorID: u.ID}
+		require.NoError(t, db.Create(&room).Error)
+
+		require.NoError(t, db.Create(&roomcategory.RoomCategory{RoomID: room.ID, CategoryID: oldCat.ID}).Error)
+		require.NoError(t, db.Create(&tagging.Tagging{TagID: oldTag.ID, TaggableID: room.ID, TaggableType: "Room"}).Error)
+
+		got, err := repo.Update(room.ID, &UpdateRoomParams{
+			Name:        "Updated",
+			Description: "Updated",
+			CategoryIds: []uint{newCat.ID},
+			TagIds:      []uint{newTag.ID},
+		})
+
+		require.NoError(t, err)
+		require.NotNil(t, got)
+
+		var roomCategories []roomcategory.RoomCategory
+		require.NoError(t, db.Where("room_id = ?", room.ID).Find(&roomCategories).Error)
+		require.Len(t, roomCategories, 1)
+		require.Equal(t, newCat.ID, roomCategories[0].CategoryID)
+
+		var taggings []tagging.Tagging
+		require.NoError(t, db.Where("taggable_type = ? AND taggable_id = ?", "Room", room.ID).Find(&taggings).Error)
+		require.Len(t, taggings, 1)
+		require.Equal(t, newTag.ID, taggings[0].TagID)
+	})
+}
+
+func TestRepo_LoadTagsForRooms_Integration(t *testing.T) {
+	t.Run("returns tags grouped by room id, ignoring other taggable types", func(t *testing.T) {
+		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{})
+		repo := NewRepo(db)
+
+		c := user.User{Email: "creator@example.com", FirstName: "Creator"}
+		require.NoError(t, db.Create(&c).Error)
+
+		room1 := Room{Name: "Room One", CreatorID: c.ID}
+		room2 := Room{Name: "Room Two", CreatorID: c.ID}
+		require.NoError(t, db.Create(&room1).Error)
+		require.NoError(t, db.Create(&room2).Error)
+
+		jazz := tag.Tag{Name: "jazz"}
+		live := tag.Tag{Name: "live"}
+		rock := tag.Tag{Name: "rock"}
+		require.NoError(t, db.Create(&jazz).Error)
+		require.NoError(t, db.Create(&live).Error)
+		require.NoError(t, db.Create(&rock).Error)
+
+		require.NoError(t, db.Create(&tagging.Tagging{TagID: jazz.ID, TaggableID: room1.ID, TaggableType: "Room"}).Error)
+		require.NoError(t, db.Create(&tagging.Tagging{TagID: live.ID, TaggableID: room1.ID, TaggableType: "Room"}).Error)
+		require.NoError(t, db.Create(&tagging.Tagging{TagID: rock.ID, TaggableID: room2.ID, TaggableType: "Room"}).Error)
+		require.NoError(t, db.Create(&tagging.Tagging{TagID: rock.ID, TaggableID: c.ID, TaggableType: "User"}).Error)
+
+		got, err := repo.LoadTagsForRooms([]uint{room1.ID, room2.ID})
+
+		require.NoError(t, err)
+		require.Len(t, got, 2)
+		require.Len(t, got[room1.ID], 2)
+		require.Len(t, got[room2.ID], 1)
+
+		names := []string{got[room1.ID][0].Name, got[room1.ID][1].Name}
+		require.ElementsMatch(t, []string{"jazz", "live"}, names)
+		require.Equal(t, "rock", got[room2.ID][0].Name)
+	})
+
+	t.Run("returns empty map when rooms have no tags", func(t *testing.T) {
+		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{})
+		repo := NewRepo(db)
+
+		c := user.User{Email: "creator@example.com", FirstName: "Creator"}
+		require.NoError(t, db.Create(&c).Error)
+
+		room := Room{Name: "Untagged Room", CreatorID: c.ID}
+		require.NoError(t, db.Create(&room).Error)
+
+		got, err := repo.LoadTagsForRooms([]uint{room.ID})
+
+		require.NoError(t, err)
+		require.Empty(t, got)
 	})
 }

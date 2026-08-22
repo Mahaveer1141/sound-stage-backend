@@ -13,6 +13,7 @@ import (
 	"sound-stage-backend/internal/pkg/testutil"
 	"sound-stage-backend/internal/role"
 	roomuser "sound-stage-backend/internal/room_user"
+	"sound-stage-backend/internal/tag"
 )
 
 type mockRepository struct{ mock.Mock }
@@ -40,6 +41,11 @@ func (m *mockRepository) List(filter RoomFilter, sort listopts.Sort, p listopts.
 func (m *mockRepository) Count(filter RoomFilter) (int64, error) {
 	args := m.Called(filter)
 	return args.Get(0).(int64), args.Error(1)
+}
+func (m *mockRepository) LoadTagsForRooms(roomIds []uint) (map[uint][]tag.Tag, error) {
+	args := m.Called(roomIds)
+	res, _ := args.Get(0).(map[uint][]tag.Tag)
+	return res, args.Error(1)
 }
 
 type mockRoomUserService struct{ mock.Mock }
@@ -185,14 +191,19 @@ func TestService_Update(t *testing.T) {
 }
 
 func TestService_List(t *testing.T) {
-	t.Run("success: returns rooms and total count", func(t *testing.T) {
+	t.Run("success: returns rooms with loaded tags and total count", func(t *testing.T) {
 		h := newHarness(t)
 		filter := RoomFilter{}
 		sort := listopts.Sort{}
 		p := listopts.Pagination{Page: 1, PageSize: 10}
 		rooms := []Room{{Name: "A"}, {Name: "B"}}
+		rooms[0].ID = 1
+		rooms[1].ID = 2
+		rooms[0].Tags = []tag.Tag{{Name: "jazz"}}
+		tags := map[uint][]tag.Tag{1: rooms[0].Tags}
 
 		h.repo.On("List", filter, sort, p).Return(rooms, nil)
+		h.repo.On("LoadTagsForRooms", []uint{1, 2}).Return(tags, nil)
 		h.repo.On("Count", filter).Return(int64(2), nil)
 
 		got, count, err := h.svc.List(filter, sort, p)
@@ -203,7 +214,7 @@ func TestService_List(t *testing.T) {
 		h.repo.AssertExpectations(t)
 	})
 
-	t.Run("failure: List error short-circuits before Count is called", func(t *testing.T) {
+	t.Run("failure: List error short-circuits before LoadTagsForRooms and Count are called", func(t *testing.T) {
 		h := newHarness(t)
 		filter := RoomFilter{}
 		sort := listopts.Sort{}
@@ -217,19 +228,43 @@ func TestService_List(t *testing.T) {
 		require.Nil(t, got)
 		require.Zero(t, count)
 		require.ErrorIs(t, err, listErr)
+		h.repo.AssertNotCalled(t, "LoadTagsForRooms", mock.Anything)
 		h.repo.AssertNotCalled(t, "Count", mock.Anything)
 		h.repo.AssertExpectations(t)
 	})
 
-	t.Run("failure: Count error after successful List still fails the call", func(t *testing.T) {
+	t.Run("failure: LoadTagsForRooms error short-circuits before Count is called", func(t *testing.T) {
 		h := newHarness(t)
 		filter := RoomFilter{}
 		sort := listopts.Sort{}
 		p := listopts.Pagination{Page: 1, PageSize: 10}
 		rooms := []Room{{Name: "A"}}
+		rooms[0].ID = 1
+		loadErr := errors.New("tags failed")
+
+		h.repo.On("List", filter, sort, p).Return(rooms, nil)
+		h.repo.On("LoadTagsForRooms", []uint{1}).Return(nil, loadErr)
+
+		got, count, err := h.svc.List(filter, sort, p)
+
+		require.Nil(t, got)
+		require.Zero(t, count)
+		require.ErrorIs(t, err, loadErr)
+		h.repo.AssertNotCalled(t, "Count", mock.Anything)
+		h.repo.AssertExpectations(t)
+	})
+
+	t.Run("failure: Count error after successful LoadTagsForRooms still fails the call", func(t *testing.T) {
+		h := newHarness(t)
+		filter := RoomFilter{}
+		sort := listopts.Sort{}
+		p := listopts.Pagination{Page: 1, PageSize: 10}
+		rooms := []Room{{Name: "A"}}
+		rooms[0].ID = 1
 		countErr := errors.New("count query failed")
 
 		h.repo.On("List", filter, sort, p).Return(rooms, nil)
+		h.repo.On("LoadTagsForRooms", []uint{1}).Return(map[uint][]tag.Tag{}, nil)
 		h.repo.On("Count", filter).Return(int64(0), countErr)
 
 		got, count, err := h.svc.List(filter, sort, p)

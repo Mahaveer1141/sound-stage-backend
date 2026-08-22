@@ -3,10 +3,12 @@ package router
 import (
 	"log/slog"
 	"sound-stage-backend/internal/auth"
+	"sound-stage-backend/internal/category"
 	"sound-stage-backend/internal/config"
 	"sound-stage-backend/internal/health"
 	"sound-stage-backend/internal/middleware"
 	"sound-stage-backend/internal/room"
+	"sound-stage-backend/internal/tag"
 	"sound-stage-backend/internal/user"
 	"sound-stage-backend/internal/ws"
 
@@ -15,11 +17,13 @@ import (
 )
 
 type Handlers struct {
-	WS     ws.Handler
-	Health *health.Handler
-	Auth   *auth.Handler
-	User   *user.Handler
-	Room   *room.Handler
+	WS       ws.Handler
+	Health   *health.Handler
+	Auth     *auth.Handler
+	Category *category.Handler
+	User     *user.Handler
+	Room     *room.Handler
+	Tag      *tag.Handler
 }
 
 func Setup(cfg *config.Config, handlers *Handlers, tokenValidator middleware.TokenValidator, logger *slog.Logger) *gin.Engine {
@@ -41,6 +45,7 @@ func Setup(cfg *config.Config, handlers *Handlers, tokenValidator middleware.Tok
 	go middleware.StartBucketCleanup()
 
 	router.GET("/health", handlers.Health.Health)
+	router.GET("/categories", handlers.Category.List)
 
 	auth := router.Group("/auth")
 	{
@@ -55,6 +60,12 @@ func Setup(cfg *config.Config, handlers *Handlers, tokenValidator middleware.Tok
 	{
 		users.GET("/current", handlers.User.CurrentUser)
 		users.PUT("/profile", handlers.User.UpdateProfile)
+	}
+
+	tags := router.Group("/tags", middleware.AuthMiddleware(tokenValidator))
+	{
+		tags.GET("", handlers.Tag.List)
+		tags.POST("", handlers.Tag.Create)
 	}
 
 	rooms := router.Group("/rooms", middleware.AuthMiddleware(tokenValidator))

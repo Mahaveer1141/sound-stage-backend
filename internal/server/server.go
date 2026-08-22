@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	apitoken "sound-stage-backend/internal/api_token"
 	"sound-stage-backend/internal/auth"
+	"sound-stage-backend/internal/category"
 	"sound-stage-backend/internal/config"
 	"sound-stage-backend/internal/health"
 	"sound-stage-backend/internal/infra/database"
@@ -21,6 +22,7 @@ import (
 	"sound-stage-backend/internal/room"
 	roomuser "sound-stage-backend/internal/room_user"
 	"sound-stage-backend/internal/router"
+	"sound-stage-backend/internal/tag"
 	"sound-stage-backend/internal/user"
 	"sound-stage-backend/internal/ws"
 	"syscall"
@@ -64,6 +66,8 @@ func (s *Server) Run() error {
 	roleRepo := role.NewRepo(db)
 	roomRepo := room.NewRepo(db)
 	roomUserRepo := roomuser.NewRepo(db)
+	categoryRepo := category.NewRepo(db)
+	tagRepo := tag.NewRepo(db)
 
 	apiTokenService := apitoken.NewService(s.cfg, apiTokenRepo)
 	userService := user.NewService(userRepo)
@@ -72,6 +76,8 @@ func (s *Server) Run() error {
 	roleService := role.NewService(roleRepo)
 	roomUserService := roomuser.NewService(roomUserRepo, roleService, mediaRouter)
 	roomService := room.NewService(roomRepo, roomUserService, db)
+	categoryService := category.NewService(categoryRepo)
+	tagService := tag.NewService(tagRepo)
 
 	wsHandler := ws.NewHandler(hub, s.cfg)
 	roomWsHandler := room.NewWSHandler(hub, roomUserService, mediaRouter, s.cfg, s.logger)
@@ -92,13 +98,17 @@ func (s *Server) Run() error {
 	authHandler := auth.NewHandler(authService)
 	userHandler := user.NewHandler(userService)
 	roomHandler := room.NewHandler(roomService, hub)
+	categoryHandler := category.NewHandler(categoryService)
+	tagHandler := tag.NewHandler(tagService)
 
 	handlers := &router.Handlers{
-		Health: healthHandler,
-		Auth:   authHandler,
-		User:   userHandler,
-		Room:   roomHandler,
-		WS:     wsHandler,
+		Health:   healthHandler,
+		Auth:     authHandler,
+		Category: categoryHandler,
+		User:     userHandler,
+		Room:     roomHandler,
+		Tag:      tagHandler,
+		WS:       wsHandler,
 	}
 
 	r := router.Setup(s.cfg, handlers, apiTokenService, s.logger)
