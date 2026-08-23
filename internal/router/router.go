@@ -75,6 +75,7 @@ func Setup(cfg *config.Config, handlers *Handlers, tokenValidator middleware.Tok
 		rooms.POST("", handlers.Room.Create)
 		rooms.PUT("/:id", handlers.Room.Update)
 		rooms.GET("/:id/users", handlers.Room.ListUsers)
+		rooms.POST("/:id/users", handlers.Room.AddRoomUser)
 		rooms.GET("/:id/users/current", handlers.Room.CurrentRoomUser)
 		rooms.PUT("/:id/users/:userId/role", handlers.Room.UpdateUserRole)
 		rooms.PUT("/:id/private-code", handlers.Room.UpdatePrivateCode)

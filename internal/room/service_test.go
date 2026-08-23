@@ -54,15 +54,15 @@ func (m *mockRepository) LoadTagsForRooms(roomIds []uint) (map[uint][]tag.Tag, e
 
 type mockRoomUserService struct{ mock.Mock }
 
-func (m *mockRoomUserService) AddUser(userID, roomID uint, roleName role.RoleName) (*roomuser.RoomUser, error) {
-	args := m.Called(userID, roomID, roleName)
-	ru, _ := args.Get(0).(*roomuser.RoomUser)
-	return ru, args.Error(1)
-}
-func (m *mockRoomUserService) AddUserWithTx(tx *gorm.DB, userID, roomID uint, roleName role.RoleName) (*roomuser.RoomUser, error) {
+func (m *mockRoomUserService) Create(tx *gorm.DB, userID, roomID uint, roleName role.RoleName) (*roomuser.RoomUser, error) {
 	args := m.Called(tx, userID, roomID, roleName)
 	ru, _ := args.Get(0).(*roomuser.RoomUser)
 	return ru, args.Error(1)
+}
+
+func (m *mockRoomUserService) Rejoin(ru *roomuser.RoomUser) error {
+	args := m.Called(ru)
+	return args.Error(0)
 }
 func (m *mockRoomUserService) RemoveUser(userID, roomID uint) error {
 	args := m.Called(userID, roomID)
@@ -135,7 +135,7 @@ func TestService_Create(t *testing.T) {
 		created.ID = 10
 
 		h.repo.On("Create", mock.AnythingOfType("*gorm.DB"), input).Return(created, nil)
-		h.roomUser.On("AddUserWithTx", mock.AnythingOfType("*gorm.DB"), uint(5), uint(10), role.RoleOwner).
+		h.roomUser.On("Create", mock.AnythingOfType("*gorm.DB"), uint(5), uint(10), role.RoleOwner).
 			Return(&roomuser.RoomUser{}, nil)
 
 		got, err := h.svc.Create(input)
@@ -146,7 +146,7 @@ func TestService_Create(t *testing.T) {
 		h.roomUser.AssertExpectations(t)
 	})
 
-	t.Run("failure: AddUserWithTx error rolls back and room creation is not returned", func(t *testing.T) {
+	t.Run("failure: Create error rolls back and room creation is not returned", func(t *testing.T) {
 		h := newHarness(t)
 		input := &CreateRoomParams{Name: "New Room", CreatorID: 5}
 		created := &Room{Name: "New Room"}
@@ -154,7 +154,7 @@ func TestService_Create(t *testing.T) {
 
 		h.repo.On("Create", mock.AnythingOfType("*gorm.DB"), input).Return(created, nil)
 		addErr := errors.New("failed to add owner")
-		h.roomUser.On("AddUserWithTx", mock.AnythingOfType("*gorm.DB"), uint(5), uint(10), role.RoleOwner).
+		h.roomUser.On("Create", mock.AnythingOfType("*gorm.DB"), uint(5), uint(10), role.RoleOwner).
 			Return(nil, addErr)
 
 		got, err := h.svc.Create(input)

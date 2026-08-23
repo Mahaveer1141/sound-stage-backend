@@ -60,6 +60,10 @@ type UpdateRoomParams struct {
 	privateCode *string
 }
 
+type AddRoomUserInput struct {
+	PrivateCode string `json:"privateCode"`
+}
+
 type RoomFilter struct {
 	Query string `form:"query"`
 }

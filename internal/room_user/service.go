@@ -36,21 +36,11 @@ func NewService(r repo, roleService roleFinder, revoker publishRevoker) *Service
 	return &Service{repo: r, roleService: roleService, revoker: revoker}
 }
 
-func (s *Service) AddUser(userID uint, roomID uint, roleName role.RoleName) (*RoomUser, error) {
-	return s.AddUserWithTx(nil, userID, roomID, roleName)
+func (s *Service) Rejoin(ru *RoomUser) error {
+	return s.repo.UpdateActivity(ru, ActivityJoin)
 }
 
-func (s *Service) AddUserWithTx(tx *gorm.DB, userID uint, roomID uint, roleName role.RoleName) (*RoomUser, error) {
-	ru, err := s.repo.FindBy(userID, roomID)
-	if err != nil {
-		return nil, err
-	}
-	if ru != nil {
-		if err := s.repo.UpdateActivity(ru, ActivityJoin); err != nil {
-			return nil, err
-		}
-		return ru, nil
-	}
+func (s *Service) Create(tx *gorm.DB, userID uint, roomID uint, roleName role.RoleName) (*RoomUser, error) {
 	if roleName == "" {
 		roleName = role.RoleListener
 	}

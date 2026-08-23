@@ -12,8 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"sound-stage-backend/internal/config"
-	"sound-stage-backend/internal/role"
-	roomuser "sound-stage-backend/internal/room_user"
 	webrtc "sound-stage-backend/internal/web_rtc"
 	"sound-stage-backend/internal/ws"
 )
@@ -117,31 +115,15 @@ func TestWsHandler_handleUserJoined(t *testing.T) {
 	t.Run("success: adds user, creates session, subscribes, broadcasts join", func(t *testing.T) {
 		h := newWSHarness(t)
 		c := testClient()
-		ru := &roomuser.RoomUser{UserID: 42, RoomID: 4}
-
-		h.roomUser.On("AddUser", uint(42), uint(4), role.RoleListener).Return(ru, nil)
 		h.media.On("AddSession", "client-1", mock.AnythingOfType("*webrtc.PeerConnection")).
 			Return(&webrtc.Session{})
 		h.media.On("SubscribeToRoomTracks", c, mock.Anything).Return()
-		h.hub.On("BroadcastToRoom", uint(4), ws.EventJoinRoom, ru).Return()
+		h.hub.On("BroadcastToRoom", uint(4), ws.EventJoinRoom, nil).Return()
 
 		h.wsHandler.handleUserJoined(c, ws.Event{})
 
 		h.roomUser.AssertExpectations(t)
 		h.media.AssertExpectations(t)
-		h.hub.AssertExpectations(t)
-	})
-
-	t.Run("failure: AddUser error sends error to client, never creates a session", func(t *testing.T) {
-		h := newWSHarness(t)
-		c := testClient()
-		h.roomUser.On("AddUser", uint(42), uint(4), role.RoleListener).Return(nil, errLike("failed to add user"))
-		h.hub.On("ErrorToClient", c, "Failed to add user to room", http.StatusUnprocessableEntity).Return()
-
-		h.wsHandler.handleUserJoined(c, ws.Event{})
-
-		h.media.AssertNotCalled(t, "AddSession", mock.Anything, mock.Anything)
-		h.roomUser.AssertExpectations(t)
 		h.hub.AssertExpectations(t)
 	})
 }

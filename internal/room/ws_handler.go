@@ -5,7 +5,6 @@ import (
 	"log/slog"
 	"net/http"
 	"sound-stage-backend/internal/config"
-	"sound-stage-backend/internal/role"
 	webrtc "sound-stage-backend/internal/web_rtc"
 	"sound-stage-backend/internal/ws"
 
@@ -58,12 +57,6 @@ func (h *WsHandler) Register(wsh ws.Handler) {
 }
 
 func (h *WsHandler) handleUserJoined(c *ws.Client, evt ws.Event) {
-	ru, err := h.roomUserService.AddUser(c.UserID, c.RoomID, role.RoleListener)
-	if err != nil {
-		h.hub.ErrorToClient(c, "Failed to add user to room", http.StatusUnprocessableEntity)
-		return
-	}
-
 	pc, err := webrtc.NewPeerConnection(
 		h.cfg,
 		func(ice pion.ICECandidateInit) {
@@ -104,7 +97,7 @@ func (h *WsHandler) handleUserJoined(c *ws.Client, evt ws.Event) {
 		h.media.FanOutTrack(c, session, localTrack)
 	})
 
-	h.hub.BroadcastToRoom(c.RoomID, ws.EventJoinRoom, ru)
+	h.hub.BroadcastToRoom(c.RoomID, ws.EventJoinRoom, nil)
 }
 
 func (h *WsHandler) handleUserLeft(c *ws.Client, evt ws.Event) {

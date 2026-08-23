@@ -60,6 +60,11 @@ func (m *mockRoomService) UpdatePrivateCode(roomID uint) error {
 	args := m.Called(roomID)
 	return args.Error(0)
 }
+func (m *mockRoomService) AddRoomUser(roomID, userID uint, privateCode string) (*roomuser.RoomUser, error) {
+	args := m.Called(roomID, userID, privateCode)
+	ru, _ := args.Get(0).(*roomuser.RoomUser)
+	return ru, args.Error(1)
+}
 
 type mockWebSocketBroadcaster struct{ mock.Mock }
 

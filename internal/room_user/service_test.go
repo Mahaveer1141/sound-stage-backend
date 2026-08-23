@@ -89,84 +89,64 @@ func (h *harness) assertAllExpectations(t *testing.T) {
 	h.revoker.AssertExpectations(t)
 }
 
-func TestService_AddUserWithTx(t *testing.T) {
-	t.Run("success: existing member re-joining updates activity, no role lookup or create", func(t *testing.T) {
+func TestService_Rejoin(t *testing.T) {
+	t.Run("success: marks existing member as joined", func(t *testing.T) {
 		h := newHarness()
 		existing := &RoomUser{UserID: 1, RoomID: 2}
-		h.repo.On("FindBy", uint(1), uint(2)).Return(existing, nil)
 		h.repo.On("UpdateActivity", existing, ActivityJoin).Return(nil)
 
-		got, err := h.svc.AddUserWithTx(nil, 1, 2, role.RoleListener)
+		err := h.svc.Rejoin(existing)
 
 		require.NoError(t, err)
-		assert.Same(t, existing, got)
-		h.roles.AssertNotCalled(t, "FindByName", mock.Anything)
-		h.repo.AssertNotCalled(t, "Create", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 		h.assertAllExpectations(t)
 	})
 
-	t.Run("success: new member with explicit role is created with that role", func(t *testing.T) {
-		h := newHarness()
-		h.repo.On("FindBy", uint(1), uint(2)).Return(nil, nil)
-		h.roles.On("FindByName", role.RoleListener).Return(&role.Role{BaseModel: model.BaseModel{ID: 4}}, nil)
-		created := &RoomUser{UserID: 1, RoomID: 2}
-		h.repo.On("Create", (*gorm.DB)(nil), uint(1), uint(2), uint(4)).Return(created, nil)
-
-		got, err := h.svc.AddUserWithTx(nil, 1, 2, role.RoleListener)
-
-		require.NoError(t, err)
-		assert.Same(t, created, got)
-		h.assertAllExpectations(t)
-	})
-
-	t.Run("success: new member with empty role name defaults to RoleListener", func(t *testing.T) {
-		h := newHarness()
-		h.repo.On("FindBy", uint(1), uint(2)).Return(nil, nil)
-		h.roles.On("FindByName", role.RoleListener).Return(&role.Role{BaseModel: model.BaseModel{ID: 4}}, nil)
-		created := &RoomUser{UserID: 1, RoomID: 2}
-		h.repo.On("Create", (*gorm.DB)(nil), uint(1), uint(2), uint(4)).Return(created, nil)
-
-		got, err := h.svc.AddUserWithTx(nil, 1, 2, role.RoleName(""))
-
-		require.NoError(t, err)
-		assert.Same(t, created, got)
-		h.assertAllExpectations(t)
-	})
-
-	t.Run("failure: FindBy error short-circuits before any role lookup or create", func(t *testing.T) {
-		h := newHarness()
-		findErr := errors.New("db down")
-		h.repo.On("FindBy", uint(1), uint(2)).Return(nil, findErr)
-
-		got, err := h.svc.AddUserWithTx(nil, 1, 2, role.RoleListener)
-
-		require.Nil(t, got)
-		require.ErrorIs(t, err, findErr)
-		h.roles.AssertNotCalled(t, "FindByName", mock.Anything)
-		h.assertAllExpectations(t)
-	})
-
-	t.Run("failure: UpdateActivity error on re-join is propagated", func(t *testing.T) {
+	t.Run("failure: UpdateActivity error is propagated", func(t *testing.T) {
 		h := newHarness()
 		existing := &RoomUser{UserID: 1, RoomID: 2}
-		h.repo.On("FindBy", uint(1), uint(2)).Return(existing, nil)
 		updateErr := errors.New("update failed")
 		h.repo.On("UpdateActivity", existing, ActivityJoin).Return(updateErr)
 
-		got, err := h.svc.AddUserWithTx(nil, 1, 2, role.RoleListener)
+		err := h.svc.Rejoin(existing)
 
-		require.Nil(t, got)
 		require.ErrorIs(t, err, updateErr)
 		h.assertAllExpectations(t)
 	})
+}
 
-	t.Run("failure: role lookup error for new member is propagated, Create never called", func(t *testing.T) {
+func TestService_Create(t *testing.T) {
+	t.Run("success: creates with explicit role", func(t *testing.T) {
 		h := newHarness()
-		h.repo.On("FindBy", uint(1), uint(2)).Return(nil, nil)
+		h.roles.On("FindByName", role.RoleListener).Return(&role.Role{BaseModel: model.BaseModel{ID: 4}}, nil)
+		created := &RoomUser{UserID: 1, RoomID: 2}
+		h.repo.On("Create", (*gorm.DB)(nil), uint(1), uint(2), uint(4)).Return(created, nil)
+
+		got, err := h.svc.Create(nil, 1, 2, role.RoleListener)
+
+		require.NoError(t, err)
+		assert.Same(t, created, got)
+		h.assertAllExpectations(t)
+	})
+
+	t.Run("success: empty role name defaults to RoleListener", func(t *testing.T) {
+		h := newHarness()
+		h.roles.On("FindByName", role.RoleListener).Return(&role.Role{BaseModel: model.BaseModel{ID: 4}}, nil)
+		created := &RoomUser{UserID: 1, RoomID: 2}
+		h.repo.On("Create", (*gorm.DB)(nil), uint(1), uint(2), uint(4)).Return(created, nil)
+
+		got, err := h.svc.Create(nil, 1, 2, role.RoleName(""))
+
+		require.NoError(t, err)
+		assert.Same(t, created, got)
+		h.assertAllExpectations(t)
+	})
+
+	t.Run("failure: role lookup error is propagated, Create never called", func(t *testing.T) {
+		h := newHarness()
 		roleErr := errors.New("unknown role")
 		h.roles.On("FindByName", role.RoleName("no-role")).Return(nil, roleErr)
 
-		got, err := h.svc.AddUserWithTx(nil, 1, 2, role.RoleName("no-role"))
+		got, err := h.svc.Create(nil, 1, 2, role.RoleName("no-role"))
 
 		require.Nil(t, got)
 		require.ErrorIs(t, err, roleErr)
@@ -174,45 +154,16 @@ func TestService_AddUserWithTx(t *testing.T) {
 		h.assertAllExpectations(t)
 	})
 
-	t.Run("failure: Create error for new member is propagated", func(t *testing.T) {
+	t.Run("failure: Create error is propagated", func(t *testing.T) {
 		h := newHarness()
-		h.repo.On("FindBy", uint(1), uint(2)).Return(nil, nil)
 		h.roles.On("FindByName", role.RoleListener).Return(&role.Role{BaseModel: model.BaseModel{ID: 4}}, nil)
 		createErr := errors.New("insert failed")
 		h.repo.On("Create", (*gorm.DB)(nil), uint(1), uint(2), uint(4)).Return(nil, createErr)
 
-		got, err := h.svc.AddUserWithTx(nil, 1, 2, role.RoleListener)
+		got, err := h.svc.Create(nil, 1, 2, role.RoleListener)
 
 		require.Nil(t, got)
 		require.ErrorIs(t, err, createErr)
-		h.assertAllExpectations(t)
-	})
-}
-
-func TestService_AddUser(t *testing.T) {
-	t.Run("success: delegates to AddUserWithTx with nil tx", func(t *testing.T) {
-		h := newHarness()
-		h.repo.On("FindBy", uint(1), uint(2)).Return(nil, nil)
-		h.roles.On("FindByName", role.RoleListener).Return(&role.Role{BaseModel: model.BaseModel{ID: 4}}, nil)
-		created := &RoomUser{UserID: 1, RoomID: 2}
-		h.repo.On("Create", (*gorm.DB)(nil), uint(1), uint(2), uint(4)).Return(created, nil)
-
-		got, err := h.svc.AddUser(1, 2, role.RoleListener)
-
-		require.NoError(t, err)
-		assert.Same(t, created, got)
-		h.assertAllExpectations(t)
-	})
-
-	t.Run("failure: underlying error is propagated", func(t *testing.T) {
-		h := newHarness()
-		findErr := errors.New("db down")
-		h.repo.On("FindBy", uint(1), uint(2)).Return(nil, findErr)
-
-		got, err := h.svc.AddUser(1, 2, role.RoleListener)
-
-		require.Nil(t, got)
-		require.ErrorIs(t, err, findErr)
 		h.assertAllExpectations(t)
 	})
 }

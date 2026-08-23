@@ -3,6 +3,7 @@ package room
 import (
 	"crypto/rand"
 	"math/big"
+	"sound-stage-backend/internal/pkg/httpx"
 	"sound-stage-backend/internal/pkg/listopts"
 	"sound-stage-backend/internal/role"
 	roomuser "sound-stage-backend/internal/room_user"
@@ -12,8 +13,8 @@ import (
 )
 
 type roomUserService interface {
-	AddUser(userID uint, roomID uint, roleName role.RoleName) (*roomuser.RoomUser, error)
-	AddUserWithTx(tx *gorm.DB, userID uint, roomID uint, roleName role.RoleName) (*roomuser.RoomUser, error)
+	Create(tx *gorm.DB, userID uint, roomID uint, roleName role.RoleName) (*roomuser.RoomUser, error)
+	Rejoin(ru *roomuser.RoomUser) error
 	RemoveUser(userID uint, roomID uint) error
 	ListByRoomID(roomID uint, filter roomuser.RoomUserFilter, sort listopts.Sort, p listopts.Pagination) ([]roomuser.RoomUser, int64, error)
 	FindBy(userID uint, roomID uint) (*roomuser.RoomUser, error)
@@ -59,7 +60,7 @@ func (s *Service) Create(input *CreateRoomParams) (*Room, error) {
 		if err != nil {
 			return err
 		}
-		_, err = s.roomUserService.AddUserWithTx(tx, input.CreatorID, room.ID, role.RoleOwner)
+		_, err = s.roomUserService.Create(tx, input.CreatorID, room.ID, role.RoleOwner)
 		return err
 	})
 	if err != nil {
@@ -134,6 +135,26 @@ func (s *Service) UpdatePrivateCode(roomID uint) error {
 		return err
 	}
 	return s.repo.UpdatePrivateCode(roomID, code)
+}
+
+func (s *Service) AddRoomUser(roomID, userID uint, privateCode string) (*roomuser.RoomUser, error) {
+	ru, err := s.roomUserService.FindBy(userID, roomID)
+	if err != nil {
+		return nil, err
+	}
+	if ru != nil {
+		return ru, s.roomUserService.Rejoin(ru)
+	}
+
+	room, err := s.repo.FindByID(roomID)
+	if err != nil {
+		return nil, err
+	}
+	if room.Type == RoomTypePrivate && privateCode != *room.PrivateCode {
+		return nil, httpx.ErrForbidden
+	}
+
+	return s.roomUserService.Create(nil, userID, roomID, role.RoleListener)
 }
 
 func generatePrivateCode(length int) (string, error) {

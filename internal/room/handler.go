@@ -23,6 +23,7 @@ type roomService interface {
 	UpdateUserRole(roomID uint, userID uint, newRole role.RoleName, actorID uint) error
 	CurrentRoomUser(roomID uint, userID uint) (*roomuser.RoomUser, error)
 	UpdatePrivateCode(roomID uint) error
+	AddRoomUser(roomID, userID uint, privateCode string) (*roomuser.RoomUser, error)
 }
 
 type webSocketBroadcaster interface {
@@ -251,4 +252,34 @@ func (h *Handler) UpdatePrivateCode(c *gin.Context) {
 	}
 
 	httpx.SuccessResponse(c, http.StatusOK, "Private code updated successfully", nil)
+}
+
+func (h *Handler) AddRoomUser(c *gin.Context) {
+	id := c.Param("id")
+	roomId, err := strconv.Atoi(id)
+	if err != nil {
+		httpx.ErrorResponse(c, http.StatusBadRequest, "Invalid room ID")
+		return
+	}
+
+	userId, _ := c.Get("userId")
+	userID, _ := userId.(uint)
+
+	var input AddRoomUserInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		httpx.ErrorResponse(c, http.StatusBadRequest, "Invalid request payload")
+		return
+	}
+
+	ru, err := h.service.AddRoomUser(uint(roomId), userID, input.PrivateCode)
+	if err != nil {
+		if errors.Is(err, httpx.ErrForbidden) {
+			httpx.ErrorResponse(c, http.StatusForbidden, "Incorrect Code")
+			return
+		}
+		httpx.ErrorResponse(c, http.StatusUnprocessableEntity, "Failed to add user to room")
+		return
+	}
+
+	httpx.SuccessResponse(c, http.StatusOK, "User added to room", ru.ToResponse())
 }
