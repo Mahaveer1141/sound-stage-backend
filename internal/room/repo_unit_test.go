@@ -24,8 +24,8 @@ func TestRepo_Create_Unit(t *testing.T) {
 		require.NoError(t, tx.Error)
 
 		mock.ExpectQuery(regexp.QuoteMeta(
-			`INSERT INTO "rooms" ("created_at","updated_at","name","description","creator_id","deleted_at") VALUES ($1,$2,$3,$4,$5,$6) RETURNING "id"`)).
-			WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), "Room A", "Description A", 1, sqlmock.AnyArg()).
+			`INSERT INTO "rooms" ("created_at","updated_at","name","description","creator_id","type","private_code","deleted_at") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "id"`)).
+			WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), "Room A", "Description A", 1, "public", sqlmock.AnyArg(), sqlmock.AnyArg()).
 			WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
 
 		got, err := repo.Create(tx, &CreateRoomParams{
@@ -55,8 +55,8 @@ func TestRepo_Create_Unit(t *testing.T) {
 		require.NoError(t, tx.Error)
 
 		mock.ExpectQuery(regexp.QuoteMeta(
-			`INSERT INTO "rooms" ("created_at","updated_at","name","description","creator_id","deleted_at") VALUES ($1,$2,$3,$4,$5,$6) RETURNING "id"`)).
-			WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), "Room B", "", 2, sqlmock.AnyArg()).
+			`INSERT INTO "rooms" ("created_at","updated_at","name","description","creator_id","type","private_code","deleted_at") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "id"`)).
+			WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), "Room B", "", 2, "public", sqlmock.AnyArg(), sqlmock.AnyArg()).
 			WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(2))
 
 		got, err := repo.Create(tx, &CreateRoomParams{
@@ -84,8 +84,8 @@ func TestRepo_Create_Unit(t *testing.T) {
 		require.NoError(t, tx.Error)
 
 		mock.ExpectQuery(regexp.QuoteMeta(
-			`INSERT INTO "rooms" ("created_at","updated_at","name","description","creator_id","deleted_at") VALUES ($1,$2,$3,$4,$5,$6) RETURNING "id"`)).
-			WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), "Room A", "Description A", 1, sqlmock.AnyArg()).
+			`INSERT INTO "rooms" ("created_at","updated_at","name","description","creator_id","type","private_code","deleted_at") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "id"`)).
+			WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), "Room A", "Description A", 1, "public", sqlmock.AnyArg(), sqlmock.AnyArg()).
 			WillReturnError(assert.AnError)
 
 		got, err := repo.Create(tx, &CreateRoomParams{
@@ -328,6 +328,68 @@ func TestRepo_LoadTagsForRooms_Unit(t *testing.T) {
 		require.Error(t, err)
 		require.Nil(t, got)
 		assert.ErrorIs(t, err, assert.AnError)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+}
+
+func TestRepo_UpdatePrivateCode_Unit(t *testing.T) {
+	const selectRoomSQL = `SELECT * FROM "rooms" WHERE "rooms"."id" = $1 AND "rooms"."deleted_at" IS NULL ORDER BY "rooms"."id" LIMIT $2`
+	const updateRoomSQL = `UPDATE "rooms" SET "created_at"=$1,"updated_at"=$2,"name"=$3,"description"=$4,"creator_id"=$5,"type"=$6,"private_code"=$7,"deleted_at"=$8 WHERE "rooms"."deleted_at" IS NULL AND "id" = $9`
+
+	expectRoomFound := func(mock sqlmock.Sqlmock, id uint64) {
+		mock.ExpectQuery(regexp.QuoteMeta(selectRoomSQL)).
+			WithArgs(id, 1).
+			WillReturnRows(sqlmock.NewRows([]string{"id", "created_at", "updated_at", "name", "description", "creator_id", "type", "private_code", "deleted_at"}).
+				AddRow(id, time.Now(), time.Now(), "Room A", "Description A", 5, "private", "old-code", nil))
+	}
+
+	t.Run("updates the private code of an existing room", func(t *testing.T) {
+		gdb, mock := testutil.NewMockDB(t)
+		repo := NewRepo(gdb)
+
+		expectRoomFound(mock, 1)
+
+		mock.ExpectBegin()
+		mock.ExpectExec(regexp.QuoteMeta(updateRoomSQL)).
+			WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), "Room A", "Description A", 5, "private", "new-code", sqlmock.AnyArg(), 1).
+			WillReturnResult(sqlmock.NewResult(0, 1))
+		mock.ExpectCommit()
+
+		err := repo.UpdatePrivateCode(1, "new-code")
+
+		require.NoError(t, err)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("returns error when room not found", func(t *testing.T) {
+		gdb, mock := testutil.NewMockDB(t)
+		repo := NewRepo(gdb)
+
+		mock.ExpectQuery(regexp.QuoteMeta(selectRoomSQL)).
+			WithArgs(999, 1).
+			WillReturnError(gorm.ErrRecordNotFound)
+
+		err := repo.UpdatePrivateCode(999, "new-code")
+
+		require.ErrorIs(t, err, gorm.ErrRecordNotFound)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("returns error when save fails", func(t *testing.T) {
+		gdb, mock := testutil.NewMockDB(t)
+		repo := NewRepo(gdb)
+
+		expectRoomFound(mock, 1)
+
+		mock.ExpectBegin()
+		mock.ExpectExec(regexp.QuoteMeta(updateRoomSQL)).
+			WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), "Room A", "Description A", 5, "private", "new-code", sqlmock.AnyArg(), 1).
+			WillReturnError(assert.AnError)
+		mock.ExpectRollback()
+
+		err := repo.UpdatePrivateCode(1, "new-code")
+
+		require.ErrorIs(t, err, assert.AnError)
 		assert.NoError(t, mock.ExpectationsWereMet())
 	})
 }

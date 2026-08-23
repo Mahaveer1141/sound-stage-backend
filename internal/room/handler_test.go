@@ -56,6 +56,10 @@ func (m *mockRoomService) CurrentRoomUser(roomID, userID uint) (*roomuser.RoomUs
 	ru, _ := args.Get(0).(*roomuser.RoomUser)
 	return ru, args.Error(1)
 }
+func (m *mockRoomService) UpdatePrivateCode(roomID uint) error {
+	args := m.Called(roomID)
+	return args.Error(0)
+}
 
 type mockWebSocketBroadcaster struct{ mock.Mock }
 
@@ -88,7 +92,7 @@ func TestHandler_Create(t *testing.T) {
 			return in.Name == "Main Stage" && in.CreatorID == 42
 		})).Return(created, nil)
 
-		w, c := testutil.NewTestContext(http.MethodPost, "/rooms", CreateRoomParams{Name: "Main Stage"})
+		w, c := testutil.NewTestContext(http.MethodPost, "/rooms", CreateRoomParams{Name: "Main Stage", Type: RoomTypePublic})
 		c.Set("userId", uint(42))
 
 		h.handler.Create(c)
@@ -101,7 +105,7 @@ func TestHandler_Create(t *testing.T) {
 		h := newHandlerHarness(t)
 		h.svc.On("Create", mock.Anything).Return(nil, assert.AnError)
 
-		w, c := testutil.NewTestContext(http.MethodPost, "/rooms", CreateRoomParams{Name: "Main Stage"})
+		w, c := testutil.NewTestContext(http.MethodPost, "/rooms", CreateRoomParams{Name: "Main Stage", Type: RoomTypePublic})
 		c.Set("userId", uint(42))
 
 		h.handler.Create(c)
@@ -129,7 +133,7 @@ func TestHandler_Update(t *testing.T) {
 		updated := &Room{Name: "Renamed"}
 		h.svc.On("Update", uint(5), mock.AnythingOfType("*room.UpdateRoomParams")).Return(updated, nil)
 
-		w, c := testutil.NewTestContext(http.MethodPatch, "/rooms/5", UpdateRoomParams{Name: "Renamed"})
+		w, c := testutil.NewTestContext(http.MethodPatch, "/rooms/5", UpdateRoomParams{Name: "Renamed", Type: RoomTypePublic})
 		c.Params = gin.Params{{Key: "id", Value: "5"}}
 
 		h.handler.Update(c)
@@ -141,7 +145,7 @@ func TestHandler_Update(t *testing.T) {
 	t.Run("failure: non-numeric room ID returns 400 before service is called", func(t *testing.T) {
 		h := newHandlerHarness(t)
 
-		w, c := testutil.NewTestContext(http.MethodPatch, "/rooms/abc", UpdateRoomParams{Name: "Renamed"})
+		w, c := testutil.NewTestContext(http.MethodPatch, "/rooms/abc", UpdateRoomParams{Name: "Renamed", Type: RoomTypePublic})
 		c.Params = gin.Params{{Key: "id", Value: "abc"}}
 
 		h.handler.Update(c)
@@ -154,10 +158,50 @@ func TestHandler_Update(t *testing.T) {
 		h := newHandlerHarness(t)
 		h.svc.On("Update", uint(5), mock.Anything).Return(nil, assert.AnError)
 
-		w, c := testutil.NewTestContext(http.MethodPatch, "/rooms/5", UpdateRoomParams{Name: "Renamed"})
+		w, c := testutil.NewTestContext(http.MethodPatch, "/rooms/5", UpdateRoomParams{Name: "Renamed", Type: RoomTypePublic})
 		c.Params = gin.Params{{Key: "id", Value: "5"}}
 
 		h.handler.Update(c)
+
+		assert.Equal(t, http.StatusUnprocessableEntity, w.Code)
+		h.svc.AssertExpectations(t)
+	})
+}
+
+func TestHandler_UpdatePrivateCode(t *testing.T) {
+	t.Run("success: updates private code and returns 200", func(t *testing.T) {
+		h := newHandlerHarness(t)
+		h.svc.On("UpdatePrivateCode", uint(5)).Return(nil)
+
+		w, c := testutil.NewTestContext(http.MethodPatch, "/rooms/5/private-code", nil)
+		c.Params = gin.Params{{Key: "id", Value: "5"}}
+
+		h.handler.UpdatePrivateCode(c)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		h.svc.AssertExpectations(t)
+	})
+
+	t.Run("failure: non-numeric room ID returns 400 before service is called", func(t *testing.T) {
+		h := newHandlerHarness(t)
+
+		w, c := testutil.NewTestContext(http.MethodPatch, "/rooms/abc/private-code", nil)
+		c.Params = gin.Params{{Key: "id", Value: "abc"}}
+
+		h.handler.UpdatePrivateCode(c)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		h.svc.AssertNotCalled(t, "UpdatePrivateCode", mock.Anything)
+	})
+
+	t.Run("failure: service error returns 422", func(t *testing.T) {
+		h := newHandlerHarness(t)
+		h.svc.On("UpdatePrivateCode", uint(5)).Return(assert.AnError)
+
+		w, c := testutil.NewTestContext(http.MethodPatch, "/rooms/5/private-code", nil)
+		c.Params = gin.Params{{Key: "id", Value: "5"}}
+
+		h.handler.UpdatePrivateCode(c)
 
 		assert.Equal(t, http.StatusUnprocessableEntity, w.Code)
 		h.svc.AssertExpectations(t)

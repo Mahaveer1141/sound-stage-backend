@@ -12,6 +12,13 @@ import (
 	"gorm.io/gorm"
 )
 
+type RoomType string
+
+const (
+	RoomTypePublic  RoomType = "public"
+	RoomTypePrivate RoomType = "private"
+)
+
 type Room struct {
 	model.BaseModel
 	Name        string              `gorm:"not null" json:"name" validate:"required"`
@@ -21,6 +28,8 @@ type Room struct {
 	Users       []user.User         `gorm:"many2many:room_users"`
 	Categories  []category.Category `gorm:"many2many:room_categories"`
 	Tags        []tag.Tag           `gorm:"-"`
+	Type        RoomType            `gorm:"default:public" validate:"required,oneof=public private"`
+	PrivateCode *string             `validate:"omitempty"`
 	DeletedAt   gorm.DeletedAt
 }
 
@@ -29,11 +38,13 @@ func (Room) TableName() string {
 }
 
 type CreateRoomParams struct {
-	Name        string `json:"name" validate:"required"`
-	Description string `json:"description"`
-	CreatorID   uint   `json:"creatorID" validate:"required"`
-	CategoryIds []uint `json:"categoryIds" validate:"lte=3"`
-	TagIds      []uint `json:"tagIds" validate:"lte=5"`
+	Name        string   `json:"name" validate:"required"`
+	Description string   `json:"description"`
+	CreatorID   uint     `json:"creatorID" validate:"required"`
+	CategoryIds []uint   `json:"categoryIds" validate:"lte=3"`
+	TagIds      []uint   `json:"tagIds" validate:"lte=5"`
+	Type        RoomType `validate:"required"`
+	privateCode *string
 }
 
 type UpdateUserRoleParams struct {
@@ -41,10 +52,12 @@ type UpdateUserRoleParams struct {
 }
 
 type UpdateRoomParams struct {
-	Name        string `json:"name" validate:"required"`
-	Description string `json:"description" validate:"omitempty"`
-	CategoryIds []uint `json:"categoryIds" validate:"lte=3"`
-	TagIds      []uint `json:"tagIds" validate:"lte=5"`
+	Name        string   `json:"name" validate:"required"`
+	Description string   `json:"description" validate:"omitempty"`
+	CategoryIds []uint   `json:"categoryIds" validate:"lte=3"`
+	TagIds      []uint   `json:"tagIds" validate:"lte=5"`
+	Type        RoomType `validate:"required"`
+	privateCode *string
 }
 
 type RoomFilter struct {

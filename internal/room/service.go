@@ -1,6 +1,8 @@
 package room
 
 import (
+	"crypto/rand"
+	"math/big"
 	"sound-stage-backend/internal/pkg/listopts"
 	"sound-stage-backend/internal/role"
 	roomuser "sound-stage-backend/internal/room_user"
@@ -21,6 +23,7 @@ type roomUserService interface {
 type repository interface {
 	Create(tx *gorm.DB, input *CreateRoomParams) (*Room, error)
 	Update(id uint, input *UpdateRoomParams) (*Room, error)
+	UpdatePrivateCode(id uint, code string) error
 	FindByID(id uint) (*Room, error)
 	List(filter RoomFilter, sort listopts.Sort, p listopts.Pagination) ([]Room, error)
 	Count(filter RoomFilter) (int64, error)
@@ -43,6 +46,13 @@ func (s *Service) FindByID(id uint) (*Room, error) {
 
 func (s *Service) Create(input *CreateRoomParams) (*Room, error) {
 	var room *Room
+	if input.Type == RoomTypePrivate {
+		code, err := generatePrivateCode(8)
+		if err != nil {
+			return nil, err
+		}
+		input.privateCode = &code
+	}
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		var err error
 		room, err = s.repo.Create(tx, input)
@@ -59,6 +69,24 @@ func (s *Service) Create(input *CreateRoomParams) (*Room, error) {
 }
 
 func (s *Service) Update(id uint, input *UpdateRoomParams) (*Room, error) {
+	room, err := s.repo.FindByID(id)
+	if err != nil {
+		return nil, err
+	}
+	if input.Type == RoomTypePublic {
+		input.privateCode = nil
+	} else {
+		var code string
+		if room.PrivateCode != nil {
+			code = *room.PrivateCode
+		} else {
+			code, err = generatePrivateCode(8)
+			if err != nil {
+				return nil, err
+			}
+		}
+		input.privateCode = &code
+	}
 	return s.repo.Update(id, input)
 }
 
@@ -98,4 +126,27 @@ func (s *Service) UpdateUserRole(roomID uint, userID uint, newRole role.RoleName
 
 func (s *Service) CurrentRoomUser(roomID, userID uint) (*roomuser.RoomUser, error) {
 	return s.roomUserService.FindBy(userID, roomID)
+}
+
+func (s *Service) UpdatePrivateCode(roomID uint) error {
+	code, err := generatePrivateCode(8)
+	if err != nil {
+		return err
+	}
+	return s.repo.UpdatePrivateCode(roomID, code)
+}
+
+func generatePrivateCode(length int) (string, error) {
+	const digits = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+
+	code := make([]byte, length)
+
+	for i := range length {
+		n, err := rand.Int(rand.Reader, big.NewInt(int64(len(digits))))
+		if err != nil {
+			return "", err
+		}
+		code[i] = digits[n.Int64()]
+	}
+	return string(code), nil
 }

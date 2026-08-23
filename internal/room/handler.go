@@ -22,6 +22,7 @@ type roomService interface {
 	ListUsers(roomID uint, filter roomuser.RoomUserFilter, sort listopts.Sort, p listopts.Pagination) ([]roomuser.RoomUser, int64, error)
 	UpdateUserRole(roomID uint, userID uint, newRole role.RoleName, actorID uint) error
 	CurrentRoomUser(roomID uint, userID uint) (*roomuser.RoomUser, error)
+	UpdatePrivateCode(roomID uint) error
 }
 
 type webSocketBroadcaster interface {
@@ -233,4 +234,21 @@ func (h *Handler) CurrentRoomUser(c *gin.Context) {
 		return
 	}
 	httpx.SuccessResponse(c, http.StatusOK, "Successfully fetch the user", ru.ToResponse())
+}
+
+func (h *Handler) UpdatePrivateCode(c *gin.Context) {
+	id := c.Param("id")
+	roomId, err := strconv.Atoi(id)
+	if err != nil {
+		httpx.ErrorResponse(c, http.StatusBadRequest, "Invalid room ID")
+		return
+	}
+
+	err = h.service.UpdatePrivateCode(uint(roomId))
+	if err != nil {
+		httpx.ErrorResponse(c, http.StatusUnprocessableEntity, "Failed to update private code")
+		return
+	}
+
+	httpx.SuccessResponse(c, http.StatusOK, "Private code updated successfully", nil)
 }

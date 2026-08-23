@@ -28,6 +28,10 @@ func (m *mockRepository) Update(id uint, input *UpdateRoomParams) (*Room, error)
 	r, _ := args.Get(0).(*Room)
 	return r, args.Error(1)
 }
+func (m *mockRepository) UpdatePrivateCode(id uint, code string) error {
+	args := m.Called(id, code)
+	return args.Error(0)
+}
 func (m *mockRepository) FindByID(id uint) (*Room, error) {
 	args := m.Called(id)
 	r, _ := args.Get(0).(*Room)
@@ -167,6 +171,7 @@ func TestService_Update(t *testing.T) {
 		h := newHarness(t)
 		input := &UpdateRoomParams{Name: "Renamed"}
 		updated := &Room{Name: "Renamed"}
+		h.repo.On("FindByID", uint(3)).Return(&Room{PrivateCode: nil}, nil)
 		h.repo.On("Update", uint(3), input).Return(updated, nil)
 
 		got, err := h.svc.Update(3, input)
@@ -180,7 +185,7 @@ func TestService_Update(t *testing.T) {
 		h := newHarness(t)
 		input := &UpdateRoomParams{Name: "Renamed"}
 		repoErr := errors.New("room not found")
-		h.repo.On("Update", uint(3), input).Return(nil, repoErr)
+		h.repo.On("FindByID", uint(3)).Return(nil, repoErr)
 
 		got, err := h.svc.Update(3, input)
 
@@ -358,5 +363,28 @@ func TestService_CurrentRoomUser(t *testing.T) {
 		require.Nil(t, got)
 		require.ErrorIs(t, err, notFoundErr)
 		h.roomUser.AssertExpectations(t)
+	})
+}
+
+func TestService_UpdatePrivateCode(t *testing.T) {
+	t.Run("success: generates and updates the private code", func(t *testing.T) {
+		h := newHarness(t)
+		h.repo.On("UpdatePrivateCode", uint(5), mock.AnythingOfType("string")).Return(nil)
+
+		err := h.svc.UpdatePrivateCode(5)
+
+		require.NoError(t, err)
+		h.repo.AssertExpectations(t)
+	})
+
+	t.Run("failure: repo error is propagated", func(t *testing.T) {
+		h := newHarness(t)
+		repoErr := errors.New("not found")
+		h.repo.On("UpdatePrivateCode", uint(5), mock.AnythingOfType("string")).Return(repoErr)
+
+		err := h.svc.UpdatePrivateCode(5)
+
+		require.ErrorIs(t, err, repoErr)
+		h.repo.AssertExpectations(t)
 	})
 }

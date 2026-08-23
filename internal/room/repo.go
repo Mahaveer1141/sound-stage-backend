@@ -24,6 +24,8 @@ func (r *Repo) Create(tx *gorm.DB, input *CreateRoomParams) (*Room, error) {
 		Name:        input.Name,
 		Description: input.Description,
 		CreatorID:   input.CreatorID,
+		Type:        input.Type,
+		PrivateCode: input.privateCode,
 	}
 	if err := tx.Create(&room).Error; err != nil {
 		return nil, err
@@ -70,6 +72,8 @@ func (r *Repo) Update(id uint, input *UpdateRoomParams) (*Room, error) {
 	err := r.db.Transaction(func(tx *gorm.DB) error {
 		room.Name = input.Name
 		room.Description = input.Description
+		room.Type = input.Type
+		room.PrivateCode = input.privateCode
 		if err := tx.Save(&room).Error; err != nil {
 			return err
 		}
@@ -86,6 +90,20 @@ func (r *Repo) Update(id uint, input *UpdateRoomParams) (*Room, error) {
 		return nil, err
 	}
 	return &room, nil
+}
+
+func (r *Repo) UpdatePrivateCode(id uint, code string) error {
+	var room Room
+	result := r.db.First(&room, id)
+	if result.Error != nil {
+		return result.Error
+	}
+
+	room.PrivateCode = &code
+	if err := r.db.Save(&room).Error; err != nil {
+		return err
+	}
+	return nil
 }
 
 func (r *Repo) Count(filter RoomFilter) (int64, error) {

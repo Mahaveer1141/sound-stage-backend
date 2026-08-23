@@ -333,3 +333,39 @@ func TestRepo_LoadTagsForRooms_Integration(t *testing.T) {
 		require.Empty(t, got)
 	})
 }
+
+func TestRepo_UpdatePrivateCode_Integration(t *testing.T) {
+	newRoom := func(t *testing.T, db *gorm.DB, name string, privateCode *string) Room {
+		t.Helper()
+		c := user.User{Email: name + "@example.com", FirstName: "Creator"}
+		require.NoError(t, db.Create(&c).Error)
+
+		room := Room{Name: name, Description: "A room", CreatorID: c.ID, Type: RoomTypePrivate, PrivateCode: privateCode}
+		require.NoError(t, db.Create(&room).Error)
+		return room
+	}
+
+	t.Run("replaces an existing private code", func(t *testing.T) {
+		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{})
+		repo := NewRepo(db)
+
+		oldCode := "stale-code"
+		room := newRoom(t, db, "Rotating Room", &oldCode)
+
+		require.NoError(t, repo.UpdatePrivateCode(room.ID, "fresh-code"))
+
+		var fetched Room
+		require.NoError(t, db.First(&fetched, room.ID).Error)
+		require.NotNil(t, fetched.PrivateCode)
+		require.Equal(t, "fresh-code", *fetched.PrivateCode)
+	})
+
+	t.Run("returns error when room not found", func(t *testing.T) {
+		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{})
+		repo := NewRepo(db)
+
+		err := repo.UpdatePrivateCode(9999, "secret-123")
+
+		require.ErrorIs(t, err, gorm.ErrRecordNotFound)
+	})
+}

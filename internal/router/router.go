@@ -77,6 +77,7 @@ func Setup(cfg *config.Config, handlers *Handlers, tokenValidator middleware.Tok
 		rooms.GET("/:id/users", handlers.Room.ListUsers)
 		rooms.GET("/:id/users/current", handlers.Room.CurrentRoomUser)
 		rooms.PUT("/:id/users/:userId/role", handlers.Room.UpdateUserRole)
+		rooms.PUT("/:id/private-code", handlers.Room.UpdatePrivateCode)
 	}
 
 	router.GET("/ws/rooms/:roomId", middleware.AuthMiddleware(tokenValidator), handlers.WS.ServeWS)
