@@ -29,7 +29,8 @@ func (RoomUser) TableName() string {
 }
 
 type RoomUserFilter struct {
-	Roles []string `form:"roles"`
+	Roles    []string `form:"roles"`
+	IsOnline *bool    `form:"isOnline"`
 }
 
 type RoomUserResponse struct {
@@ -95,10 +96,20 @@ func FilterByRoles(roles []string) func(*gorm.DB) *gorm.DB {
 	}
 }
 
+func FilterByIsOnline(isOnline *bool) func(*gorm.DB) *gorm.DB {
+	return func(db *gorm.DB) *gorm.DB {
+		if isOnline != nil {
+			return db.Where("is_online = ?", *isOnline)
+		}
+		return db
+	}
+}
+
 func Filters(f RoomUserFilter) func(*gorm.DB) *gorm.DB {
 	return func(db *gorm.DB) *gorm.DB {
 		return db.Scopes(
 			FilterByRoles(f.Roles),
+			FilterByIsOnline(f.IsOnline),
 		)
 	}
 }

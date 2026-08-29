@@ -78,6 +78,10 @@ func (s *Service) ListByRoomID(roomID uint, filter RoomUserFilter, sort listopts
 	return users, count, nil
 }
 
+func (s *Service) HasRoles(userID uint, roomID uint, permissions []role.RoleName) (bool, error) {
+	return s.repo.HasRoles(userID, roomID, permissions)
+}
+
 func (s *Service) UpdateRole(roomID uint, userID uint, roleName role.RoleName, actorID uint) error {
 	hasPermission, err := s.repo.HasRoles(actorID, roomID, role.RoleAssignmentPermissions[roleName])
 	if err != nil {

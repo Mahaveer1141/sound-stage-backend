@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 
+	"sound-stage-backend/internal/pkg/httpx"
 	"sound-stage-backend/internal/pkg/listopts"
 	"sound-stage-backend/internal/pkg/testutil"
 	"sound-stage-backend/internal/role"
@@ -77,6 +78,10 @@ func (m *mockRoomUserService) FindBy(userID, roomID uint) (*roomuser.RoomUser, e
 	args := m.Called(userID, roomID)
 	ru, _ := args.Get(0).(*roomuser.RoomUser)
 	return ru, args.Error(1)
+}
+func (m *mockRoomUserService) HasRoles(userID, roomID uint, permissions []role.RoleName) (bool, error) {
+	args := m.Called(userID, roomID, permissions)
+	return args.Bool(0), args.Error(1)
 }
 func (m *mockRoomUserService) UpdateRole(roomID, userID uint, roleName role.RoleName, actorID uint) error {
 	args := m.Called(roomID, userID, roleName, actorID)
@@ -171,27 +176,43 @@ func TestService_Update(t *testing.T) {
 		h := newHarness(t)
 		input := &UpdateRoomParams{Name: "Renamed"}
 		updated := &Room{Name: "Renamed"}
+		h.roomUser.On("HasRoles", uint(1), uint(3), []role.RoleName{role.RoleOwner, role.RoleAdmin}).Return(true, nil)
 		h.repo.On("FindByID", uint(3)).Return(&Room{PrivateCode: nil}, nil)
 		h.repo.On("Update", uint(3), input).Return(updated, nil)
 
-		got, err := h.svc.Update(3, input)
+		got, err := h.svc.Update(3, 1, input)
 
 		require.NoError(t, err)
 		assert.Same(t, updated, got)
 		h.repo.AssertExpectations(t)
+		h.roomUser.AssertExpectations(t)
+	})
+
+	t.Run("failure: actor without permission returns ErrForbidden", func(t *testing.T) {
+		h := newHarness(t)
+		input := &UpdateRoomParams{Name: "Renamed"}
+		h.roomUser.On("HasRoles", uint(1), uint(3), []role.RoleName{role.RoleOwner, role.RoleAdmin}).Return(false, nil)
+
+		got, err := h.svc.Update(3, 1, input)
+
+		require.Nil(t, got)
+		require.ErrorIs(t, err, httpx.ErrForbidden)
+		h.roomUser.AssertExpectations(t)
 	})
 
 	t.Run("failure: repo error propagated", func(t *testing.T) {
 		h := newHarness(t)
 		input := &UpdateRoomParams{Name: "Renamed"}
 		repoErr := errors.New("room not found")
+		h.roomUser.On("HasRoles", uint(1), uint(3), []role.RoleName{role.RoleOwner, role.RoleAdmin}).Return(true, nil)
 		h.repo.On("FindByID", uint(3)).Return(nil, repoErr)
 
-		got, err := h.svc.Update(3, input)
+		got, err := h.svc.Update(3, 1, input)
 
 		require.Nil(t, got)
 		require.ErrorIs(t, err, repoErr)
 		h.repo.AssertExpectations(t)
+		h.roomUser.AssertExpectations(t)
 	})
 }
 
@@ -386,5 +407,63 @@ func TestService_UpdatePrivateCode(t *testing.T) {
 
 		require.ErrorIs(t, err, repoErr)
 		h.repo.AssertExpectations(t)
+	})
+}
+
+func TestService_AddRoomUser(t *testing.T) {
+	t.Run("success: adds user to a public room", func(t *testing.T) {
+		h := newHarness(t)
+		created := &roomuser.RoomUser{UserID: 1, RoomID: 4}
+		h.roomUser.On("FindBy", uint(1), uint(4)).Return(nil, nil)
+		h.repo.On("FindByID", uint(4)).Return(&Room{Type: RoomTypePublic}, nil)
+		h.roomUser.On("Create", (*gorm.DB)(nil), uint(1), uint(4), role.RoleListener).Return(created, nil)
+
+		got, err := h.svc.AddRoomUser(4, 1, "")
+
+		require.NoError(t, err)
+		assert.Same(t, created, got)
+		h.repo.AssertExpectations(t)
+		h.roomUser.AssertExpectations(t)
+	})
+
+	t.Run("success: rejoins existing member", func(t *testing.T) {
+		h := newHarness(t)
+		existing := &roomuser.RoomUser{UserID: 1, RoomID: 4}
+		h.roomUser.On("FindBy", uint(1), uint(4)).Return(existing, nil)
+		h.roomUser.On("Rejoin", existing).Return(nil)
+
+		got, err := h.svc.AddRoomUser(4, 1, "")
+
+		require.NoError(t, err)
+		assert.Same(t, existing, got)
+		h.roomUser.AssertExpectations(t)
+	})
+
+	t.Run("failure: wrong private code returns ErrForbidden", func(t *testing.T) {
+		h := newHarness(t)
+		code := "secret-123"
+		h.roomUser.On("FindBy", uint(1), uint(4)).Return(nil, nil)
+		h.repo.On("FindByID", uint(4)).Return(&Room{Type: RoomTypePrivate, PrivateCode: &code}, nil)
+
+		got, err := h.svc.AddRoomUser(4, 1, "wrong")
+
+		require.Nil(t, got)
+		require.ErrorIs(t, err, httpx.ErrForbidden)
+		h.repo.AssertExpectations(t)
+		h.roomUser.AssertExpectations(t)
+	})
+
+	t.Run("failure: room lookup error is propagated", func(t *testing.T) {
+		h := newHarness(t)
+		findErr := errors.New("db down")
+		h.roomUser.On("FindBy", uint(1), uint(4)).Return(nil, nil)
+		h.repo.On("FindByID", uint(4)).Return(nil, findErr)
+
+		got, err := h.svc.AddRoomUser(4, 1, "")
+
+		require.Nil(t, got)
+		require.ErrorIs(t, err, findErr)
+		h.repo.AssertExpectations(t)
+		h.roomUser.AssertExpectations(t)
 	})
 }

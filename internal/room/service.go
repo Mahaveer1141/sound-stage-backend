@@ -19,6 +19,7 @@ type roomUserService interface {
 	ListByRoomID(roomID uint, filter roomuser.RoomUserFilter, sort listopts.Sort, p listopts.Pagination) ([]roomuser.RoomUser, int64, error)
 	FindBy(userID uint, roomID uint) (*roomuser.RoomUser, error)
 	UpdateRole(roomID uint, userID uint, role role.RoleName, actorID uint) error
+	HasRoles(userID uint, roomID uint, permissions []role.RoleName) (bool, error)
 }
 
 type repository interface {
@@ -69,7 +70,15 @@ func (s *Service) Create(input *CreateRoomParams) (*Room, error) {
 	return room, nil
 }
 
-func (s *Service) Update(id uint, input *UpdateRoomParams) (*Room, error) {
+func (s *Service) Update(id, userID uint, input *UpdateRoomParams) (*Room, error) {
+	ok, err := s.roomUserService.HasRoles(userID, id, []role.RoleName{role.RoleOwner, role.RoleAdmin})
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, httpx.ErrForbidden
+	}
+
 	room, err := s.repo.FindByID(id)
 	if err != nil {
 		return nil, err

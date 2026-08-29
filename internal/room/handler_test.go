@@ -37,8 +37,8 @@ func (m *mockRoomService) Create(input *CreateRoomParams) (*Room, error) {
 	r, _ := args.Get(0).(*Room)
 	return r, args.Error(1)
 }
-func (m *mockRoomService) Update(id uint, input *UpdateRoomParams) (*Room, error) {
-	args := m.Called(id, input)
+func (m *mockRoomService) Update(id, userID uint, input *UpdateRoomParams) (*Room, error) {
+	args := m.Called(id, userID, input)
 	r, _ := args.Get(0).(*Room)
 	return r, args.Error(1)
 }
@@ -136,10 +136,11 @@ func TestHandler_Update(t *testing.T) {
 	t.Run("success: updates room and returns 200", func(t *testing.T) {
 		h := newHandlerHarness(t)
 		updated := &Room{Name: "Renamed"}
-		h.svc.On("Update", uint(5), mock.AnythingOfType("*room.UpdateRoomParams")).Return(updated, nil)
+		h.svc.On("Update", uint(5), uint(42), mock.AnythingOfType("*room.UpdateRoomParams")).Return(updated, nil)
 
 		w, c := testutil.NewTestContext(http.MethodPatch, "/rooms/5", UpdateRoomParams{Name: "Renamed", Type: RoomTypePublic})
 		c.Params = gin.Params{{Key: "id", Value: "5"}}
+		c.Set("userId", uint(42))
 
 		h.handler.Update(c)
 
@@ -152,19 +153,21 @@ func TestHandler_Update(t *testing.T) {
 
 		w, c := testutil.NewTestContext(http.MethodPatch, "/rooms/abc", UpdateRoomParams{Name: "Renamed", Type: RoomTypePublic})
 		c.Params = gin.Params{{Key: "id", Value: "abc"}}
+		c.Set("userId", uint(42))
 
 		h.handler.Update(c)
 
 		assert.Equal(t, http.StatusBadRequest, w.Code)
-		h.svc.AssertNotCalled(t, "Update", mock.Anything, mock.Anything)
+		h.svc.AssertNotCalled(t, "Update", mock.Anything, mock.Anything, mock.Anything)
 	})
 
 	t.Run("failure: service error returns 422", func(t *testing.T) {
 		h := newHandlerHarness(t)
-		h.svc.On("Update", uint(5), mock.Anything).Return(nil, assert.AnError)
+		h.svc.On("Update", uint(5), uint(42), mock.Anything).Return(nil, assert.AnError)
 
 		w, c := testutil.NewTestContext(http.MethodPatch, "/rooms/5", UpdateRoomParams{Name: "Renamed", Type: RoomTypePublic})
 		c.Params = gin.Params{{Key: "id", Value: "5"}}
+		c.Set("userId", uint(42))
 
 		h.handler.Update(c)
 
@@ -434,6 +437,64 @@ func TestHandler_CurrentRoomUser(t *testing.T) {
 		c.Set("userId", uint(1))
 
 		h.handler.CurrentRoomUser(c)
+
+		assert.Equal(t, http.StatusUnprocessableEntity, w.Code)
+		h.svc.AssertExpectations(t)
+	})
+}
+
+func TestHandler_AddRoomUser(t *testing.T) {
+	t.Run("success: adds user to room and returns 200", func(t *testing.T) {
+		h := newHandlerHarness(t)
+		want := &roomuser.RoomUser{UserID: 1, RoomID: 4}
+		h.svc.On("AddRoomUser", uint(4), uint(1), "secret").Return(want, nil)
+
+		w, c := testutil.NewTestContext(http.MethodPost, "/rooms/4/users", AddRoomUserInput{PrivateCode: "secret"})
+		c.Params = gin.Params{{Key: "id", Value: "4"}}
+		c.Set("userId", uint(1))
+
+		h.handler.AddRoomUser(c)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		h.svc.AssertExpectations(t)
+	})
+
+	t.Run("failure: non-numeric room ID returns 400 before service is called", func(t *testing.T) {
+		h := newHandlerHarness(t)
+
+		w, c := testutil.NewTestContext(http.MethodPost, "/rooms/abc/users", AddRoomUserInput{})
+		c.Params = gin.Params{{Key: "id", Value: "abc"}}
+		c.Set("userId", uint(1))
+
+		h.handler.AddRoomUser(c)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		h.svc.AssertNotCalled(t, "AddRoomUser", mock.Anything, mock.Anything, mock.Anything)
+	})
+
+	t.Run("failure: incorrect private code returns 403", func(t *testing.T) {
+		h := newHandlerHarness(t)
+		h.svc.On("AddRoomUser", uint(4), uint(1), "wrong").Return(nil, httpx.ErrForbidden)
+
+		w, c := testutil.NewTestContext(http.MethodPost, "/rooms/4/users", AddRoomUserInput{PrivateCode: "wrong"})
+		c.Params = gin.Params{{Key: "id", Value: "4"}}
+		c.Set("userId", uint(1))
+
+		h.handler.AddRoomUser(c)
+
+		assert.Equal(t, http.StatusForbidden, w.Code)
+		h.svc.AssertExpectations(t)
+	})
+
+	t.Run("failure: service error returns 422", func(t *testing.T) {
+		h := newHandlerHarness(t)
+		h.svc.On("AddRoomUser", uint(4), uint(1), "").Return(nil, assert.AnError)
+
+		w, c := testutil.NewTestContext(http.MethodPost, "/rooms/4/users", AddRoomUserInput{})
+		c.Params = gin.Params{{Key: "id", Value: "4"}}
+		c.Set("userId", uint(1))
+
+		h.handler.AddRoomUser(c)
 
 		assert.Equal(t, http.StatusUnprocessableEntity, w.Code)
 		h.svc.AssertExpectations(t)

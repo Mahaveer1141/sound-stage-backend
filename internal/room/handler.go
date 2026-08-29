@@ -18,7 +18,7 @@ type roomService interface {
 	List(filter RoomFilter, sort listopts.Sort, p listopts.Pagination) ([]Room, int64, error)
 	FindByID(id uint) (*Room, error)
 	Create(input *CreateRoomParams) (*Room, error)
-	Update(id uint, input *UpdateRoomParams) (*Room, error)
+	Update(id, userID uint, input *UpdateRoomParams) (*Room, error)
 	ListUsers(roomID uint, filter roomuser.RoomUserFilter, sort listopts.Sort, p listopts.Pagination) ([]roomuser.RoomUser, int64, error)
 	UpdateUserRole(roomID uint, userID uint, newRole role.RoleName, actorID uint) error
 	CurrentRoomUser(roomID uint, userID uint) (*roomuser.RoomUser, error)
@@ -69,6 +69,7 @@ func (h *Handler) Update(c *gin.Context) {
 		httpx.ErrorResponse(c, http.StatusBadRequest, "Invalid room ID")
 		return
 	}
+	userId, _ := c.Get("userId")
 
 	var input UpdateRoomParams
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -81,8 +82,12 @@ func (h *Handler) Update(c *gin.Context) {
 		return
 	}
 
-	room, err := h.service.Update(uint(roomId), &input)
+	room, err := h.service.Update(uint(roomId), userId.(uint), &input)
 	if err != nil {
+		if errors.Is(err, httpx.ErrForbidden) {
+			httpx.ErrorResponse(c, http.StatusForbidden, "You are not allowed to update this room")
+			return
+		}
 		httpx.ErrorResponse(c, http.StatusUnprocessableEntity, "Failed to update room")
 		return
 	}
