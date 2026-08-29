@@ -3,6 +3,7 @@ package middleware
 import (
 	"net/http"
 	apitoken "sound-stage-backend/internal/api_token"
+	"sound-stage-backend/internal/pkg/current"
 	"sound-stage-backend/internal/pkg/httpx"
 	"strings"
 
@@ -34,7 +35,7 @@ func AuthMiddleware(apiTokenService TokenValidator) gin.HandlerFunc {
 			return
 		}
 
-		c.Set("userId", userID)
+		current.Set(c, userID)
 		c.Next()
 	}
 }

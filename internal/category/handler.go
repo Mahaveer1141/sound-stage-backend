@@ -27,5 +27,7 @@ func (h *Handler) List(c *gin.Context) {
 		return
 	}
 
-	httpx.SuccessResponse(c, http.StatusOK, "Categories fetched successfully", categories)
+	responses := BuildCategoryListResponse(categories)
+
+	httpx.SuccessResponse(c, http.StatusOK, "Categories fetched successfully", responses)
 }

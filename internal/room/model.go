@@ -21,9 +21,9 @@ const (
 
 type Room struct {
 	model.BaseModel
-	Name        string              `gorm:"not null" json:"name" validate:"required"`
-	Description string              `json:"description" validate:"required"`
-	CreatorID   uint                `json:"creatorID" validate:"required"`
+	Name        string              `gorm:"not null" validate:"required"`
+	Description string              `validate:"required"`
+	CreatorID   uint                `validate:"required"`
 	Creator     user.User           `gorm:"foreignKey:CreatorID"`
 	Users       []user.User         `gorm:"many2many:room_users"`
 	Categories  []category.Category `gorm:"many2many:room_categories"`
@@ -62,6 +62,16 @@ type UpdateRoomParams struct {
 
 type AddRoomUserInput struct {
 	PrivateCode string `json:"privateCode"`
+}
+
+type RoomResponse struct {
+	ID          uint                        `json:"id"`
+	Name        string                      `json:"name"`
+	Description string                      `json:"description"`
+	Type        RoomType                    `json:"type"`
+	PrivateCode *string                     `json:"privateCode,omitempty"`
+	Categories  []category.CategoryResponse `json:"categories,omitempty"`
+	Tags        []tag.TagResponse           `json:"tags,omitempty"`
 }
 
 type RoomFilter struct {

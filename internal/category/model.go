@@ -6,8 +6,14 @@ import (
 
 type Category struct {
 	model.BaseModel
-	Name        string  `gorm:"type:citext;not null;uniqueIndex" json:"name" validate:"required"`
-	Description *string `json:"description,omitempty" validate:"omitempty"`
+	Name        string `gorm:"type:citext;not null;uniqueIndex"`
+	Description *string
+}
+
+type CategoryResponse struct {
+	ID          uint    `json:"id"`
+	Name        string  `json:"name"`
+	Description *string `json:"description"`
 }
 
 func (Category) TableName() string {

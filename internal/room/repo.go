@@ -49,7 +49,7 @@ func (r *Repo) List(filter RoomFilter, sort listopts.Sort, p listopts.Pagination
 
 func (r *Repo) FindByID(id uint) (*Room, error) {
 	var room Room
-	result := r.db.Preload("Creator").Where("id = ?", id).First(&room)
+	result := r.db.Preload("Creator").Preload("Categories").First(&room, id)
 	if result.Error != nil {
 		return nil, result.Error
 	}

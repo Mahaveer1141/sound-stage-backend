@@ -43,7 +43,16 @@ func NewService(r repository, roomUserSvc roomUserService, db *gorm.DB) *Service
 }
 
 func (s *Service) FindByID(id uint) (*Room, error) {
-	return s.repo.FindByID(id)
+	tagToRooms, err := s.repo.LoadTagsForRooms([]uint{id})
+	if err != nil {
+		return nil, err
+	}
+	room, err := s.repo.FindByID(id)
+	if err != nil {
+		return nil, err
+	}
+	room.Tags = tagToRooms[id]
+	return room, nil
 }
 
 func (s *Service) Create(input *CreateRoomParams) (*Room, error) {

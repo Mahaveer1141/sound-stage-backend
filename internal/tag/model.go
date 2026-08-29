@@ -11,7 +11,12 @@ import (
 
 type Tag struct {
 	model.BaseModel
-	Name string `gorm:"type:citext;not null;uniqueIndex" json:"name" validate:"required"`
+	Name string `gorm:"type:citext;not null;uniqueIndex"`
+}
+
+type TagResponse struct {
+	ID   uint   `json:"id"`
+	Name string `json:"name"`
 }
 
 func (Tag) TableName() string {

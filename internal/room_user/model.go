@@ -17,11 +17,11 @@ type RoomUser struct {
 	UserID       uint
 	RoomID       uint
 	RoleID       uint
-	User         user.User `gorm:"foreignKey:UserID" json:"user"`
-	Role         role.Role `gorm:"foreignKey:RoleID" json:"role"`
-	LastJoinedAt time.Time `json:"lastJoinedAt"`
-	LastLeftAt   time.Time `json:"lastLeftAt"`
-	IsOnline     bool      `json:"isOnline"`
+	User         user.User `gorm:"foreignKey:UserID"`
+	Role         role.Role `gorm:"foreignKey:RoleID"`
+	LastJoinedAt time.Time
+	LastLeftAt   time.Time
+	IsOnline     bool
 }
 
 func (RoomUser) TableName() string {
@@ -34,17 +34,16 @@ type RoomUserFilter struct {
 }
 
 type RoomUserResponse struct {
-	ID           uint      `json:"id"`
-	User         user.User `json:"user"`
-	Role         role.Role `json:"role"`
-	CreatedAt    time.Time `json:"createdAt"`
-	LastJoinedAt time.Time `json:"lastJoinedAt"`
-	LastLeftAt   time.Time `json:"lastLeftAt"`
-	IsOnline     bool      `json:"isOnline"`
-	CanManage    bool      `json:"canManage"`
-	CanSpeak     bool      `json:"canSpeak"`
-	IsAdmin      bool      `json:"isAdmin"`
-	IsOwner      bool      `json:"isOwner"`
+	ID           uint              `json:"id"`
+	User         user.UserResponse `json:"user"`
+	Role         role.RoleResponse `json:"role"`
+	LastJoinedAt string            `json:"lastJoinedAt"`
+	LastLeftAt   string            `json:"lastLeftAt"`
+	IsOnline     bool              `json:"isOnline"`
+	CanManage    bool              `json:"canManage"`
+	CanSpeak     bool              `json:"canSpeak"`
+	IsAdmin      bool              `json:"isAdmin"`
+	IsOwner      bool              `json:"isOwner"`
 }
 
 var allowedUserSortFields = map[string]string{
@@ -69,22 +68,6 @@ func (ru *RoomUser) CanManage() bool {
 
 func (ru *RoomUser) CanSpeak() bool {
 	return ru.CanManage() || ru.Role.Name == string(role.RoleSpeaker)
-}
-
-func (ru *RoomUser) ToResponse() RoomUserResponse {
-	return RoomUserResponse{
-		ID:           ru.ID,
-		User:         ru.User,
-		Role:         ru.Role,
-		CreatedAt:    ru.CreatedAt,
-		LastJoinedAt: ru.LastJoinedAt,
-		LastLeftAt:   ru.LastLeftAt,
-		IsOnline:     ru.IsOnline,
-		CanManage:    ru.CanManage(),
-		CanSpeak:     ru.CanSpeak(),
-		IsAdmin:      ru.IsAdmin(),
-		IsOwner:      ru.IsOwner(),
-	}
 }
 
 func FilterByRoles(roles []string) func(*gorm.DB) *gorm.DB {

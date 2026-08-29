@@ -258,10 +258,13 @@ func TestHandler_FindByID(t *testing.T) {
 	t.Run("success: returns 200 with room", func(t *testing.T) {
 		h := newHandlerHarness(t)
 		want := &Room{Name: "Main Stage"}
+		want.ID = 7
 		h.svc.On("FindByID", uint(7)).Return(want, nil)
+		h.svc.On("CurrentRoomUser", uint(7), uint(1)).Return(&roomuser.RoomUser{Role: role.Role{Name: string(role.RoleListener)}}, nil)
 
 		w, c := testutil.NewTestContext(http.MethodGet, "/rooms/7", nil)
 		c.Params = gin.Params{{Key: "id", Value: "7"}}
+		c.Set("userId", uint(1))
 
 		h.handler.FindByID(c)
 
@@ -300,9 +303,11 @@ func TestHandler_ListUsers(t *testing.T) {
 		h := newHandlerHarness(t)
 		users := []roomuser.RoomUser{{UserID: 1}, {UserID: 2}}
 		h.svc.On("ListUsers", uint(4), mock.Anything, mock.Anything, mock.Anything).Return(users, int64(2), nil)
+		h.svc.On("CurrentRoomUser", uint(4), uint(1)).Return(&roomuser.RoomUser{Role: role.Role{Name: string(role.RoleListener)}}, nil)
 
 		w, c := testutil.NewTestContext(http.MethodGet, "/rooms/4/users?page=1&pageSize=10", nil)
 		c.Params = gin.Params{{Key: "id", Value: "4"}}
+		c.Set("userId", uint(1))
 
 		h.handler.ListUsers(c)
 

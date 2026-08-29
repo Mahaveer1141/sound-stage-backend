@@ -217,7 +217,7 @@ func TestRepo_FindByID_Unit(t *testing.T) {
 		repo := NewRepo(gdb)
 
 		mock.ExpectQuery(
-			`(?s)SELECT \* FROM "rooms" WHERE id = \$1 AND "rooms"\."deleted_at" IS NULL ORDER BY "rooms"\."id" LIMIT \$2`,
+			`(?s)SELECT \* FROM "rooms" WHERE "rooms"\."id" = \$1 AND "rooms"\."deleted_at" IS NULL ORDER BY "rooms"\."id" LIMIT \$2`,
 		).
 			WithArgs(1, 1).
 			WillReturnError(gorm.ErrRecordNotFound)
@@ -235,7 +235,7 @@ func TestRepo_FindByID_Unit(t *testing.T) {
 		repo := NewRepo(gdb)
 
 		mock.ExpectQuery(
-			`(?s)SELECT \* FROM "rooms" WHERE id = \$1 AND "rooms"\."deleted_at" IS NULL ORDER BY "rooms"\."id" LIMIT \$2`,
+			`(?s)SELECT \* FROM "rooms" WHERE "rooms"\."id" = \$1 AND "rooms"\."deleted_at" IS NULL ORDER BY "rooms"\."id" LIMIT \$2`,
 		).
 			WithArgs(1, 1).
 			WillReturnError(assert.AnError)

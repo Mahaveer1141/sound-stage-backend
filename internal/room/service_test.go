@@ -107,21 +107,37 @@ func newHarness(t *testing.T) *harness {
 }
 
 func TestService_FindByID(t *testing.T) {
-	t.Run("success: returns room from repo", func(t *testing.T) {
+	t.Run("success: returns room with tags from repo", func(t *testing.T) {
 		h := newHarness(t)
 		want := &Room{Name: "Main Stage"}
+		tags := map[uint][]tag.Tag{1: {{Name: "jazz"}}}
+		h.repo.On("LoadTagsForRooms", []uint{1}).Return(tags, nil)
 		h.repo.On("FindByID", uint(1)).Return(want, nil)
 
 		got, err := h.svc.FindByID(1)
 
 		require.NoError(t, err)
 		assert.Same(t, want, got)
+		assert.Equal(t, tags[1], got.Tags)
+		h.repo.AssertExpectations(t)
+	})
+
+	t.Run("failure: LoadTagsForRooms error is propagated", func(t *testing.T) {
+		h := newHarness(t)
+		tagsErr := errors.New("tags failed")
+		h.repo.On("LoadTagsForRooms", []uint{99}).Return(nil, tagsErr)
+
+		got, err := h.svc.FindByID(99)
+
+		require.Nil(t, got)
+		require.ErrorIs(t, err, tagsErr)
 		h.repo.AssertExpectations(t)
 	})
 
 	t.Run("failure: repo error propagated", func(t *testing.T) {
 		h := newHarness(t)
 		repoErr := errors.New("not found")
+		h.repo.On("LoadTagsForRooms", []uint{99}).Return(map[uint][]tag.Tag{}, nil)
 		h.repo.On("FindByID", uint(99)).Return(nil, repoErr)
 
 		got, err := h.svc.FindByID(99)

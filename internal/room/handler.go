@@ -3,6 +3,7 @@ package room
 import (
 	"errors"
 	"net/http"
+	"sound-stage-backend/internal/pkg/current"
 	"sound-stage-backend/internal/pkg/httpx"
 	"sound-stage-backend/internal/pkg/listopts"
 	"sound-stage-backend/internal/role"
@@ -41,13 +42,13 @@ func NewHandler(service roomService, hub webSocketBroadcaster) *Handler {
 }
 
 func (h *Handler) Create(c *gin.Context) {
-	userId, _ := c.Get("userId")
+	userId, _ := current.UserID(c)
 	var input CreateRoomParams
 	if err := c.ShouldBindJSON(&input); err != nil {
 		httpx.ErrorResponse(c, http.StatusBadRequest, "Invalid request payload")
 		return
 	}
-	input.CreatorID = userId.(uint)
+	input.CreatorID = userId
 	if err := h.validate.Struct(input); err != nil {
 		httpx.ErrorResponse(c, http.StatusUnprocessableEntity, "Validation error: "+err.Error())
 		return
@@ -59,7 +60,8 @@ func (h *Handler) Create(c *gin.Context) {
 		return
 	}
 
-	httpx.SuccessResponse(c, http.StatusOK, "Room created successfully", room)
+	viewer, _ := h.service.CurrentRoomUser(room.ID, userId)
+	httpx.SuccessResponse(c, http.StatusOK, "Room created successfully", BuildRoomResponse(room, viewer))
 }
 
 func (h *Handler) Update(c *gin.Context) {
@@ -69,7 +71,7 @@ func (h *Handler) Update(c *gin.Context) {
 		httpx.ErrorResponse(c, http.StatusBadRequest, "Invalid room ID")
 		return
 	}
-	userId, _ := c.Get("userId")
+	userId, _ := current.UserID(c)
 
 	var input UpdateRoomParams
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -82,7 +84,7 @@ func (h *Handler) Update(c *gin.Context) {
 		return
 	}
 
-	room, err := h.service.Update(uint(roomId), userId.(uint), &input)
+	room, err := h.service.Update(uint(roomId), userId, &input)
 	if err != nil {
 		if errors.Is(err, httpx.ErrForbidden) {
 			httpx.ErrorResponse(c, http.StatusForbidden, "You are not allowed to update this room")
@@ -92,7 +94,8 @@ func (h *Handler) Update(c *gin.Context) {
 		return
 	}
 
-	httpx.SuccessResponse(c, http.StatusOK, "Room updated successfully", room)
+	viewer, _ := h.service.CurrentRoomUser(room.ID, userId)
+	httpx.SuccessResponse(c, http.StatusOK, "Room updated successfully", BuildRoomResponse(room, viewer))
 }
 
 func (h *Handler) List(c *gin.Context) {
@@ -124,7 +127,9 @@ func (h *Handler) List(c *gin.Context) {
 		return
 	}
 
-	httpx.PaginatedSuccessResponse(c, "Rooms fetched successfully", rooms, p.Page, p.PageSize, int(count))
+	responses := BuildRoomListResponse(rooms, nil)
+
+	httpx.PaginatedSuccessResponse(c, "Rooms fetched successfully", responses, p.Page, p.PageSize, int(count))
 }
 
 func (h *Handler) FindByID(c *gin.Context) {
@@ -141,7 +146,10 @@ func (h *Handler) FindByID(c *gin.Context) {
 		return
 	}
 
-	httpx.SuccessResponse(c, http.StatusOK, "Room fetched successfully", room)
+	currentUserID, _ := current.UserID(c)
+	viewerRoomUser, _ := h.service.CurrentRoomUser(room.ID, currentUserID)
+
+	httpx.SuccessResponse(c, http.StatusOK, "Room fetched successfully", BuildRoomResponse(room, viewerRoomUser))
 }
 
 func (h *Handler) ListUsers(c *gin.Context) {
@@ -180,10 +188,11 @@ func (h *Handler) ListUsers(c *gin.Context) {
 		return
 	}
 
-	userResponses := make([]roomuser.RoomUserResponse, len(users))
-	for i := range users {
-		userResponses[i] = users[i].ToResponse()
-	}
+	currentUserID, _ := current.UserID(c)
+	viewerRoomUser, _ := h.service.CurrentRoomUser(uint(roomId), currentUserID)
+	viewerIsAdmin := viewerRoomUser != nil && viewerRoomUser.IsAdmin()
+
+	userResponses := roomuser.BuildRoomUserListResponse(users, currentUserID, viewerIsAdmin)
 
 	httpx.PaginatedSuccessResponse(c, "Room users fetched successfully", userResponses, p.Page, p.PageSize, int(count))
 }
@@ -231,15 +240,15 @@ func (h *Handler) CurrentRoomUser(c *gin.Context) {
 		httpx.ErrorResponse(c, http.StatusBadRequest, "Invalid room ID")
 		return
 	}
-	userId, _ := c.Get("userId")
-	userID, _ := userId.(uint)
+	userID, _ := current.UserID(c)
 
 	ru, err := h.service.CurrentRoomUser(uint(roomId), userID)
 	if err != nil || ru == nil {
 		httpx.ErrorResponse(c, http.StatusUnprocessableEntity, "Failed to fetch user")
 		return
 	}
-	httpx.SuccessResponse(c, http.StatusOK, "Successfully fetch the user", ru.ToResponse())
+	viewerIsAdmin := ru.IsAdmin()
+	httpx.SuccessResponse(c, http.StatusOK, "Successfully fetch the user", roomuser.BuildRoomUserResponse(ru, userID, viewerIsAdmin))
 }
 
 func (h *Handler) UpdatePrivateCode(c *gin.Context) {
@@ -267,8 +276,7 @@ func (h *Handler) AddRoomUser(c *gin.Context) {
 		return
 	}
 
-	userId, _ := c.Get("userId")
-	userID, _ := userId.(uint)
+	userID, _ := current.UserID(c)
 
 	var input AddRoomUserInput
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -286,5 +294,6 @@ func (h *Handler) AddRoomUser(c *gin.Context) {
 		return
 	}
 
-	httpx.SuccessResponse(c, http.StatusOK, "User added to room", ru.ToResponse())
+	viewerIsAdmin := ru.IsAdmin()
+	httpx.SuccessResponse(c, http.StatusOK, "User added to room", roomuser.BuildRoomUserResponse(ru, userID, viewerIsAdmin))
 }

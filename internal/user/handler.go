@@ -22,13 +22,13 @@ func NewHandler(service userService) *Handler {
 
 func (h *Handler) CurrentUser(c *gin.Context) {
 	userId, _ := c.Get("userId")
-	user, err := h.service.FindByID(userId.(uint))
+	u, err := h.service.FindByID(userId.(uint))
 	if err != nil {
 		httpx.ErrorResponse(c, http.StatusInternalServerError, "Failed to fetch user")
 		return
 	}
 
-	httpx.SuccessResponse(c, http.StatusOK, "User fetched successfully", user)
+	httpx.SuccessResponse(c, http.StatusOK, "User fetched successfully", BuildUserResponse(u, true))
 }
 
 func (h *Handler) UpdateProfile(c *gin.Context) {
@@ -40,11 +40,11 @@ func (h *Handler) UpdateProfile(c *gin.Context) {
 		return
 	}
 
-	user, err := h.service.UpdateProfile(userId.(uint), &input)
+	u, err := h.service.UpdateProfile(userId.(uint), &input)
 	if err != nil {
 		httpx.ErrorResponse(c, http.StatusInternalServerError, "Failed to update profile")
 		return
 	}
 
-	httpx.SuccessResponse(c, http.StatusOK, "Profile updated successfully", user)
+	httpx.SuccessResponse(c, http.StatusOK, "Profile updated successfully", BuildUserResponse(u, true))
 }

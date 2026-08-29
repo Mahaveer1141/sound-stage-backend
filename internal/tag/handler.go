@@ -35,13 +35,13 @@ func (h *Handler) Create(c *gin.Context) {
 		return
 	}
 
-	tag, err := h.service.Create(&input)
+	t, err := h.service.Create(&input)
 	if err != nil {
 		httpx.ErrorResponse(c, http.StatusUnprocessableEntity, "Failed to create tag")
 		return
 	}
 
-	httpx.SuccessResponse(c, http.StatusOK, "Tag created successfully", tag)
+	httpx.SuccessResponse(c, http.StatusOK, "Tag created successfully", BuildTagResponse(t))
 }
 
 func (h *Handler) List(c *gin.Context) {
@@ -73,5 +73,7 @@ func (h *Handler) List(c *gin.Context) {
 		return
 	}
 
-	httpx.PaginatedSuccessResponse(c, "Tags fetched successfully", tags, p.Page, p.PageSize, int(count))
+	responses := BuildTagListResponse(tags)
+
+	httpx.PaginatedSuccessResponse(c, "Tags fetched successfully", responses, p.Page, p.PageSize, int(count))
 }
