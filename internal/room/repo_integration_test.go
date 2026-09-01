@@ -130,6 +130,95 @@ func TestRepo_List_Integration(t *testing.T) {
 		require.Equal(t, "Alpha Room", got[0].Name)
 		require.Equal(t, "Another Room", got[1].Name)
 	})
+
+	t.Run("filters rooms by category ids", func(t *testing.T) {
+		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{})
+		repo := NewRepo(db)
+
+		c := user.User{Email: "creator@example.com", FirstName: "Creator"}
+		require.NoError(t, db.Create(&c).Error)
+
+		cat1 := category.Category{Name: "Concert"}
+		cat2 := category.Category{Name: "Podcast"}
+		require.NoError(t, db.Create(&cat1).Error)
+		require.NoError(t, db.Create(&cat2).Error)
+
+		room1 := Room{Name: "Room One", CreatorID: c.ID}
+		room2 := Room{Name: "Room Two", CreatorID: c.ID}
+		room3 := Room{Name: "Room Three", CreatorID: c.ID}
+		require.NoError(t, db.Create(&room1).Error)
+		require.NoError(t, db.Create(&room2).Error)
+		require.NoError(t, db.Create(&room3).Error)
+
+		require.NoError(t, db.Create(&roomcategory.RoomCategory{RoomID: room1.ID, CategoryID: cat1.ID}).Error)
+		require.NoError(t, db.Create(&roomcategory.RoomCategory{RoomID: room2.ID, CategoryID: cat2.ID}).Error)
+
+		got, err := repo.List(
+			RoomFilter{CategoryIds: []uint{cat1.ID}},
+			listopts.Sort{Field: "name", Order: "asc"},
+			listopts.Pagination{Page: 1, PageSize: 10},
+		)
+
+		require.NoError(t, err)
+		require.Len(t, got, 1)
+		require.Equal(t, "Room One", got[0].Name)
+	})
+
+	t.Run("filters rooms by tag ids", func(t *testing.T) {
+		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{})
+		repo := NewRepo(db)
+
+		c := user.User{Email: "creator@example.com", FirstName: "Creator"}
+		require.NoError(t, db.Create(&c).Error)
+
+		tag1 := tag.Tag{Name: "jazz"}
+		tag2 := tag.Tag{Name: "rock"}
+		require.NoError(t, db.Create(&tag1).Error)
+		require.NoError(t, db.Create(&tag2).Error)
+
+		room1 := Room{Name: "Room One", CreatorID: c.ID}
+		room2 := Room{Name: "Room Two", CreatorID: c.ID}
+		room3 := Room{Name: "Room Three", CreatorID: c.ID}
+		require.NoError(t, db.Create(&room1).Error)
+		require.NoError(t, db.Create(&room2).Error)
+		require.NoError(t, db.Create(&room3).Error)
+
+		require.NoError(t, db.Create(&tagging.Tagging{TagID: tag1.ID, TaggableID: room1.ID, TaggableType: "Room"}).Error)
+		require.NoError(t, db.Create(&tagging.Tagging{TagID: tag2.ID, TaggableID: room2.ID, TaggableType: "Room"}).Error)
+
+		got, err := repo.List(
+			RoomFilter{TagIds: []uint{tag1.ID}},
+			listopts.Sort{Field: "name", Order: "asc"},
+			listopts.Pagination{Page: 1, PageSize: 10},
+		)
+
+		require.NoError(t, err)
+		require.Len(t, got, 1)
+		require.Equal(t, "Room One", got[0].Name)
+	})
+
+	t.Run("filters rooms by type", func(t *testing.T) {
+		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{})
+		repo := NewRepo(db)
+
+		c := user.User{Email: "creator@example.com", FirstName: "Creator"}
+		require.NoError(t, db.Create(&c).Error)
+
+		require.NoError(t, db.Create(&Room{Name: "Public Room", CreatorID: c.ID, Type: RoomTypePublic}).Error)
+		require.NoError(t, db.Create(&Room{Name: "Private Room", CreatorID: c.ID, Type: RoomTypePrivate}).Error)
+		require.NoError(t, db.Create(&Room{Name: "Another Public", CreatorID: c.ID, Type: RoomTypePublic}).Error)
+
+		roomType := RoomTypePrivate
+		got, err := repo.List(
+			RoomFilter{Type: &roomType},
+			listopts.Sort{Field: "name", Order: "asc"},
+			listopts.Pagination{Page: 1, PageSize: 10},
+		)
+
+		require.NoError(t, err)
+		require.Len(t, got, 1)
+		require.Equal(t, "Private Room", got[0].Name)
+	})
 }
 
 func TestRepo_Count_Integration(t *testing.T) {
@@ -159,6 +248,67 @@ func TestRepo_Count_Integration(t *testing.T) {
 		require.NoError(t, db.Create(&Room{Name: "Hall Two", Description: "2", CreatorID: c.ID}).Error)
 
 		got, err := repo.Count(RoomFilter{Query: "room"})
+		require.NoError(t, err)
+		require.Equal(t, int64(1), got)
+	})
+
+	t.Run("returns count for category filter", func(t *testing.T) {
+		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{})
+		repo := NewRepo(db)
+
+		c := user.User{Email: "creator@example.com", FirstName: "Creator"}
+		require.NoError(t, db.Create(&c).Error)
+
+		cat := category.Category{Name: "Concert"}
+		require.NoError(t, db.Create(&cat).Error)
+
+		room1 := Room{Name: "Room One", CreatorID: c.ID}
+		room2 := Room{Name: "Room Two", CreatorID: c.ID}
+		require.NoError(t, db.Create(&room1).Error)
+		require.NoError(t, db.Create(&room2).Error)
+
+		require.NoError(t, db.Create(&roomcategory.RoomCategory{RoomID: room1.ID, CategoryID: cat.ID}).Error)
+
+		got, err := repo.Count(RoomFilter{CategoryIds: []uint{cat.ID}})
+		require.NoError(t, err)
+		require.Equal(t, int64(1), got)
+	})
+
+	t.Run("returns count for tag filter", func(t *testing.T) {
+		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{})
+		repo := NewRepo(db)
+
+		c := user.User{Email: "creator@example.com", FirstName: "Creator"}
+		require.NoError(t, db.Create(&c).Error)
+
+		tg := tag.Tag{Name: "jazz"}
+		require.NoError(t, db.Create(&tg).Error)
+
+		room1 := Room{Name: "Room One", CreatorID: c.ID}
+		room2 := Room{Name: "Room Two", CreatorID: c.ID}
+		require.NoError(t, db.Create(&room1).Error)
+		require.NoError(t, db.Create(&room2).Error)
+
+		require.NoError(t, db.Create(&tagging.Tagging{TagID: tg.ID, TaggableID: room1.ID, TaggableType: "Room"}).Error)
+
+		got, err := repo.Count(RoomFilter{TagIds: []uint{tg.ID}})
+		require.NoError(t, err)
+		require.Equal(t, int64(1), got)
+	})
+
+	t.Run("returns count for type filter", func(t *testing.T) {
+		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{})
+		repo := NewRepo(db)
+
+		c := user.User{Email: "creator@example.com", FirstName: "Creator"}
+		require.NoError(t, db.Create(&c).Error)
+
+		require.NoError(t, db.Create(&Room{Name: "Public One", CreatorID: c.ID, Type: RoomTypePublic}).Error)
+		require.NoError(t, db.Create(&Room{Name: "Public Two", CreatorID: c.ID, Type: RoomTypePublic}).Error)
+		require.NoError(t, db.Create(&Room{Name: "Private One", CreatorID: c.ID, Type: RoomTypePrivate}).Error)
+
+		roomType := RoomTypePrivate
+		got, err := repo.Count(RoomFilter{Type: &roomType})
 		require.NoError(t, err)
 		require.Equal(t, int64(1), got)
 	})

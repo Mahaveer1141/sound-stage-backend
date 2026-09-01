@@ -75,7 +75,10 @@ type RoomResponse struct {
 }
 
 type RoomFilter struct {
-	Query string `form:"query"`
+	Query       string    `form:"query"`
+	CategoryIds []uint    `form:"categoryIds"`
+	TagIds      []uint    `form:"tagIds"`
+	Type        *RoomType `form:"type"`
 }
 
 var allowedSortFields = map[string]string{
@@ -86,10 +89,41 @@ var allowedSortFields = map[string]string{
 
 func FilterBySearch(query string) func(*gorm.DB) *gorm.DB {
 	return func(db *gorm.DB) *gorm.DB {
+		query = strings.TrimSpace(query)
 		if query == "" {
 			return db
 		}
-		return db.Where("LOWER(rooms.name) LIKE LOWER(?)", "%"+query+"%")
+		return db.Where("rooms.name LIKE ?", "%"+query+"%")
+	}
+}
+
+func FilterByCategories(categoryIds []uint) func(*gorm.DB) *gorm.DB {
+	return func(db *gorm.DB) *gorm.DB {
+		if len(categoryIds) > 0 {
+			db = db.Joins("JOIN room_categories ON room_categories.room_id = rooms.id").
+				Where("room_categories.category_id IN (?)", categoryIds)
+		}
+		return db
+	}
+}
+
+func FilterByTags(tagIds []uint) func(*gorm.DB) *gorm.DB {
+	return func(db *gorm.DB) *gorm.DB {
+		if len(tagIds) > 0 {
+			db = db.Joins("JOIN taggables ON taggables.taggable_type = ? AND taggables.taggable_id = rooms.id",
+				"Room", tagIds).
+				Where("taggables.tag_id IN (?)", tagIds)
+		}
+		return db
+	}
+}
+
+func FilterByType(roomType *RoomType) func(*gorm.DB) *gorm.DB {
+	return func(db *gorm.DB) *gorm.DB {
+		if roomType != nil && strings.TrimSpace(string(*roomType)) != "" {
+			db = db.Where("type = ?", roomType)
+		}
+		return db
 	}
 }
 
@@ -97,6 +131,9 @@ func Filters(f RoomFilter) func(*gorm.DB) *gorm.DB {
 	return func(db *gorm.DB) *gorm.DB {
 		return db.Scopes(
 			FilterBySearch(f.Query),
+			FilterByCategories(f.CategoryIds),
+			FilterByTags(f.TagIds),
+			FilterByType(f.Type),
 		)
 	}
 }

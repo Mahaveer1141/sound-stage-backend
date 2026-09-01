@@ -96,6 +96,7 @@ func TestHandler_Create(t *testing.T) {
 		h.svc.On("Create", mock.MatchedBy(func(in *CreateRoomParams) bool {
 			return in.Name == "Main Stage" && in.CreatorID == 42
 		})).Return(created, nil)
+		h.svc.On("CurrentRoomUser", uint(0), uint(42)).Return(&roomuser.RoomUser{Role: role.Role{Name: string(role.RoleOwner)}}, nil)
 
 		w, c := testutil.NewTestContext(http.MethodPost, "/rooms", CreateRoomParams{Name: "Main Stage", Type: RoomTypePublic})
 		c.Set("userId", uint(42))
@@ -137,6 +138,7 @@ func TestHandler_Update(t *testing.T) {
 		h := newHandlerHarness(t)
 		updated := &Room{Name: "Renamed"}
 		h.svc.On("Update", uint(5), uint(42), mock.AnythingOfType("*room.UpdateRoomParams")).Return(updated, nil)
+		h.svc.On("CurrentRoomUser", uint(0), uint(42)).Return(&roomuser.RoomUser{Role: role.Role{Name: string(role.RoleOwner)}}, nil)
 
 		w, c := testutil.NewTestContext(http.MethodPatch, "/rooms/5", UpdateRoomParams{Name: "Renamed", Type: RoomTypePublic})
 		c.Params = gin.Params{{Key: "id", Value: "5"}}

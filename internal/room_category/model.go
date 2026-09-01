@@ -6,8 +6,8 @@ import (
 
 type RoomCategory struct {
 	model.BaseModel
-	RoomID     uint `gorm:"not null;uniqueIndex:idx_room_category" json:"roomId"`
-	CategoryID uint `gorm:"not null;uniqueIndex:idx_room_category" json:"categoryId"`
+	RoomID     uint `gorm:"not null;uniqueIndex:idx_room_category"`
+	CategoryID uint `gorm:"not null;uniqueIndex:idx_room_category"`
 }
 
 func (RoomCategory) TableName() string {

@@ -126,7 +126,7 @@ func TestRepo_List_Unit(t *testing.T) {
 		repo := NewRepo(gdb)
 
 		mock.ExpectQuery(
-			`SELECT \* FROM "rooms" WHERE .*LOWER\(rooms\.name\) LIKE LOWER\(\$1\).*ORDER BY rooms\.name asc LIMIT \$2`,
+			`SELECT \* FROM "rooms" WHERE .*rooms\.name LIKE \$1.*ORDER BY rooms\.name asc LIMIT \$2`,
 		).
 			WithArgs("%foo%", 5).
 			WillReturnRows(
@@ -174,6 +174,70 @@ func TestRepo_List_Unit(t *testing.T) {
 		assert.Empty(t, got)
 		assert.NoError(t, mock.ExpectationsWereMet())
 	})
+
+	t.Run("filters rooms by category ids", func(t *testing.T) {
+		gdb, mock := testutil.NewMockDB(t)
+		repo := NewRepo(gdb)
+
+		mock.ExpectQuery(
+			`SELECT .* FROM "rooms" JOIN room_categories ON room_categories\.room_id = rooms\.id WHERE room_categories\.category_id IN \(\$1,\$2\) AND "rooms"\."deleted_at" IS NULL ORDER BY rooms\.created_at desc LIMIT \$3`,
+		).
+			WithArgs(uint(1), uint(2), 10).
+			WillReturnRows(sqlmock.NewRows([]string{"id", "created_at", "updated_at", "name", "description", "creator_id"}))
+
+		got, err := repo.List(
+			RoomFilter{CategoryIds: []uint{1, 2}},
+			listopts.Sort{},
+			listopts.Pagination{Page: 1, PageSize: 10},
+		)
+
+		require.NoError(t, err)
+		assert.Empty(t, got)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("filters rooms by tag ids", func(t *testing.T) {
+		gdb, mock := testutil.NewMockDB(t)
+		repo := NewRepo(gdb)
+
+		mock.ExpectQuery(
+			`SELECT .* FROM "rooms" JOIN taggables ON taggables\.taggable_type = \$1 AND taggables\.taggable_id = rooms\.id WHERE taggables\.tag_id IN \(\$2,\$3\) AND "rooms"\."deleted_at" IS NULL ORDER BY rooms\.created_at desc LIMIT \$4`,
+		).
+			WithArgs("Room", uint(3), uint(4), 10).
+			WillReturnRows(sqlmock.NewRows([]string{"id", "created_at", "updated_at", "name", "description", "creator_id"}))
+
+		got, err := repo.List(
+			RoomFilter{TagIds: []uint{3, 4}},
+			listopts.Sort{},
+			listopts.Pagination{Page: 1, PageSize: 10},
+		)
+
+		require.NoError(t, err)
+		assert.Empty(t, got)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("filters rooms by type", func(t *testing.T) {
+		gdb, mock := testutil.NewMockDB(t)
+		repo := NewRepo(gdb)
+
+		roomType := RoomTypePrivate
+		mock.ExpectQuery(
+			`SELECT \* FROM "rooms" WHERE type = \$1 AND "rooms"\."deleted_at" IS NULL ORDER BY rooms\.created_at desc LIMIT \$2`,
+		).
+			WithArgs(roomType, 10).
+			WillReturnRows(sqlmock.NewRows([]string{"id", "created_at", "updated_at", "name", "description", "creator_id"}))
+
+		got, err := repo.List(
+			RoomFilter{Type: &roomType},
+			listopts.Sort{},
+			listopts.Pagination{Page: 1, PageSize: 10},
+		)
+
+		require.NoError(t, err)
+		assert.Empty(t, got)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
 }
 
 func TestRepo_Count_Unit(t *testing.T) {
@@ -198,7 +262,7 @@ func TestRepo_Count_Unit(t *testing.T) {
 		repo := NewRepo(gdb)
 
 		mock.ExpectQuery(
-			`SELECT count\(\*\) FROM "rooms" WHERE .*LOWER\(rooms\.name\) LIKE LOWER\(\$1\).*`,
+			`SELECT count\(\*\) FROM "rooms" WHERE .*rooms\.name LIKE \$1.*`,
 		).
 			WithArgs("%foo%").
 			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(5))
@@ -207,6 +271,58 @@ func TestRepo_Count_Unit(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.Equal(t, int64(5), got)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("returns count with category filter", func(t *testing.T) {
+		gdb, mock := testutil.NewMockDB(t)
+		repo := NewRepo(gdb)
+
+		mock.ExpectQuery(
+			`SELECT count\(\*\) FROM "rooms" JOIN room_categories ON room_categories\.room_id = rooms\.id WHERE room_categories\.category_id IN \(\$1,\$2\) AND "rooms"\."deleted_at" IS NULL`,
+		).
+			WithArgs(uint(1), uint(2)).
+			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(3))
+
+		got, err := repo.Count(RoomFilter{CategoryIds: []uint{1, 2}})
+
+		require.NoError(t, err)
+		assert.Equal(t, int64(3), got)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("returns count with tag filter", func(t *testing.T) {
+		gdb, mock := testutil.NewMockDB(t)
+		repo := NewRepo(gdb)
+
+		mock.ExpectQuery(
+			`SELECT count\(\*\) FROM "rooms" JOIN taggables ON taggables\.taggable_type = \$1 AND taggables\.taggable_id = rooms\.id WHERE taggables\.tag_id IN \(\$2,\$3\) AND "rooms"\."deleted_at" IS NULL`,
+		).
+			WithArgs("Room", uint(3), uint(4)).
+			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(2))
+
+		got, err := repo.Count(RoomFilter{TagIds: []uint{3, 4}})
+
+		require.NoError(t, err)
+		assert.Equal(t, int64(2), got)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("returns count with type filter", func(t *testing.T) {
+		gdb, mock := testutil.NewMockDB(t)
+		repo := NewRepo(gdb)
+
+		roomType := RoomTypePrivate
+		mock.ExpectQuery(
+			`SELECT count\(\*\) FROM "rooms" WHERE type = \$1 AND "rooms"\."deleted_at" IS NULL`,
+		).
+			WithArgs(roomType).
+			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(7))
+
+		got, err := repo.Count(RoomFilter{Type: &roomType})
+
+		require.NoError(t, err)
+		assert.Equal(t, int64(7), got)
 		assert.NoError(t, mock.ExpectationsWereMet())
 	})
 }
