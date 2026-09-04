@@ -118,7 +118,7 @@ func TestRepo_FindBy_Unit(t *testing.T) {
 		assert.Equal(t, uint(1), got.ID)
 		assert.Equal(t, uint(1), got.UserID)
 		assert.Equal(t, "user@example.com", got.User.Email)
-		assert.Equal(t, "listener", got.Role.Name)
+		assert.Equal(t, role.RoleListener, got.Role.Name)
 		assert.NoError(t, mock.ExpectationsWereMet())
 	})
 

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	apitoken "sound-stage-backend/internal/api_token"
+	"sound-stage-backend/internal/pkg/current"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -30,7 +31,7 @@ func setupRouter(validator TokenValidator, nextCalled *bool, capturedExists *boo
 		if nextCalled != nil {
 			*nextCalled = true
 		}
-		*capturedUserID, *capturedExists = c.Get("userId")
+		*capturedUserID, *capturedExists = current.UserID(c)
 		c.JSON(http.StatusOK, gin.H{"userId": *capturedUserID})
 	})
 	return r

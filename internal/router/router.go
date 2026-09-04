@@ -8,6 +8,9 @@ import (
 	"sound-stage-backend/internal/health"
 	"sound-stage-backend/internal/middleware"
 	"sound-stage-backend/internal/room"
+	roomuser "sound-stage-backend/internal/room_user"
+	roomuserblock "sound-stage-backend/internal/room_user_block"
+	roomuserfavourite "sound-stage-backend/internal/room_user_favourite"
 	"sound-stage-backend/internal/tag"
 	"sound-stage-backend/internal/user"
 	"sound-stage-backend/internal/ws"
@@ -17,13 +20,16 @@ import (
 )
 
 type Handlers struct {
-	WS       ws.Handler
-	Health   *health.Handler
-	Auth     *auth.Handler
-	Category *category.Handler
-	User     *user.Handler
-	Room     *room.Handler
-	Tag      *tag.Handler
+	WS                ws.Handler
+	Health            *health.Handler
+	Auth              *auth.Handler
+	Category          *category.Handler
+	User              *user.Handler
+	Room              *room.Handler
+	RoomUser          *roomuser.Handler
+	Tag               *tag.Handler
+	RoomUserFavourite *roomuserfavourite.Handler
+	RoomUserBlock     *roomuserblock.Handler
 }
 
 func Setup(cfg *config.Config, handlers *Handlers, tokenValidator middleware.TokenValidator, logger *slog.Logger) *gin.Engine {
@@ -60,6 +66,8 @@ func Setup(cfg *config.Config, handlers *Handlers, tokenValidator middleware.Tok
 	{
 		users.GET("/current", handlers.User.CurrentUser)
 		users.PUT("/profile", handlers.User.UpdateProfile)
+		users.POST("/current/favorites", handlers.RoomUserFavourite.Add)
+		users.DELETE("/current/favorites/:roomId", handlers.RoomUserFavourite.Remove)
 	}
 
 	tags := router.Group("/tags", middleware.AuthMiddleware(tokenValidator))
@@ -74,11 +82,13 @@ func Setup(cfg *config.Config, handlers *Handlers, tokenValidator middleware.Tok
 		rooms.GET("/:id", handlers.Room.FindByID)
 		rooms.POST("", handlers.Room.Create)
 		rooms.PUT("/:id", handlers.Room.Update)
-		rooms.GET("/:id/users", handlers.Room.ListUsers)
-		rooms.POST("/:id/users", handlers.Room.AddRoomUser)
-		rooms.GET("/:id/users/current", handlers.Room.CurrentRoomUser)
-		rooms.PUT("/:id/users/:userId/role", handlers.Room.UpdateUserRole)
+		rooms.GET("/:id/users", handlers.RoomUser.ListUsers)
+		rooms.POST("/:id/users", handlers.RoomUser.AddRoomUser)
+		rooms.GET("/:id/users/current", handlers.RoomUser.CurrentRoomUser)
+		rooms.PUT("/:id/users/:userId/role", handlers.RoomUser.UpdateUserRole)
 		rooms.PUT("/:id/private-code", handlers.Room.UpdatePrivateCode)
+		rooms.POST("/:id/blocks", handlers.RoomUserBlock.Add)
+		rooms.DELETE("/:id/blocks/:userId", handlers.RoomUserBlock.Remove)
 	}
 
 	router.GET("/ws/rooms/:roomId", middleware.AuthMiddleware(tokenValidator), handlers.WS.ServeWS)

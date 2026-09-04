@@ -29,7 +29,7 @@ func TestRepo_FindByName_Unit(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, got)
 		assert.Equal(t, uint(1), got.ID)
-		assert.Equal(t, string(RoleAdmin), got.Name)
+		assert.Equal(t, RoleAdmin, got.Name)
 		assert.NoError(t, mock.ExpectationsWereMet())
 	})
 

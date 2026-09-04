@@ -21,6 +21,8 @@ import (
 	"sound-stage-backend/internal/role"
 	"sound-stage-backend/internal/room"
 	roomuser "sound-stage-backend/internal/room_user"
+	roomuserblock "sound-stage-backend/internal/room_user_block"
+	roomuserfavourite "sound-stage-backend/internal/room_user_favourite"
 	"sound-stage-backend/internal/router"
 	"sound-stage-backend/internal/tag"
 	"sound-stage-backend/internal/user"
@@ -66,6 +68,8 @@ func (s *Server) Run() error {
 	roleRepo := role.NewRepo(db)
 	roomRepo := room.NewRepo(db)
 	roomUserRepo := roomuser.NewRepo(db)
+	roomUserFavouriteRepo := roomuserfavourite.NewRepo(db)
+	roomUserBlockRepo := roomuserblock.NewRepo(db)
 	categoryRepo := category.NewRepo(db)
 	tagRepo := tag.NewRepo(db)
 
@@ -75,6 +79,8 @@ func (s *Server) Run() error {
 	authService := auth.NewService(userService, otpRequestService, apiTokenService, mailService)
 	roleService := role.NewService(roleRepo)
 	roomUserService := roomuser.NewService(roomUserRepo, roleService, mediaRouter)
+	roomUserFavouriteService := roomuserfavourite.NewService(roomUserFavouriteRepo)
+	roomUserBlockService := roomuserblock.NewService(roomUserBlockRepo, roomUserService)
 	roomService := room.NewService(roomRepo, roomUserService, db)
 	categoryService := category.NewService(categoryRepo)
 	tagService := tag.NewService(tagRepo)
@@ -97,18 +103,24 @@ func (s *Server) Run() error {
 	healthHandler := health.NewHandler(db)
 	authHandler := auth.NewHandler(authService)
 	userHandler := user.NewHandler(userService)
-	roomHandler := room.NewHandler(roomService, hub)
+	roomHandler := room.NewHandler(roomService)
+	roomUserHandler := roomuser.NewHandler(roomUserService, roomService, hub)
 	categoryHandler := category.NewHandler(categoryService)
 	tagHandler := tag.NewHandler(tagService)
+	roomUserFavouriteHandler := roomuserfavourite.NewHandler(roomUserFavouriteService)
+	roomUserBlockHandler := roomuserblock.NewHandler(roomUserBlockService)
 
 	handlers := &router.Handlers{
-		Health:   healthHandler,
-		Auth:     authHandler,
-		Category: categoryHandler,
-		User:     userHandler,
-		Room:     roomHandler,
-		Tag:      tagHandler,
-		WS:       wsHandler,
+		Health:            healthHandler,
+		Auth:              authHandler,
+		Category:          categoryHandler,
+		User:              userHandler,
+		Room:              roomHandler,
+		RoomUser:          roomUserHandler,
+		Tag:               tagHandler,
+		RoomUserFavourite: roomUserFavouriteHandler,
+		RoomUserBlock:     roomUserBlockHandler,
+		WS:                wsHandler,
 	}
 
 	r := router.Setup(s.cfg, handlers, apiTokenService, s.logger)

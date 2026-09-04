@@ -15,7 +15,7 @@ import (
 func seedRoles(t *testing.T, db *gorm.DB) {
 	t.Helper()
 	for _, rn := range []role.RoleName{role.RoleOwner, role.RoleAdmin, role.RoleListener, role.RoleSpeaker, role.RoleModerator} {
-		require.NoError(t, db.Create(&role.Role{Name: string(rn)}).Error)
+		require.NoError(t, db.Create(&role.Role{Name: rn}).Error)
 	}
 }
 
@@ -76,7 +76,7 @@ func TestRepo_FindBy_Integration(t *testing.T) {
 		require.NotNil(t, got)
 		require.Equal(t, created.ID, got.ID)
 		require.Equal(t, deps.admin.Email, got.User.Email)
-		require.Equal(t, string(role.RoleListener), got.Role.Name)
+		require.Equal(t, role.RoleListener, got.Role.Name)
 	})
 
 	t.Run("returns nil when not found", func(t *testing.T) {
@@ -177,7 +177,7 @@ func TestRepo_ListByRoomID_Integration(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, got, 1)
 		require.Equal(t, u2.ID, got[0].User.ID)
-		require.Equal(t, string(role.RoleSpeaker), got[0].Role.Name)
+		require.Equal(t, role.RoleSpeaker, got[0].Role.Name)
 	})
 
 	t.Run("filters room users by role", func(t *testing.T) {
@@ -208,7 +208,7 @@ func TestRepo_ListByRoomID_Integration(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, got, 1)
 		require.Equal(t, u1.ID, got[0].User.ID)
-		require.Equal(t, string(role.RoleListener), got[0].Role.Name)
+		require.Equal(t, role.RoleListener, got[0].Role.Name)
 	})
 }
 

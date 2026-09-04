@@ -2,6 +2,7 @@ package user
 
 import (
 	"net/http"
+	"sound-stage-backend/internal/pkg/current"
 	"sound-stage-backend/internal/pkg/httpx"
 
 	"github.com/gin-gonic/gin"
@@ -21,8 +22,8 @@ func NewHandler(service userService) *Handler {
 }
 
 func (h *Handler) CurrentUser(c *gin.Context) {
-	userId, _ := c.Get("userId")
-	u, err := h.service.FindByID(userId.(uint))
+	userID, _ := current.UserID(c)
+	u, err := h.service.FindByID(userID)
 	if err != nil {
 		httpx.ErrorResponse(c, http.StatusInternalServerError, "Failed to fetch user")
 		return
@@ -32,7 +33,7 @@ func (h *Handler) CurrentUser(c *gin.Context) {
 }
 
 func (h *Handler) UpdateProfile(c *gin.Context) {
-	userId, _ := c.Get("userId")
+	userId, _ := current.UserID(c)
 
 	var input UpdateUserParams
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -40,7 +41,7 @@ func (h *Handler) UpdateProfile(c *gin.Context) {
 		return
 	}
 
-	u, err := h.service.UpdateProfile(userId.(uint), &input)
+	u, err := h.service.UpdateProfile(userId, &input)
 	if err != nil {
 		httpx.ErrorResponse(c, http.StatusInternalServerError, "Failed to update profile")
 		return

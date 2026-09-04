@@ -11,7 +11,7 @@ import (
 func seedRoles(t *testing.T, db *gorm.DB, names ...RoleName) {
 	t.Helper()
 	for _, n := range names {
-		require.NoError(t, db.Create(&Role{Name: string(n)}).Error)
+		require.NoError(t, db.Create(&Role{Name: n}).Error)
 	}
 }
 
@@ -25,7 +25,7 @@ func TestRepo_FindByName_Integration(t *testing.T) {
 
 		require.NoError(t, err)
 		require.NotNil(t, got)
-		require.Equal(t, string(RoleAdmin), got.Name)
+		require.Equal(t, RoleAdmin, got.Name)
 		require.NotZero(t, got.ID)
 	})
 
@@ -69,14 +69,14 @@ func TestRepo_FindByName_Integration(t *testing.T) {
 		got, err := repo.FindByName(RoleModerator)
 
 		require.NoError(t, err)
-		require.Equal(t, string(RoleModerator), got.Name)
+		require.Equal(t, RoleModerator, got.Name)
 	})
 
 	t.Run("unique index prevents duplicate role names", func(t *testing.T) {
 		db := testutil.NewIntegrationDB(t, &Role{})
 		seedRoles(t, db, RoleAdmin)
 
-		err := db.Create(&Role{Name: string(RoleAdmin)}).Error
+		err := db.Create(&Role{Name: RoleAdmin}).Error
 
 		require.Error(t, err)
 	})

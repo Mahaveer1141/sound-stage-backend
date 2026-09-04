@@ -1,6 +1,7 @@
 package role
 
 import (
+	"slices"
 	model "sound-stage-backend/internal/model"
 )
 
@@ -22,9 +23,25 @@ var RoleAssignmentPermissions = map[RoleName][]RoleName{
 	RoleAdmin:     {RoleOwner, RoleAdmin},
 }
 
+var RoleModerationPermissions = map[RoleName][]RoleName{
+	RoleOwner:     {RoleOwner, RoleAdmin, RoleModerator, RoleSpeaker, RoleListener},
+	RoleAdmin:     {RoleAdmin, RoleModerator, RoleSpeaker, RoleListener},
+	RoleModerator: {RoleModerator, RoleSpeaker, RoleListener},
+	RoleSpeaker:   {},
+	RoleListener:  {},
+}
+
+func CanModerate(actorRole, targetRole RoleName) bool {
+	allowed, ok := RoleModerationPermissions[actorRole]
+	if !ok {
+		return false
+	}
+	return slices.Contains(allowed, targetRole)
+}
+
 type Role struct {
 	model.BaseModel
-	Name        string `gorm:"not null;uniqueIndex"`
+	Name        RoleName `gorm:"not null;uniqueIndex"`
 	Description *string
 }
 

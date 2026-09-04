@@ -69,11 +69,6 @@ func (m *mockRoomUserService) RemoveUser(userID, roomID uint) error {
 	args := m.Called(userID, roomID)
 	return args.Error(0)
 }
-func (m *mockRoomUserService) ListByRoomID(roomID uint, filter roomuser.RoomUserFilter, sort listopts.Sort, p listopts.Pagination) ([]roomuser.RoomUser, int64, error) {
-	args := m.Called(roomID, filter, sort, p)
-	rus, _ := args.Get(0).([]roomuser.RoomUser)
-	return rus, args.Get(1).(int64), args.Error(2)
-}
 func (m *mockRoomUserService) FindBy(userID, roomID uint) (*roomuser.RoomUser, error) {
 	args := m.Called(userID, roomID)
 	ru, _ := args.Get(0).(*roomuser.RoomUser)
@@ -82,10 +77,6 @@ func (m *mockRoomUserService) FindBy(userID, roomID uint) (*roomuser.RoomUser, e
 func (m *mockRoomUserService) HasRoles(userID, roomID uint, permissions []role.RoleName) (bool, error) {
 	args := m.Called(userID, roomID, permissions)
 	return args.Bool(0), args.Error(1)
-}
-func (m *mockRoomUserService) UpdateRole(roomID, userID uint, roleName role.RoleName, actorID uint) error {
-	args := m.Called(roomID, userID, roleName, actorID)
-	return args.Error(0)
 }
 
 type harness struct {
@@ -315,65 +306,6 @@ func TestService_List(t *testing.T) {
 		require.Zero(t, count)
 		require.ErrorIs(t, err, countErr)
 		h.repo.AssertExpectations(t)
-	})
-}
-
-func TestService_ListUsers(t *testing.T) {
-	t.Run("success: delegates to roomUserService", func(t *testing.T) {
-		h := newHarness(t)
-		filter := roomuser.RoomUserFilter{}
-		sort := listopts.Sort{}
-		p := listopts.Pagination{Page: 1, PageSize: 10}
-		want := []roomuser.RoomUser{{}}
-
-		h.roomUser.On("ListByRoomID", uint(4), filter, sort, p).Return(want, int64(1), nil)
-
-		got, count, err := h.svc.ListUsers(4, filter, sort, p)
-
-		require.NoError(t, err)
-		assert.Equal(t, want, got)
-		assert.Equal(t, int64(1), count)
-		h.roomUser.AssertExpectations(t)
-	})
-
-	t.Run("failure: roomUserService error propagated", func(t *testing.T) {
-		h := newHarness(t)
-		filter := roomuser.RoomUserFilter{}
-		sort := listopts.Sort{}
-		p := listopts.Pagination{Page: 1, PageSize: 10}
-		svcErr := errors.New("query failed")
-
-		h.roomUser.On("ListByRoomID", uint(4), filter, sort, p).Return(nil, int64(0), svcErr)
-
-		got, count, err := h.svc.ListUsers(4, filter, sort, p)
-
-		require.Nil(t, got)
-		require.Zero(t, count)
-		require.ErrorIs(t, err, svcErr)
-		h.roomUser.AssertExpectations(t)
-	})
-}
-
-func TestService_UpdateUserRole(t *testing.T) {
-	t.Run("success: delegates to roomUserService", func(t *testing.T) {
-		h := newHarness(t)
-		h.roomUser.On("UpdateRole", uint(4), uint(7), role.RoleModerator, uint(1)).Return(nil)
-
-		err := h.svc.UpdateUserRole(4, 7, role.RoleModerator, 1)
-
-		require.NoError(t, err)
-		h.roomUser.AssertExpectations(t)
-	})
-
-	t.Run("failure: roomUserService error propagated (e.g. unauthorized actor)", func(t *testing.T) {
-		h := newHarness(t)
-		roleErr := errors.New("actor lacks permission")
-		h.roomUser.On("UpdateRole", uint(4), uint(7), role.RoleModerator, uint(1)).Return(roleErr)
-
-		err := h.svc.UpdateUserRole(4, 7, role.RoleModerator, 1)
-
-		require.ErrorIs(t, err, roleErr)
-		h.roomUser.AssertExpectations(t)
 	})
 }
 

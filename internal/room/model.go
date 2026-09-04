@@ -4,7 +4,6 @@ import (
 	"sound-stage-backend/internal/category"
 	model "sound-stage-backend/internal/model"
 	"sound-stage-backend/internal/pkg/listopts"
-	"sound-stage-backend/internal/role"
 	"sound-stage-backend/internal/tag"
 	user "sound-stage-backend/internal/user"
 	"strings"
@@ -47,10 +46,6 @@ type CreateRoomParams struct {
 	privateCode *string
 }
 
-type UpdateUserRoleParams struct {
-	Role role.RoleName `json:"role" validate:"required"`
-}
-
 type UpdateRoomParams struct {
 	Name        string   `json:"name" validate:"required"`
 	Description string   `json:"description" validate:"omitempty"`
@@ -58,10 +53,6 @@ type UpdateRoomParams struct {
 	TagIds      []uint   `json:"tagIds" validate:"lte=5"`
 	Type        RoomType `validate:"required"`
 	privateCode *string
-}
-
-type AddRoomUserInput struct {
-	PrivateCode string `json:"privateCode"`
 }
 
 type RoomResponse struct {

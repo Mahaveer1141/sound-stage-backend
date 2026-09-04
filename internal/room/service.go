@@ -16,9 +16,7 @@ type roomUserService interface {
 	Create(tx *gorm.DB, userID uint, roomID uint, roleName role.RoleName) (*roomuser.RoomUser, error)
 	Rejoin(ru *roomuser.RoomUser) error
 	RemoveUser(userID uint, roomID uint) error
-	ListByRoomID(roomID uint, filter roomuser.RoomUserFilter, sort listopts.Sort, p listopts.Pagination) ([]roomuser.RoomUser, int64, error)
 	FindBy(userID uint, roomID uint) (*roomuser.RoomUser, error)
-	UpdateRole(roomID uint, userID uint, role role.RoleName, actorID uint) error
 	HasRoles(userID uint, roomID uint, permissions []role.RoleName) (bool, error)
 }
 
@@ -132,15 +130,6 @@ func (s *Service) List(filter RoomFilter, sort listopts.Sort, p listopts.Paginat
 		return nil, 0, err
 	}
 	return rooms, count, nil
-}
-
-func (s *Service) ListUsers(roomID uint, filter roomuser.RoomUserFilter,
-	sort listopts.Sort, p listopts.Pagination) ([]roomuser.RoomUser, int64, error) {
-	return s.roomUserService.ListByRoomID(roomID, filter, sort, p)
-}
-
-func (s *Service) UpdateUserRole(roomID uint, userID uint, newRole role.RoleName, actorID uint) error {
-	return s.roomUserService.UpdateRole(roomID, userID, newRole, actorID)
 }
 
 func (s *Service) CurrentRoomUser(roomID, userID uint) (*roomuser.RoomUser, error) {
