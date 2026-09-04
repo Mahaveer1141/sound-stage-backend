@@ -100,3 +100,9 @@ func (r *Repo) UpdateRole(roomID uint, userID uint, roleID uint) error {
 		Where("room_id = ? AND user_id = ?", roomID, userID).
 		Update("role_id", roleID).Error
 }
+
+func (r *Repo) Delete(roomID uint, userID uint) error {
+	return r.db.
+		Where("room_id = ? AND user_id = ?", roomID, userID).
+		Delete(&RoomUser{}).Error
+}

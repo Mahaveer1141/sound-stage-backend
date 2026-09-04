@@ -18,6 +18,7 @@ type roomUserService interface {
 	ListByRoomID(roomID uint, filter RoomUserFilter, sort listopts.Sort, p listopts.Pagination) ([]RoomUser, int64, error)
 	FindBy(userID, roomID uint) (*RoomUser, error)
 	UpdateRole(roomID, userID uint, roleName role.RoleName, actorID uint) error
+	DeleteUser(roomID, userID, actorID uint) error
 }
 
 type webSocketBroadcaster interface {
@@ -177,4 +178,33 @@ func (h *Handler) UpdateUserRole(c *gin.Context) {
 	h.hub.BroadcastToRoom(uint(roomID), ws.EventUserRoleUpdated, gin.H{"userId": userID, "role": input.Role})
 
 	httpx.SuccessResponse(c, http.StatusOK, "User role updated successfully", nil)
+}
+
+func (h *Handler) DeleteUser(c *gin.Context) {
+	id := c.Param("id")
+	roomID, err := strconv.Atoi(id)
+	if err != nil {
+		httpx.ErrorResponse(c, http.StatusBadRequest, "Invalid room ID")
+		return
+	}
+	userIDStr := c.Param("userId")
+	userID, err := strconv.Atoi(userIDStr)
+	if err != nil {
+		httpx.ErrorResponse(c, http.StatusBadRequest, "Invalid user ID")
+		return
+	}
+	actorID, _ := current.UserID(c)
+
+	if err := h.service.DeleteUser(uint(roomID), uint(userID), actorID); err != nil {
+		if errors.Is(err, httpx.ErrForbidden) {
+			httpx.ErrorResponse(c, http.StatusForbidden, httpx.ErrForbidden.Error())
+			return
+		}
+		httpx.ErrorResponse(c, http.StatusUnprocessableEntity, "Failed to remove user from room")
+		return
+	}
+
+	h.hub.BroadcastToRoom(uint(roomID), ws.EventDeleteRoomUser, nil)
+
+	httpx.SuccessResponse(c, http.StatusOK, "User removed from room", nil)
 }

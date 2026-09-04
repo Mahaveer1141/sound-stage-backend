@@ -48,6 +48,10 @@ func (m *mockRepo) UpdateRole(roomID, userID, roleID uint) error {
 	args := m.Called(roomID, userID, roleID)
 	return args.Error(0)
 }
+func (m *mockRepo) Delete(roomID, userID uint) error {
+	args := m.Called(roomID, userID)
+	return args.Error(0)
+}
 
 type mockRoleFinder struct{ mock.Mock }
 
@@ -117,7 +121,7 @@ func TestService_Rejoin(t *testing.T) {
 func TestService_Create(t *testing.T) {
 	t.Run("success: creates with explicit role", func(t *testing.T) {
 		h := newHarness()
-		h.roles.On("FindByName", role.RoleListener).Return(&role.Role{BaseModel: model.BaseModel{ID: 4}}, nil)
+		h.roles.On("FindByName", role.RoleListener).Return(&role.Role{BaseModel: model.BaseModel{ID: 4}, Name: role.RoleListener}, nil)
 		created := &RoomUser{UserID: 1, RoomID: 2}
 		h.repo.On("Create", (*gorm.DB)(nil), uint(1), uint(2), uint(4)).Return(created, nil)
 
@@ -130,7 +134,7 @@ func TestService_Create(t *testing.T) {
 
 	t.Run("success: empty role name defaults to RoleListener", func(t *testing.T) {
 		h := newHarness()
-		h.roles.On("FindByName", role.RoleListener).Return(&role.Role{BaseModel: model.BaseModel{ID: 4}}, nil)
+		h.roles.On("FindByName", role.RoleListener).Return(&role.Role{BaseModel: model.BaseModel{ID: 4}, Name: role.RoleListener}, nil)
 		created := &RoomUser{UserID: 1, RoomID: 2}
 		h.repo.On("Create", (*gorm.DB)(nil), uint(1), uint(2), uint(4)).Return(created, nil)
 
@@ -156,8 +160,8 @@ func TestService_Create(t *testing.T) {
 
 	t.Run("failure: Create error is propagated", func(t *testing.T) {
 		h := newHarness()
-		h.roles.On("FindByName", role.RoleListener).Return(&role.Role{BaseModel: model.BaseModel{ID: 4}}, nil)
 		createErr := errors.New("insert failed")
+		h.roles.On("FindByName", role.RoleListener).Return(&role.Role{BaseModel: model.BaseModel{ID: 4}, Name: role.RoleListener}, nil)
 		h.repo.On("Create", (*gorm.DB)(nil), uint(1), uint(2), uint(4)).Return(nil, createErr)
 
 		got, err := h.svc.Create(nil, 1, 2, role.RoleListener)
@@ -232,8 +236,8 @@ func TestService_RemoveUser(t *testing.T) {
 	t.Run("failure: UpdateActivity error is propagated", func(t *testing.T) {
 		h := newHarness()
 		existing := &RoomUser{UserID: 1, RoomID: 2}
-		h.repo.On("FindBy", uint(1), uint(2)).Return(existing, nil)
 		updateErr := errors.New("update failed")
+		h.repo.On("FindBy", uint(1), uint(2)).Return(existing, nil)
 		h.repo.On("UpdateActivity", existing, ActivityLeave).Return(updateErr)
 
 		err := h.svc.RemoveUser(1, 2)
@@ -302,7 +306,7 @@ func TestService_UpdateRole(t *testing.T) {
 	t.Run("success: promoting to non-listener role does not revoke publishing", func(t *testing.T) {
 		h := newHarness()
 		h.repo.On("HasRoles", uint(1), uint(2), role.RoleAssignmentPermissions[role.RoleSpeaker]).Return(true, nil)
-		h.roles.On("FindByName", role.RoleSpeaker).Return(&role.Role{BaseModel: model.BaseModel{ID: 9}}, nil)
+		h.roles.On("FindByName", role.RoleSpeaker).Return(&role.Role{BaseModel: model.BaseModel{ID: 9}, Name: role.RoleSpeaker}, nil)
 		h.repo.On("UpdateRole", uint(2), uint(3), uint(9)).Return(nil)
 
 		err := h.svc.UpdateRole(2, 3, role.RoleSpeaker, 1)
@@ -315,7 +319,7 @@ func TestService_UpdateRole(t *testing.T) {
 	t.Run("success: demoting to listener revokes publishing", func(t *testing.T) {
 		h := newHarness()
 		h.repo.On("HasRoles", uint(1), uint(2), role.RoleAssignmentPermissions[role.RoleListener]).Return(true, nil)
-		h.roles.On("FindByName", role.RoleListener).Return(&role.Role{BaseModel: model.BaseModel{ID: 3}}, nil)
+		h.roles.On("FindByName", role.RoleListener).Return(&role.Role{BaseModel: model.BaseModel{ID: 3}, Name: role.RoleListener}, nil)
 		h.repo.On("UpdateRole", uint(2), uint(3), uint(3)).Return(nil)
 		h.revoker.On("RevokePublishing", uint(2), uint(3)).Return()
 
@@ -364,7 +368,7 @@ func TestService_UpdateRole(t *testing.T) {
 	t.Run("failure: UpdateRole error is propagated, revoker never called", func(t *testing.T) {
 		h := newHarness()
 		h.repo.On("HasRoles", uint(1), uint(2), role.RoleAssignmentPermissions[role.RoleListener]).Return(true, nil)
-		h.roles.On("FindByName", role.RoleListener).Return(&role.Role{BaseModel: model.BaseModel{ID: 3}}, nil)
+		h.roles.On("FindByName", role.RoleListener).Return(&role.Role{BaseModel: model.BaseModel{ID: 3}, Name: role.RoleListener}, nil)
 		updateErr := errors.New("update failed")
 		h.repo.On("UpdateRole", uint(2), uint(3), uint(3)).Return(updateErr)
 
@@ -372,6 +376,93 @@ func TestService_UpdateRole(t *testing.T) {
 
 		require.ErrorIs(t, err, updateErr)
 		h.revoker.AssertNotCalled(t, "RevokePublishing", mock.Anything, mock.Anything)
+		h.assertAllExpectations(t)
+	})
+}
+
+func TestService_DeleteUser(t *testing.T) {
+	t.Run("success: owner deletes an admin", func(t *testing.T) {
+		h := newHarness()
+		h.repo.On("FindBy", uint(1), uint(2)).Return(&RoomUser{Role: role.Role{Name: role.RoleOwner}}, nil)
+		h.repo.On("FindBy", uint(3), uint(2)).Return(&RoomUser{Role: role.Role{Name: role.RoleAdmin}}, nil)
+		h.repo.On("Delete", uint(2), uint(3)).Return(nil)
+
+		err := h.svc.DeleteUser(2, 3, 1)
+
+		require.NoError(t, err)
+		h.assertAllExpectations(t)
+	})
+
+	t.Run("failure: admin cannot delete an owner", func(t *testing.T) {
+		h := newHarness()
+		h.repo.On("FindBy", uint(1), uint(2)).Return(&RoomUser{Role: role.Role{Name: role.RoleAdmin}}, nil)
+		h.repo.On("FindBy", uint(3), uint(2)).Return(&RoomUser{Role: role.Role{Name: role.RoleOwner}}, nil)
+
+		err := h.svc.DeleteUser(2, 3, 1)
+
+		require.ErrorIs(t, err, httpx.ErrForbidden)
+		h.repo.AssertNotCalled(t, "Delete", mock.Anything, mock.Anything)
+		h.assertAllExpectations(t)
+	})
+
+	t.Run("failure: speaker cannot delete a listener", func(t *testing.T) {
+		h := newHarness()
+		h.repo.On("FindBy", uint(1), uint(2)).Return(&RoomUser{Role: role.Role{Name: role.RoleSpeaker}}, nil)
+		h.repo.On("FindBy", uint(3), uint(2)).Return(&RoomUser{Role: role.Role{Name: role.RoleListener}}, nil)
+
+		err := h.svc.DeleteUser(2, 3, 1)
+
+		require.ErrorIs(t, err, httpx.ErrForbidden)
+		h.repo.AssertNotCalled(t, "Delete", mock.Anything, mock.Anything)
+		h.assertAllExpectations(t)
+	})
+
+	t.Run("failure: actor not in room is forbidden", func(t *testing.T) {
+		h := newHarness()
+		h.repo.On("FindBy", uint(1), uint(2)).Return(nil, nil)
+
+		err := h.svc.DeleteUser(2, 3, 1)
+
+		require.ErrorIs(t, err, httpx.ErrForbidden)
+		h.repo.AssertNotCalled(t, "FindBy", uint(3), uint(2))
+		h.repo.AssertNotCalled(t, "Delete", mock.Anything, mock.Anything)
+		h.assertAllExpectations(t)
+	})
+
+	t.Run("failure: target not in room returns ErrRecordNotFound", func(t *testing.T) {
+		h := newHarness()
+		h.repo.On("FindBy", uint(1), uint(2)).Return(&RoomUser{Role: role.Role{Name: role.RoleOwner}}, nil)
+		h.repo.On("FindBy", uint(3), uint(2)).Return(nil, nil)
+
+		err := h.svc.DeleteUser(2, 3, 1)
+
+		require.ErrorIs(t, err, httpx.ErrRecordNotFound)
+		h.repo.AssertNotCalled(t, "Delete", mock.Anything, mock.Anything)
+		h.assertAllExpectations(t)
+	})
+
+	t.Run("failure: FindBy error is propagated", func(t *testing.T) {
+		h := newHarness()
+		findErr := errors.New("db down")
+		h.repo.On("FindBy", uint(1), uint(2)).Return(nil, findErr)
+
+		err := h.svc.DeleteUser(2, 3, 1)
+
+		require.ErrorIs(t, err, findErr)
+		h.repo.AssertNotCalled(t, "Delete", mock.Anything, mock.Anything)
+		h.assertAllExpectations(t)
+	})
+
+	t.Run("failure: Delete error is propagated", func(t *testing.T) {
+		h := newHarness()
+		deleteErr := errors.New("delete failed")
+		h.repo.On("FindBy", uint(1), uint(2)).Return(&RoomUser{Role: role.Role{Name: role.RoleOwner}}, nil)
+		h.repo.On("FindBy", uint(3), uint(2)).Return(&RoomUser{Role: role.Role{Name: role.RoleListener}}, nil)
+		h.repo.On("Delete", uint(2), uint(3)).Return(deleteErr)
+
+		err := h.svc.DeleteUser(2, 3, 1)
+
+		require.ErrorIs(t, err, deleteErr)
 		h.assertAllExpectations(t)
 	})
 }

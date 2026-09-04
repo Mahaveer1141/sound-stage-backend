@@ -35,6 +35,10 @@ func (m *mockRoomUserService) UpdateRole(roomID, userID uint, roleName role.Role
 	args := m.Called(roomID, userID, roleName, actorID)
 	return args.Error(0)
 }
+func (m *mockRoomUserService) DeleteUser(roomID, userID, actorID uint) error {
+	args := m.Called(roomID, userID, actorID)
+	return args.Error(0)
+}
 
 type mockWebSocketHub struct{ mock.Mock }
 
@@ -75,7 +79,7 @@ func TestHandler_ListUsers(t *testing.T) {
 		h := newHandlerHarness(t)
 		users := []RoomUser{{UserID: 1}, {UserID: 2}}
 		h.svc.On("ListByRoomID", uint(4), mock.Anything, mock.Anything, mock.Anything).Return(users, int64(2), nil)
-		h.svc.On("FindBy", uint(1), uint(4)).Return(&RoomUser{Role: role.Role{Name: string(role.RoleListener)}}, nil)
+		h.svc.On("FindBy", uint(1), uint(4)).Return(&RoomUser{Role: role.Role{Name: role.RoleListener}}, nil)
 
 		w, c := testutil.NewTestContext(http.MethodGet, "/rooms/4/users?page=1&pageSize=10", nil)
 		c.Params = gin.Params{{Key: "id", Value: "4"}}
@@ -287,5 +291,79 @@ func TestHandler_AddRoomUser(t *testing.T) {
 
 		assert.Equal(t, http.StatusUnprocessableEntity, w.Code)
 		h.joiner.AssertExpectations(t)
+	})
+}
+
+func TestHandler_DeleteUser(t *testing.T) {
+	t.Run("success: deletes user, broadcasts, returns 200", func(t *testing.T) {
+		h := newHandlerHarness(t)
+		h.svc.On("DeleteUser", uint(4), uint(7), uint(1)).Return(nil)
+		h.hub.On("BroadcastToRoom", uint(4), ws.EventDeleteRoomUser, mock.Anything).Return()
+
+		w, c := testutil.NewTestContext(http.MethodDelete, "/rooms/4/users/7", nil)
+		c.Params = gin.Params{{Key: "id", Value: "4"}, {Key: "userId", Value: "7"}}
+		c.Set("userId", uint(1))
+
+		h.handler.DeleteUser(c)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		h.svc.AssertExpectations(t)
+		h.hub.AssertExpectations(t)
+	})
+
+	t.Run("failure: non-numeric room ID returns 400 before service is called", func(t *testing.T) {
+		h := newHandlerHarness(t)
+
+		w, c := testutil.NewTestContext(http.MethodDelete, "/rooms/abc/users/7", nil)
+		c.Params = gin.Params{{Key: "id", Value: "abc"}, {Key: "userId", Value: "7"}}
+		c.Set("userId", uint(1))
+
+		h.handler.DeleteUser(c)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		h.svc.AssertNotCalled(t, "DeleteUser", mock.Anything, mock.Anything, mock.Anything)
+	})
+
+	t.Run("failure: non-numeric user ID returns 400 before service is called", func(t *testing.T) {
+		h := newHandlerHarness(t)
+
+		w, c := testutil.NewTestContext(http.MethodDelete, "/rooms/4/users/abc", nil)
+		c.Params = gin.Params{{Key: "id", Value: "4"}, {Key: "userId", Value: "abc"}}
+		c.Set("userId", uint(1))
+
+		h.handler.DeleteUser(c)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		h.svc.AssertNotCalled(t, "DeleteUser", mock.Anything, mock.Anything, mock.Anything)
+	})
+
+	t.Run("failure: forbidden error from service returns 403, no broadcast", func(t *testing.T) {
+		h := newHandlerHarness(t)
+		h.svc.On("DeleteUser", uint(4), uint(7), uint(1)).Return(httpx.ErrForbidden)
+
+		w, c := testutil.NewTestContext(http.MethodDelete, "/rooms/4/users/7", nil)
+		c.Params = gin.Params{{Key: "id", Value: "4"}, {Key: "userId", Value: "7"}}
+		c.Set("userId", uint(1))
+
+		h.handler.DeleteUser(c)
+
+		assert.Equal(t, http.StatusForbidden, w.Code)
+		h.svc.AssertExpectations(t)
+		h.hub.AssertNotCalled(t, "BroadcastToRoom", mock.Anything, mock.Anything, mock.Anything)
+	})
+
+	t.Run("failure: other service error returns 422, no broadcast", func(t *testing.T) {
+		h := newHandlerHarness(t)
+		h.svc.On("DeleteUser", uint(4), uint(7), uint(1)).Return(assert.AnError)
+
+		w, c := testutil.NewTestContext(http.MethodDelete, "/rooms/4/users/7", nil)
+		c.Params = gin.Params{{Key: "id", Value: "4"}, {Key: "userId", Value: "7"}}
+		c.Set("userId", uint(1))
+
+		h.handler.DeleteUser(c)
+
+		assert.Equal(t, http.StatusUnprocessableEntity, w.Code)
+		h.svc.AssertExpectations(t)
+		h.hub.AssertNotCalled(t, "BroadcastToRoom", mock.Anything, mock.Anything, mock.Anything)
 	})
 }

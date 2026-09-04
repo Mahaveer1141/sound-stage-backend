@@ -51,23 +51,23 @@ var allowedUserSortFields = map[string]string{
 }
 
 func (ru *RoomUser) IsListener() bool {
-	return ru.Role.Name == string(role.RoleListener)
+	return ru.Role.Name == role.RoleListener
 }
 
 func (ru *RoomUser) IsAdmin() bool {
-	return ru.IsOwner() || ru.Role.Name == string(role.RoleAdmin)
+	return ru.IsOwner() || ru.Role.Name == role.RoleAdmin
 }
 
 func (ru *RoomUser) IsOwner() bool {
-	return ru.Role.Name == string(role.RoleOwner)
+	return ru.Role.Name == role.RoleOwner
 }
 
 func (ru *RoomUser) CanManage() bool {
-	return ru.IsAdmin() || ru.Role.Name == string(role.RoleModerator)
+	return ru.IsAdmin() || ru.Role.Name == role.RoleModerator
 }
 
 func (ru *RoomUser) CanSpeak() bool {
-	return ru.CanManage() || ru.Role.Name == string(role.RoleSpeaker)
+	return ru.CanManage() || ru.Role.Name == role.RoleSpeaker
 }
 
 func FilterByRoles(roles []string) func(*gorm.DB) *gorm.DB {

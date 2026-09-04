@@ -361,3 +361,40 @@ func TestRepo_UpdateRole_Unit(t *testing.T) {
 		assert.NoError(t, mock.ExpectationsWereMet())
 	})
 }
+
+func TestRepo_Delete_Unit(t *testing.T) {
+	t.Run("deletes the matching room user", func(t *testing.T) {
+		gdb, mock := testutil.NewMockDB(t)
+		repo := NewRepo(gdb)
+
+		mock.ExpectBegin()
+		mock.ExpectExec(regexp.QuoteMeta(
+			`DELETE FROM "room_users" WHERE room_id = $1 AND user_id = $2`)).
+			WithArgs(10, 1).
+			WillReturnResult(sqlmock.NewResult(0, 1))
+		mock.ExpectCommit()
+
+		err := repo.Delete(10, 1)
+
+		require.NoError(t, err)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("returns error when delete fails", func(t *testing.T) {
+		gdb, mock := testutil.NewMockDB(t)
+		repo := NewRepo(gdb)
+
+		mock.ExpectBegin()
+		mock.ExpectExec(regexp.QuoteMeta(
+			`DELETE FROM "room_users" WHERE room_id = $1 AND user_id = $2`)).
+			WithArgs(10, 1).
+			WillReturnError(assert.AnError)
+		mock.ExpectRollback()
+
+		err := repo.Delete(10, 1)
+
+		require.Error(t, err)
+		assert.ErrorIs(t, err, assert.AnError)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+}

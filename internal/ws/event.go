@@ -5,8 +5,9 @@ import "encoding/json"
 type EventName string
 
 const (
-	EventJoinRoom  EventName = "join_room"
-	EventLeaveRoom EventName = "leave_room"
+	EventJoinRoom       EventName = "join_room"
+	EventLeaveRoom      EventName = "leave_room"
+	EventDeleteRoomUser EventName = "delete_room_user"
 
 	EventError EventName = "error"
 

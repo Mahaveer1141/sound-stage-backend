@@ -24,6 +24,7 @@ type repo interface {
 	ListByRoomID(roomID uint, filter RoomUserFilter, sort listopts.Sort, p listopts.Pagination) ([]RoomUser, error)
 	CountByRoomID(roomID uint, filter RoomUserFilter) (int64, error)
 	UpdateRole(roomID uint, userID uint, roleID uint) error
+	Delete(roomID uint, userID uint) error
 }
 
 type Service struct {
@@ -103,4 +104,32 @@ func (s *Service) UpdateRole(roomID uint, userID uint, roleName role.RoleName, a
 	}
 
 	return nil
+}
+
+func (s *Service) DeleteUser(roomID, userID, actorID uint) error {
+	if userID == actorID {
+		return s.repo.Delete(roomID, userID)
+	}
+
+	actorRoomUser, err := s.repo.FindBy(actorID, roomID)
+	if err != nil {
+		return err
+	}
+	if actorRoomUser == nil {
+		return httpx.ErrForbidden
+	}
+
+	targetRoomUser, err := s.repo.FindBy(userID, roomID)
+	if err != nil {
+		return err
+	}
+	if targetRoomUser == nil {
+		return httpx.ErrRecordNotFound
+	}
+
+	if !role.CanModerate(actorRoomUser.Role.Name, targetRoomUser.Role.Name) {
+		return httpx.ErrForbidden
+	}
+
+	return s.repo.Delete(roomID, userID)
 }

@@ -259,3 +259,33 @@ func TestRepo_UpdateRole_Integration(t *testing.T) {
 		require.Equal(t, admin.ID, ru.RoleID)
 	})
 }
+
+func TestRepo_Delete_Integration(t *testing.T) {
+	t.Run("removes the room user", func(t *testing.T) {
+		db := testutil.NewIntegrationDB(t, &RoomUser{}, &user.User{}, &role.Role{})
+		deps := setupRoomUserTest(t, db)
+
+		var listener role.Role
+		require.NoError(t, db.Where("name = ?", string(role.RoleListener)).First(&listener).Error)
+
+		ru, err := deps.repo.Create(db, deps.admin.ID, deps.roomID, listener.ID)
+		require.NoError(t, err)
+
+		require.NoError(t, deps.repo.Delete(deps.roomID, deps.admin.ID))
+
+		var count int64
+		require.NoError(t, db.Model(&RoomUser{}).Where("id = ?", ru.ID).Count(&count).Error)
+		require.Equal(t, int64(0), count)
+	})
+
+	t.Run("succeeds when room user does not exist", func(t *testing.T) {
+		db := testutil.NewIntegrationDB(t, &RoomUser{}, &user.User{}, &role.Role{})
+		deps := setupRoomUserTest(t, db)
+
+		require.NoError(t, deps.repo.Delete(deps.roomID, 999))
+
+		var count int64
+		require.NoError(t, db.Model(&RoomUser{}).Count(&count).Error)
+		require.Equal(t, int64(0), count)
+	})
+}
