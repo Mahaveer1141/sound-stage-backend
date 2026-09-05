@@ -92,9 +92,9 @@ func TestRepo_ListUserFavourites_Unit(t *testing.T) {
 		repo := NewRepo(gdb)
 
 		mock.ExpectQuery(
-			`SELECT \* FROM "room_user_favourites" WHERE user_id = \$1 ORDER BY id DESC LIMIT \$2`,
+			`SELECT \* FROM "room_user_favourites" WHERE user_id = \$1 AND room_id NOT IN \(SELECT room_id FROM room_user_blocks WHERE user_id = \$2\) ORDER BY id DESC LIMIT \$3`,
 		).
-			WithArgs(20, 10).
+			WithArgs(20, 20, 10).
 			WillReturnError(assert.AnError)
 
 		_, err := repo.ListUserFavourites(20, listopts.Pagination{Page: 1, PageSize: 10})
@@ -111,9 +111,9 @@ func TestRepo_CountByUserID_Unit(t *testing.T) {
 		repo := NewRepo(gdb)
 
 		mock.ExpectQuery(
-			`SELECT count\(\*\) FROM "room_user_favourites" WHERE user_id = \$1`,
+			`SELECT count\(\*\) FROM "room_user_favourites" WHERE user_id = \$1 AND room_id NOT IN \(SELECT room_id FROM room_user_blocks WHERE user_id = \$2\)`,
 		).
-			WithArgs(20).
+			WithArgs(20, 20).
 			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(3))
 
 		got, err := repo.CountByUserID(20)
@@ -128,9 +128,9 @@ func TestRepo_CountByUserID_Unit(t *testing.T) {
 		repo := NewRepo(gdb)
 
 		mock.ExpectQuery(
-			`SELECT count\(\*\) FROM "room_user_favourites" WHERE user_id = \$1`,
+			`SELECT count\(\*\) FROM "room_user_favourites" WHERE user_id = \$1 AND room_id NOT IN \(SELECT room_id FROM room_user_blocks WHERE user_id = \$2\)`,
 		).
-			WithArgs(20).
+			WithArgs(20, 20).
 			WillReturnError(assert.AnError)
 
 		_, err := repo.CountByUserID(20)

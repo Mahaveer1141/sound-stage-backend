@@ -27,6 +27,7 @@ func (r *Repo) Remove(userID, roomID uint) error {
 func (r *Repo) ListUserFavourites(userID uint, p listopts.Pagination) ([]RoomUserFavourite, error) {
 	var favourites []RoomUserFavourite
 	err := r.db.Where("user_id = ?", userID).
+		Where("room_id NOT IN (SELECT room_id FROM room_user_blocks WHERE user_id = ?)", userID).
 		Preload("Room").
 		Order("id DESC").
 		Scopes(p.Scope()).
@@ -36,6 +37,8 @@ func (r *Repo) ListUserFavourites(userID uint, p listopts.Pagination) ([]RoomUse
 
 func (r *Repo) CountByUserID(userID uint) (int64, error) {
 	var count int64
-	err := r.db.Model(&RoomUserFavourite{}).Where("user_id = ?", userID).Count(&count).Error
+	err := r.db.Model(&RoomUserFavourite{}).Where("user_id = ?", userID).
+		Where("room_id NOT IN (SELECT room_id FROM room_user_blocks WHERE user_id = ?)", userID).
+		Count(&count).Error
 	return count, err
 }

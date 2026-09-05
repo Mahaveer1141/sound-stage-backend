@@ -70,6 +70,7 @@ type RoomFilter struct {
 	CategoryIds []uint    `form:"categoryIds"`
 	TagIds      []uint    `form:"tagIds"`
 	Type        *RoomType `form:"type"`
+	UserID      uint      `form:"-"`
 }
 
 var allowedSortFields = map[string]string{
@@ -118,6 +119,18 @@ func FilterByType(roomType *RoomType) func(*gorm.DB) *gorm.DB {
 	}
 }
 
+func FilterByNotBlocked(userID uint) func(*gorm.DB) *gorm.DB {
+	return func(db *gorm.DB) *gorm.DB {
+		if userID == 0 {
+			return db
+		}
+		return db.Where(
+			"NOT EXISTS (SELECT 1 FROM room_user_blocks WHERE room_user_blocks.room_id = rooms.id AND room_user_blocks.user_id = ?)",
+			userID,
+		)
+	}
+}
+
 func Filters(f RoomFilter) func(*gorm.DB) *gorm.DB {
 	return func(db *gorm.DB) *gorm.DB {
 		return db.Scopes(
@@ -125,6 +138,7 @@ func Filters(f RoomFilter) func(*gorm.DB) *gorm.DB {
 			FilterByCategories(f.CategoryIds),
 			FilterByTags(f.TagIds),
 			FilterByType(f.Type),
+			FilterByNotBlocked(f.UserID),
 		)
 	}
 }

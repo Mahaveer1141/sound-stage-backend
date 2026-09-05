@@ -11,6 +11,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type roomUserBlock struct {
+	RoomID uint
+	UserID uint
+}
+
+func (roomUserBlock) TableName() string { return "room_user_blocks" }
+
 func TestRepo_Add_Integration(t *testing.T) {
 	t.Run("persists a room user favourite", func(t *testing.T) {
 		db := testutil.NewIntegrationDB(t, &RoomUserFavourite{})
@@ -62,7 +69,7 @@ func TestRepo_Remove_Integration(t *testing.T) {
 
 func TestRepo_ListUserFavourites_Integration(t *testing.T) {
 	t.Run("returns paginated favourite rooms for a user", func(t *testing.T) {
-		db := testutil.NewIntegrationDB(t, &RoomUserFavourite{}, &room.Room{}, &user.User{})
+		db := testutil.NewIntegrationDB(t, &RoomUserFavourite{}, &room.Room{}, &user.User{}, &roomUserBlock{})
 		repo := NewRepo(db)
 
 		creator := user.User{Email: "creator@example.com", FirstName: "Creator"}
@@ -78,15 +85,16 @@ func TestRepo_ListUserFavourites_Integration(t *testing.T) {
 		require.NoError(t, repo.Add(20, room1.ID))
 		require.NoError(t, repo.Add(20, room2.ID))
 		require.NoError(t, repo.Add(30, room3.ID))
+		require.NoError(t, db.Create(&roomUserBlock{RoomID: room2.ID, UserID: 20}).Error)
 
-		favourites, err := repo.ListUserFavourites(20, listopts.Pagination{Page: 1, PageSize: 1})
+		favourites, err := repo.ListUserFavourites(20, listopts.Pagination{Page: 1, PageSize: 10})
 		require.NoError(t, err)
 		require.Len(t, favourites, 1)
-		require.Equal(t, room2.ID, favourites[0].RoomID)
-		require.Equal(t, "Room Two", favourites[0].Room.Name)
+		require.Equal(t, room1.ID, favourites[0].RoomID)
+		require.Equal(t, "Room One", favourites[0].Room.Name)
 
 		count, err := repo.CountByUserID(20)
 		require.NoError(t, err)
-		require.Equal(t, int64(2), count)
+		require.Equal(t, int64(1), count)
 	})
 }

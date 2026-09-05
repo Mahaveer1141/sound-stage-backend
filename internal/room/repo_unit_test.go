@@ -238,6 +238,27 @@ func TestRepo_List_Unit(t *testing.T) {
 		assert.Empty(t, got)
 		assert.NoError(t, mock.ExpectationsWereMet())
 	})
+
+	t.Run("excludes rooms where the user is blocked", func(t *testing.T) {
+		gdb, mock := testutil.NewMockDB(t)
+		repo := NewRepo(gdb)
+
+		mock.ExpectQuery(
+			`SELECT \* FROM "rooms" WHERE .*NOT EXISTS \(SELECT 1 FROM room_user_blocks WHERE room_user_blocks\.room_id = rooms\.id AND room_user_blocks\.user_id = \$1\).*ORDER BY rooms\.created_at desc LIMIT \$2`,
+		).
+			WithArgs(42, 10).
+			WillReturnRows(sqlmock.NewRows([]string{"id", "created_at", "updated_at", "name", "description", "creator_id"}))
+
+		got, err := repo.List(
+			RoomFilter{UserID: 42},
+			listopts.Sort{},
+			listopts.Pagination{Page: 1, PageSize: 10},
+		)
+
+		require.NoError(t, err)
+		assert.Empty(t, got)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
 }
 
 func TestRepo_Count_Unit(t *testing.T) {
@@ -323,6 +344,23 @@ func TestRepo_Count_Unit(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.Equal(t, int64(7), got)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("excludes count for rooms where the user is blocked", func(t *testing.T) {
+		gdb, mock := testutil.NewMockDB(t)
+		repo := NewRepo(gdb)
+
+		mock.ExpectQuery(
+			`SELECT count\(\*\) FROM "rooms" WHERE .*NOT EXISTS \(SELECT 1 FROM room_user_blocks WHERE room_user_blocks\.room_id = rooms\.id AND room_user_blocks\.user_id = \$1\).*`,
+		).
+			WithArgs(42).
+			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(3))
+
+		got, err := repo.Count(RoomFilter{UserID: 42})
+
+		require.NoError(t, err)
+		assert.Equal(t, int64(3), got)
 		assert.NoError(t, mock.ExpectationsWereMet())
 	})
 }

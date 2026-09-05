@@ -104,6 +104,7 @@ func (h *Handler) List(c *gin.Context) {
 		httpx.ErrorResponse(c, http.StatusBadRequest, "Invalid filter")
 		return
 	}
+	filter.UserID, _ = current.UserID(c)
 
 	var sort listopts.Sort
 	if err := c.ShouldBindQuery(&sort); err != nil {

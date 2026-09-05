@@ -18,7 +18,7 @@ func BuildRoomResponse(room *Room, viewer *roomuser.RoomUser) RoomResponse {
 	}
 
 	var privateCode *string
-	if viewer != nil && (viewer.IsOwner() || viewer.IsAdmin()) {
+	if viewer != nil && viewer.IsAdmin() {
 		privateCode = room.PrivateCode
 	}
 
