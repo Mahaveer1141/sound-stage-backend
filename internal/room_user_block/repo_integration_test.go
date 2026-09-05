@@ -3,7 +3,9 @@ package roomuserblock
 import (
 	"testing"
 
+	"sound-stage-backend/internal/pkg/listopts"
 	"sound-stage-backend/internal/pkg/testutil"
+	"sound-stage-backend/internal/user"
 
 	"github.com/stretchr/testify/require"
 )
@@ -55,5 +57,34 @@ func TestRepo_Remove_Integration(t *testing.T) {
 
 		err := repo.Remove(10, 20)
 		require.NoError(t, err)
+	})
+}
+
+func TestRepo_ListByRoomID_Integration(t *testing.T) {
+	t.Run("returns blocked users with pagination and preloaded users", func(t *testing.T) {
+		db := testutil.NewIntegrationDB(t, &RoomUserBlock{}, &user.User{})
+		repo := NewRepo(db)
+
+		actor := user.User{Email: "actor@example.com", FirstName: "Actor"}
+		blocked1 := user.User{Email: "b1@example.com", FirstName: "B1"}
+		blocked2 := user.User{Email: "b2@example.com", FirstName: "B2"}
+		require.NoError(t, db.Create(&actor).Error)
+		require.NoError(t, db.Create(&blocked1).Error)
+		require.NoError(t, db.Create(&blocked2).Error)
+
+		require.NoError(t, repo.Add(10, blocked1.ID, actor.ID))
+		require.NoError(t, repo.Add(10, blocked2.ID, actor.ID))
+		require.NoError(t, repo.Add(20, blocked1.ID, actor.ID))
+
+		blocks, err := repo.ListByRoomID(10, listopts.Pagination{Page: 1, PageSize: 1})
+		require.NoError(t, err)
+		require.Len(t, blocks, 1)
+		require.Equal(t, blocked2.ID, blocks[0].UserID)
+		require.Equal(t, "B2", blocks[0].User.FirstName)
+		require.Equal(t, "Actor", blocks[0].BlockedBy.FirstName)
+
+		count, err := repo.CountByRoomID(10)
+		require.NoError(t, err)
+		require.Equal(t, int64(2), count)
 	})
 }

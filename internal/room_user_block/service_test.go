@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"sound-stage-backend/internal/pkg/httpx"
+	"sound-stage-backend/internal/pkg/listopts"
 	"sound-stage-backend/internal/role"
 	roomuser "sound-stage-backend/internal/room_user"
 )
@@ -23,6 +24,15 @@ func (m *mockRepo) Remove(roomID, userID uint) error {
 	args := m.Called(roomID, userID)
 	return args.Error(0)
 }
+func (m *mockRepo) ListByRoomID(roomID uint, p listopts.Pagination) ([]RoomUserBlock, error) {
+	args := m.Called(roomID, p)
+	blocks, _ := args.Get(0).([]RoomUserBlock)
+	return blocks, args.Error(1)
+}
+func (m *mockRepo) CountByRoomID(roomID uint) (int64, error) {
+	args := m.Called(roomID)
+	return args.Get(0).(int64), args.Error(1)
+}
 
 type mockRoomUserService struct{ mock.Mock }
 
@@ -30,6 +40,11 @@ func (m *mockRoomUserService) FindBy(userID, roomID uint) (*roomuser.RoomUser, e
 	args := m.Called(userID, roomID)
 	ru, _ := args.Get(0).(*roomuser.RoomUser)
 	return ru, args.Error(1)
+}
+
+func (m *mockRoomUserService) HasRoles(userID, roomID uint, roles []role.RoleName) (bool, error) {
+	args := m.Called(userID, roomID, roles)
+	return args.Bool(0), args.Error(1)
 }
 
 type serviceHarness struct {
@@ -232,6 +247,102 @@ func TestService_Remove(t *testing.T) {
 		err := h.svc.Remove(10, 20, 30)
 
 		require.ErrorIs(t, err, repoErr)
+		h.assertAllExpectations(t)
+	})
+}
+
+func TestService_ListByRoomID(t *testing.T) {
+	adminRoles := []role.RoleName{role.RoleAdmin, role.RoleOwner}
+
+	t.Run("success: owner lists blocked users with pagination", func(t *testing.T) {
+		h := newServiceHarness()
+		h.roomUserSvc.On("HasRoles", uint(30), uint(10), adminRoles).Return(true, nil)
+		p := listopts.Pagination{Page: 1, PageSize: 10}
+		blocks := []RoomUserBlock{{UserID: 20, RoomID: 10, BlockedByID: 30}}
+		h.repo.On("ListByRoomID", uint(10), p).Return(blocks, nil)
+		h.repo.On("CountByRoomID", uint(10)).Return(int64(1), nil)
+
+		got, count, err := h.svc.ListByRoomID(10, 30, p)
+
+		require.NoError(t, err)
+		require.Equal(t, blocks, got)
+		require.Equal(t, int64(1), count)
+		h.assertAllExpectations(t)
+	})
+
+	t.Run("success: admin lists blocked users", func(t *testing.T) {
+		h := newServiceHarness()
+		h.roomUserSvc.On("HasRoles", uint(30), uint(10), adminRoles).Return(true, nil)
+		p := listopts.Pagination{Page: 1, PageSize: 10}
+		h.repo.On("ListByRoomID", uint(10), p).Return([]RoomUserBlock{}, nil)
+		h.repo.On("CountByRoomID", uint(10)).Return(int64(0), nil)
+
+		_, count, err := h.svc.ListByRoomID(10, 30, p)
+
+		require.NoError(t, err)
+		require.Equal(t, int64(0), count)
+		h.assertAllExpectations(t)
+	})
+
+	t.Run("failure: moderator cannot list blocked users", func(t *testing.T) {
+		h := newServiceHarness()
+		h.roomUserSvc.On("HasRoles", uint(30), uint(10), adminRoles).Return(false, nil)
+
+		_, _, err := h.svc.ListByRoomID(10, 30, listopts.Pagination{Page: 1, PageSize: 10})
+
+		require.ErrorIs(t, err, httpx.ErrForbidden)
+		h.repo.AssertNotCalled(t, "ListByRoomID", mock.Anything, mock.Anything)
+		h.assertAllExpectations(t)
+	})
+
+	t.Run("failure: non-member cannot list blocked users", func(t *testing.T) {
+		h := newServiceHarness()
+		h.roomUserSvc.On("HasRoles", uint(30), uint(10), adminRoles).Return(false, nil)
+
+		_, _, err := h.svc.ListByRoomID(10, 30, listopts.Pagination{Page: 1, PageSize: 10})
+
+		require.ErrorIs(t, err, httpx.ErrForbidden)
+		h.repo.AssertNotCalled(t, "ListByRoomID", mock.Anything, mock.Anything)
+		h.assertAllExpectations(t)
+	})
+
+	t.Run("failure: HasRoles error is propagated", func(t *testing.T) {
+		h := newServiceHarness()
+		permErr := errors.New("permission check failed")
+		h.roomUserSvc.On("HasRoles", uint(30), uint(10), adminRoles).Return(false, permErr)
+
+		_, _, err := h.svc.ListByRoomID(10, 30, listopts.Pagination{Page: 1, PageSize: 10})
+
+		require.ErrorIs(t, err, permErr)
+		h.repo.AssertNotCalled(t, "ListByRoomID", mock.Anything, mock.Anything)
+		h.assertAllExpectations(t)
+	})
+
+	t.Run("failure: ListByRoomID error is propagated", func(t *testing.T) {
+		h := newServiceHarness()
+		repoErr := errors.New("query failed")
+		h.roomUserSvc.On("HasRoles", uint(30), uint(10), adminRoles).Return(true, nil)
+		p := listopts.Pagination{Page: 1, PageSize: 10}
+		h.repo.On("ListByRoomID", uint(10), p).Return(nil, repoErr)
+
+		_, _, err := h.svc.ListByRoomID(10, 30, p)
+
+		require.ErrorIs(t, err, repoErr)
+		h.repo.AssertNotCalled(t, "CountByRoomID", mock.Anything)
+		h.assertAllExpectations(t)
+	})
+
+	t.Run("failure: CountByRoomID error is propagated", func(t *testing.T) {
+		h := newServiceHarness()
+		countErr := errors.New("count failed")
+		h.roomUserSvc.On("HasRoles", uint(30), uint(10), adminRoles).Return(true, nil)
+		p := listopts.Pagination{Page: 1, PageSize: 10}
+		h.repo.On("ListByRoomID", uint(10), p).Return([]RoomUserBlock{}, nil)
+		h.repo.On("CountByRoomID", uint(10)).Return(int64(0), countErr)
+
+		_, _, err := h.svc.ListByRoomID(10, 30, p)
+
+		require.ErrorIs(t, err, countErr)
 		h.assertAllExpectations(t)
 	})
 }
