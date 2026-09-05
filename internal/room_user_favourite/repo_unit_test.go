@@ -4,6 +4,7 @@ import (
 	"regexp"
 	"testing"
 
+	"sound-stage-backend/internal/pkg/listopts"
 	"sound-stage-backend/internal/pkg/testutil"
 
 	"github.com/DATA-DOG/go-sqlmock"
@@ -78,6 +79,61 @@ func TestRepo_Remove_Unit(t *testing.T) {
 		mock.ExpectRollback()
 
 		err := repo.Remove(20, 10)
+
+		require.Error(t, err)
+		assert.ErrorIs(t, err, assert.AnError)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+}
+
+func TestRepo_ListUserFavourites_Unit(t *testing.T) {
+	t.Run("returns error when query fails", func(t *testing.T) {
+		gdb, mock := testutil.NewMockDB(t)
+		repo := NewRepo(gdb)
+
+		mock.ExpectQuery(
+			`SELECT \* FROM "room_user_favourites" WHERE user_id = \$1 ORDER BY id DESC LIMIT \$2`,
+		).
+			WithArgs(20, 10).
+			WillReturnError(assert.AnError)
+
+		_, err := repo.ListUserFavourites(20, listopts.Pagination{Page: 1, PageSize: 10})
+
+		require.Error(t, err)
+		assert.ErrorIs(t, err, assert.AnError)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+}
+
+func TestRepo_CountByUserID_Unit(t *testing.T) {
+	t.Run("returns the number of favourites for a user", func(t *testing.T) {
+		gdb, mock := testutil.NewMockDB(t)
+		repo := NewRepo(gdb)
+
+		mock.ExpectQuery(
+			`SELECT count\(\*\) FROM "room_user_favourites" WHERE user_id = \$1`,
+		).
+			WithArgs(20).
+			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(3))
+
+		got, err := repo.CountByUserID(20)
+
+		require.NoError(t, err)
+		assert.Equal(t, int64(3), got)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("returns error when count query fails", func(t *testing.T) {
+		gdb, mock := testutil.NewMockDB(t)
+		repo := NewRepo(gdb)
+
+		mock.ExpectQuery(
+			`SELECT count\(\*\) FROM "room_user_favourites" WHERE user_id = \$1`,
+		).
+			WithArgs(20).
+			WillReturnError(assert.AnError)
+
+		_, err := repo.CountByUserID(20)
 
 		require.Error(t, err)
 		assert.ErrorIs(t, err, assert.AnError)

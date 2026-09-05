@@ -2,17 +2,21 @@ package roomuserfavourite
 
 import (
 	"net/http"
-	"sound-stage-backend/internal/pkg/current"
-	"sound-stage-backend/internal/pkg/httpx"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
+
+	"sound-stage-backend/internal/pkg/current"
+	"sound-stage-backend/internal/pkg/httpx"
+	"sound-stage-backend/internal/pkg/listopts"
+	"sound-stage-backend/internal/room"
 )
 
 type favouriteService interface {
 	Add(userID, roomID uint) error
 	Remove(userID, roomID uint) error
+	ListUserFavourites(userID uint, p listopts.Pagination) ([]RoomUserFavourite, int64, error)
 }
 
 type Handler struct {
@@ -26,6 +30,32 @@ func NewHandler(service favouriteService) *Handler {
 
 type AddFavouriteInput struct {
 	RoomID uint `json:"roomId" validate:"required"`
+}
+
+func (h *Handler) ListUserFavourites(c *gin.Context) {
+	var p listopts.Pagination
+	if err := c.ShouldBindQuery(&p); err != nil {
+		httpx.ErrorResponse(c, http.StatusBadRequest, "Invalid pagination params")
+		return
+	}
+	if p.Page <= 0 || p.PageSize <= 0 {
+		httpx.ErrorResponse(c, http.StatusBadRequest, "page and pageSize must be positive")
+		return
+	}
+
+	userID, _ := current.UserID(c)
+	favourites, count, err := h.service.ListUserFavourites(userID, p)
+	if err != nil {
+		httpx.ErrorResponse(c, http.StatusUnprocessableEntity, "Failed to list favorites")
+		return
+	}
+
+	response := make([]room.RoomResponse, len(favourites))
+	for i := range favourites {
+		response[i] = room.BuildRoomResponse(&favourites[i].Room, nil)
+	}
+
+	httpx.PaginatedSuccessResponse(c, "User favourites fetched successfully", response, p.Page, p.PageSize, int(count))
 }
 
 func (h *Handler) Add(c *gin.Context) {

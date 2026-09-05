@@ -66,6 +66,7 @@ func Setup(cfg *config.Config, handlers *Handlers, tokenValidator middleware.Tok
 	{
 		users.GET("/current", handlers.User.CurrentUser)
 		users.PUT("/profile", handlers.User.UpdateProfile)
+		users.GET("/current/favorites", handlers.RoomUserFavourite.ListUserFavourites)
 		users.POST("/current/favorites", handlers.RoomUserFavourite.Add)
 		users.DELETE("/current/favorites/:roomId", handlers.RoomUserFavourite.Remove)
 	}
