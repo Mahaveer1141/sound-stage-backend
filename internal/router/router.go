@@ -9,7 +9,6 @@ import (
 	"sound-stage-backend/internal/middleware"
 	"sound-stage-backend/internal/room"
 	roomuser "sound-stage-backend/internal/room_user"
-	roomuserblock "sound-stage-backend/internal/room_user_block"
 	roomuserfavourite "sound-stage-backend/internal/room_user_favourite"
 	"sound-stage-backend/internal/tag"
 	"sound-stage-backend/internal/user"
@@ -29,7 +28,6 @@ type Handlers struct {
 	RoomUser          *roomuser.Handler
 	Tag               *tag.Handler
 	RoomUserFavourite *roomuserfavourite.Handler
-	RoomUserBlock     *roomuserblock.Handler
 }
 
 func Setup(cfg *config.Config, handlers *Handlers, tokenValidator middleware.TokenValidator, logger *slog.Logger) *gin.Engine {
@@ -89,9 +87,9 @@ func Setup(cfg *config.Config, handlers *Handlers, tokenValidator middleware.Tok
 		rooms.PUT("/:id/users/:userId/role", handlers.RoomUser.UpdateUserRole)
 		rooms.DELETE("/:id/users/:userId", handlers.RoomUser.DeleteUser)
 		rooms.PUT("/:id/private-code", handlers.Room.UpdatePrivateCode)
-		rooms.GET("/:id/blocks", handlers.RoomUserBlock.ListByRoomID)
-		rooms.POST("/:id/blocks", handlers.RoomUserBlock.Add)
-		rooms.DELETE("/:id/blocks/:userId", handlers.RoomUserBlock.Remove)
+		rooms.GET("/:id/blocks", handlers.RoomUser.ListBlockedUsers)
+		rooms.POST("/:id/blocks", handlers.RoomUser.BlockUser)
+		rooms.DELETE("/:id/blocks/:userId", handlers.RoomUser.UnblockUser)
 	}
 
 	router.GET("/ws/rooms/:roomId", middleware.AuthMiddleware(tokenValidator), handlers.WS.ServeWS)

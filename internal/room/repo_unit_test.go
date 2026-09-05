@@ -244,9 +244,9 @@ func TestRepo_List_Unit(t *testing.T) {
 		repo := NewRepo(gdb)
 
 		mock.ExpectQuery(
-			`SELECT \* FROM "rooms" WHERE .*NOT EXISTS \(SELECT 1 FROM room_user_blocks WHERE room_user_blocks\.room_id = rooms\.id AND room_user_blocks\.user_id = \$1\).*ORDER BY rooms\.created_at desc LIMIT \$2`,
+			`SELECT \* FROM "rooms" WHERE .*NOT EXISTS \(SELECT 1 FROM room_users WHERE room_users\.room_id = rooms\.id AND room_users\.user_id = \$1 AND room_users\.is_blocked = \$2\).*ORDER BY rooms\.created_at desc LIMIT \$3`,
 		).
-			WithArgs(42, 10).
+			WithArgs(42, true, 10).
 			WillReturnRows(sqlmock.NewRows([]string{"id", "created_at", "updated_at", "name", "description", "creator_id"}))
 
 		got, err := repo.List(
@@ -352,9 +352,9 @@ func TestRepo_Count_Unit(t *testing.T) {
 		repo := NewRepo(gdb)
 
 		mock.ExpectQuery(
-			`SELECT count\(\*\) FROM "rooms" WHERE .*NOT EXISTS \(SELECT 1 FROM room_user_blocks WHERE room_user_blocks\.room_id = rooms\.id AND room_user_blocks\.user_id = \$1\).*`,
+			`SELECT count\(\*\) FROM "rooms" WHERE .*NOT EXISTS \(SELECT 1 FROM room_users WHERE room_users\.room_id = rooms\.id AND room_users\.user_id = \$1 AND room_users\.is_blocked = \$2\).*`,
 		).
-			WithArgs(42).
+			WithArgs(42, true).
 			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(3))
 
 		got, err := repo.Count(RoomFilter{UserID: 42})

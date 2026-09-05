@@ -6,8 +6,8 @@ import (
 	"time"
 )
 
-func BuildRoomUserResponse(ru *RoomUser, viewerID uint, viewerIsAdmin bool) RoomUserResponse {
-	showEmail := viewerIsAdmin || ru.UserID == viewerID
+func BuildRoomUserResponse(ru *RoomUser, viewerID uint) RoomUserResponse {
+	showEmail := ru.UserID == viewerID
 	return RoomUserResponse{
 		ID:           ru.ID,
 		User:         user.BuildUserResponse(&ru.User, showEmail),
@@ -22,10 +22,18 @@ func BuildRoomUserResponse(ru *RoomUser, viewerID uint, viewerIsAdmin bool) Room
 	}
 }
 
-func BuildRoomUserListResponse(roomUsers []RoomUser, viewerID uint, viewerIsAdmin bool) []RoomUserResponse {
+func BuildRoomUserListResponse(roomUsers []RoomUser, viewerID uint) []RoomUserResponse {
 	responses := make([]RoomUserResponse, len(roomUsers))
 	for i := range roomUsers {
-		responses[i] = BuildRoomUserResponse(&roomUsers[i], viewerID, viewerIsAdmin)
+		responses[i] = BuildRoomUserResponse(&roomUsers[i], viewerID)
+	}
+	return responses
+}
+
+func BuildBlockedUserListResponse(roomUsers []RoomUser) []user.UserResponse {
+	responses := make([]user.UserResponse, len(roomUsers))
+	for i := range roomUsers {
+		responses[i] = user.BuildUserResponse(&roomUsers[i].User, false)
 	}
 	return responses
 }

@@ -25,8 +25,8 @@ func (m *mockRoomService) List(filter RoomFilter, sort listopts.Sort, p listopts
 	rooms, _ := args.Get(0).([]Room)
 	return rooms, args.Get(1).(int64), args.Error(2)
 }
-func (m *mockRoomService) FindByID(id uint) (*Room, error) {
-	args := m.Called(id)
+func (m *mockRoomService) FindByID(id, userID uint) (*Room, error) {
+	args := m.Called(id, userID)
 	r, _ := args.Get(0).(*Room)
 	return r, args.Error(1)
 }
@@ -40,10 +40,15 @@ func (m *mockRoomService) Update(id, userID uint, input *UpdateRoomParams) (*Roo
 	r, _ := args.Get(0).(*Room)
 	return r, args.Error(1)
 }
-func (m *mockRoomService) CurrentRoomUser(roomID, userID uint) (*roomuser.RoomUser, error) {
+func (m *mockRoomService) ViewerContext(roomID, userID uint) (*RoomViewer, error) {
 	args := m.Called(roomID, userID)
-	ru, _ := args.Get(0).(*roomuser.RoomUser)
-	return ru, args.Error(1)
+	v, _ := args.Get(0).(*RoomViewer)
+	return v, args.Error(1)
+}
+func (m *mockRoomService) ViewerContexts(roomIDs []uint, userID uint) (map[uint]*RoomViewer, error) {
+	args := m.Called(roomIDs, userID)
+	v, _ := args.Get(0).(map[uint]*RoomViewer)
+	return v, args.Error(1)
 }
 func (m *mockRoomService) UpdatePrivateCode(roomID uint) error {
 	args := m.Called(roomID)
@@ -71,7 +76,7 @@ func TestHandler_Create(t *testing.T) {
 		h.svc.On("Create", mock.MatchedBy(func(in *CreateRoomParams) bool {
 			return in.Name == "Main Stage" && in.CreatorID == 42
 		})).Return(created, nil)
-		h.svc.On("CurrentRoomUser", uint(0), uint(42)).Return(&roomuser.RoomUser{Role: role.Role{Name: role.RoleOwner}}, nil)
+		h.svc.On("ViewerContext", uint(0), uint(42)).Return(&RoomViewer{RoomUser: &roomuser.RoomUser{Role: role.Role{Name: role.RoleOwner}}}, nil)
 
 		w, c := testutil.NewTestContext(http.MethodPost, "/rooms", CreateRoomParams{Name: "Main Stage", Type: RoomTypePublic})
 		c.Set("userId", uint(42))
@@ -113,7 +118,7 @@ func TestHandler_Update(t *testing.T) {
 		h := newHandlerHarness(t)
 		updated := &Room{Name: "Renamed"}
 		h.svc.On("Update", uint(5), uint(42), mock.AnythingOfType("*room.UpdateRoomParams")).Return(updated, nil)
-		h.svc.On("CurrentRoomUser", uint(0), uint(42)).Return(&roomuser.RoomUser{Role: role.Role{Name: role.RoleOwner}}, nil)
+		h.svc.On("ViewerContext", uint(0), uint(42)).Return(&RoomViewer{RoomUser: &roomuser.RoomUser{Role: role.Role{Name: role.RoleOwner}}}, nil)
 
 		w, c := testutil.NewTestContext(http.MethodPatch, "/rooms/5", UpdateRoomParams{Name: "Renamed", Type: RoomTypePublic})
 		c.Params = gin.Params{{Key: "id", Value: "5"}}
@@ -198,6 +203,7 @@ func TestHandler_List(t *testing.T) {
 		h := newHandlerHarness(t)
 		rooms := []Room{{Name: "A"}, {Name: "B"}}
 		h.svc.On("List", mock.Anything, mock.Anything, mock.Anything).Return(rooms, int64(2), nil)
+		h.svc.On("ViewerContexts", mock.Anything, mock.Anything).Return(map[uint]*RoomViewer{}, nil)
 
 		w, c := testutil.NewTestContext(http.MethodGet, "/rooms?page=1&pageSize=10", nil)
 
@@ -236,8 +242,8 @@ func TestHandler_FindByID(t *testing.T) {
 		h := newHandlerHarness(t)
 		want := &Room{Name: "Main Stage"}
 		want.ID = 7
-		h.svc.On("FindByID", uint(7)).Return(want, nil)
-		h.svc.On("CurrentRoomUser", uint(7), uint(1)).Return(&roomuser.RoomUser{Role: role.Role{Name: role.RoleListener}}, nil)
+		h.svc.On("FindByID", uint(7), uint(1)).Return(want, nil)
+		h.svc.On("ViewerContext", uint(7), uint(1)).Return(&RoomViewer{RoomUser: &roomuser.RoomUser{Role: role.Role{Name: role.RoleListener}}}, nil)
 
 		w, c := testutil.NewTestContext(http.MethodGet, "/rooms/7", nil)
 		c.Params = gin.Params{{Key: "id", Value: "7"}}
@@ -263,7 +269,7 @@ func TestHandler_FindByID(t *testing.T) {
 
 	t.Run("failure: not found returns 404", func(t *testing.T) {
 		h := newHandlerHarness(t)
-		h.svc.On("FindByID", uint(99)).Return(nil, assert.AnError)
+		h.svc.On("FindByID", uint(99), uint(0)).Return(nil, assert.AnError)
 
 		w, c := testutil.NewTestContext(http.MethodGet, "/rooms/99", nil)
 		c.Params = gin.Params{{Key: "id", Value: "99"}}

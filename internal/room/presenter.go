@@ -2,11 +2,10 @@ package room
 
 import (
 	"sound-stage-backend/internal/category"
-	roomuser "sound-stage-backend/internal/room_user"
 	"sound-stage-backend/internal/tag"
 )
 
-func BuildRoomResponse(room *Room, viewer *roomuser.RoomUser) RoomResponse {
+func BuildRoomResponse(room *Room, viewer *RoomViewer) RoomResponse {
 	cats := make([]category.CategoryResponse, len(room.Categories))
 	for i := range room.Categories {
 		cats[i] = category.BuildCategoryResponse(&room.Categories[i])
@@ -18,25 +17,32 @@ func BuildRoomResponse(room *Room, viewer *roomuser.RoomUser) RoomResponse {
 	}
 
 	var privateCode *string
-	if viewer != nil && viewer.IsAdmin() {
-		privateCode = room.PrivateCode
+	var isRoomUser, isFavourited bool
+	if viewer != nil {
+		isRoomUser = viewer.RoomUser != nil
+		isFavourited = viewer.IsFavourited
+		if isRoomUser && viewer.RoomUser.IsAdmin() {
+			privateCode = room.PrivateCode
+		}
 	}
 
 	return RoomResponse{
-		ID:          room.ID,
-		Name:        room.Name,
-		Description: room.Description,
-		Type:        room.Type,
-		PrivateCode: privateCode,
-		Categories:  cats,
-		Tags:        tags,
+		ID:           room.ID,
+		Name:         room.Name,
+		Description:  room.Description,
+		Type:         room.Type,
+		PrivateCode:  privateCode,
+		Categories:   cats,
+		Tags:         tags,
+		IsRoomUser:   isRoomUser,
+		IsFavourited: isFavourited,
 	}
 }
 
-func BuildRoomListResponse(rooms []Room, viewer *roomuser.RoomUser) []RoomResponse {
+func BuildRoomListResponse(rooms []Room, viewers map[uint]*RoomViewer) []RoomResponse {
 	responses := make([]RoomResponse, len(rooms))
 	for i := range rooms {
-		responses[i] = BuildRoomResponse(&rooms[i], viewer)
+		responses[i] = BuildRoomResponse(&rooms[i], viewers[rooms[i].ID])
 	}
 	return responses
 }

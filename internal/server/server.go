@@ -21,7 +21,6 @@ import (
 	"sound-stage-backend/internal/role"
 	"sound-stage-backend/internal/room"
 	roomuser "sound-stage-backend/internal/room_user"
-	roomuserblock "sound-stage-backend/internal/room_user_block"
 	roomuserfavourite "sound-stage-backend/internal/room_user_favourite"
 	"sound-stage-backend/internal/router"
 	"sound-stage-backend/internal/tag"
@@ -69,7 +68,6 @@ func (s *Server) Run() error {
 	roomRepo := room.NewRepo(db)
 	roomUserRepo := roomuser.NewRepo(db)
 	roomUserFavouriteRepo := roomuserfavourite.NewRepo(db)
-	roomUserBlockRepo := roomuserblock.NewRepo(db)
 	categoryRepo := category.NewRepo(db)
 	tagRepo := tag.NewRepo(db)
 
@@ -79,9 +77,8 @@ func (s *Server) Run() error {
 	authService := auth.NewService(userService, otpRequestService, apiTokenService, mailService)
 	roleService := role.NewService(roleRepo)
 	roomUserService := roomuser.NewService(roomUserRepo, roleService, mediaRouter)
-	roomUserFavouriteService := roomuserfavourite.NewService(roomUserFavouriteRepo)
-	roomUserBlockService := roomuserblock.NewService(roomUserBlockRepo, roomUserService)
-	roomService := room.NewService(roomRepo, roomUserService, db)
+	roomUserFavouriteService := roomuserfavourite.NewService(roomUserFavouriteRepo, roomUserService)
+	roomService := room.NewService(roomRepo, roomUserService, roomUserFavouriteService, db)
 	categoryService := category.NewService(categoryRepo)
 	tagService := tag.NewService(tagRepo)
 
@@ -108,7 +105,6 @@ func (s *Server) Run() error {
 	categoryHandler := category.NewHandler(categoryService)
 	tagHandler := tag.NewHandler(tagService)
 	roomUserFavouriteHandler := roomuserfavourite.NewHandler(roomUserFavouriteService)
-	roomUserBlockHandler := roomuserblock.NewHandler(roomUserBlockService)
 
 	handlers := &router.Handlers{
 		Health:            healthHandler,
@@ -119,7 +115,6 @@ func (s *Server) Run() error {
 		RoomUser:          roomUserHandler,
 		Tag:               tagHandler,
 		RoomUserFavourite: roomUserFavouriteHandler,
-		RoomUserBlock:     roomUserBlockHandler,
 		WS:                wsHandler,
 	}
 

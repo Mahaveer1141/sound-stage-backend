@@ -27,7 +27,7 @@ func (r *Repo) Remove(userID, roomID uint) error {
 func (r *Repo) ListUserFavourites(userID uint, p listopts.Pagination) ([]RoomUserFavourite, error) {
 	var favourites []RoomUserFavourite
 	err := r.db.Where("user_id = ?", userID).
-		Where("room_id NOT IN (SELECT room_id FROM room_user_blocks WHERE user_id = ?)", userID).
+		Where("room_id NOT IN (SELECT room_id FROM room_users WHERE user_id = ? AND is_blocked = ?)", userID, true).
 		Preload("Room").
 		Order("id DESC").
 		Scopes(p.Scope()).
@@ -35,10 +35,18 @@ func (r *Repo) ListUserFavourites(userID uint, p listopts.Pagination) ([]RoomUse
 	return favourites, err
 }
 
+func (r *Repo) FindRoomIDsByUserID(userID uint, roomIDs []uint) ([]uint, error) {
+	var ids []uint
+	err := r.db.Model(&RoomUserFavourite{}).
+		Where("user_id = ? AND room_id IN ?", userID, roomIDs).
+		Pluck("room_id", &ids).Error
+	return ids, err
+}
+
 func (r *Repo) CountByUserID(userID uint) (int64, error) {
 	var count int64
 	err := r.db.Model(&RoomUserFavourite{}).Where("user_id = ?", userID).
-		Where("room_id NOT IN (SELECT room_id FROM room_user_blocks WHERE user_id = ?)", userID).
+		Where("room_id NOT IN (SELECT room_id FROM room_users WHERE user_id = ? AND is_blocked = ?)", userID, true).
 		Count(&count).Error
 	return count, err
 }

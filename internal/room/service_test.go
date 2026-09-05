@@ -78,11 +78,29 @@ func (m *mockRoomUserService) HasRoles(userID, roomID uint, permissions []role.R
 	args := m.Called(userID, roomID, permissions)
 	return args.Bool(0), args.Error(1)
 }
+func (m *mockRoomUserService) MapByUserAndRoomIDs(userID uint, roomIDs []uint) (map[uint]*roomuser.RoomUser, error) {
+	args := m.Called(userID, roomIDs)
+	res, _ := args.Get(0).(map[uint]*roomuser.RoomUser)
+	return res, args.Error(1)
+}
+func (m *mockRoomUserService) IsBlocked(roomID, userID uint) (bool, error) {
+	args := m.Called(roomID, userID)
+	return args.Bool(0), args.Error(1)
+}
+
+type mockFavouriteService struct{ mock.Mock }
+
+func (m *mockFavouriteService) FavouritedRoomIDs(userID uint, roomIDs []uint) (map[uint]bool, error) {
+	args := m.Called(userID, roomIDs)
+	res, _ := args.Get(0).(map[uint]bool)
+	return res, args.Error(1)
+}
 
 type harness struct {
-	repo     *mockRepository
-	roomUser *mockRoomUserService
-	svc      *Service
+	repo      *mockRepository
+	roomUser  *mockRoomUserService
+	favourite *mockFavouriteService
+	svc       *Service
 }
 
 func newHarness(t *testing.T) *harness {
@@ -90,10 +108,12 @@ func newHarness(t *testing.T) *harness {
 	db := testutil.NewIntegrationDB(t)
 	repo := new(mockRepository)
 	ru := new(mockRoomUserService)
+	fav := new(mockFavouriteService)
 	return &harness{
-		repo:     repo,
-		roomUser: ru,
-		svc:      NewService(repo, ru, db),
+		repo:      repo,
+		roomUser:  ru,
+		favourite: fav,
+		svc:       NewService(repo, ru, fav, db),
 	}
 }
 
@@ -102,23 +122,52 @@ func TestService_FindByID(t *testing.T) {
 		h := newHarness(t)
 		want := &Room{Name: "Main Stage"}
 		tags := map[uint][]tag.Tag{1: {{Name: "jazz"}}}
+		h.roomUser.On("IsBlocked", uint(1), uint(7)).Return(false, nil)
 		h.repo.On("LoadTagsForRooms", []uint{1}).Return(tags, nil)
 		h.repo.On("FindByID", uint(1)).Return(want, nil)
 
-		got, err := h.svc.FindByID(1)
+		got, err := h.svc.FindByID(1, 7)
 
 		require.NoError(t, err)
 		assert.Same(t, want, got)
 		assert.Equal(t, tags[1], got.Tags)
 		h.repo.AssertExpectations(t)
+		h.roomUser.AssertExpectations(t)
+	})
+
+	t.Run("failure: blocked user gets ErrRecordNotFound", func(t *testing.T) {
+		h := newHarness(t)
+		h.roomUser.On("IsBlocked", uint(1), uint(7)).Return(true, nil)
+
+		got, err := h.svc.FindByID(1, 7)
+
+		require.Nil(t, got)
+		require.ErrorIs(t, err, httpx.ErrRecordNotFound)
+		h.repo.AssertNotCalled(t, "FindByID", mock.Anything)
+		h.repo.AssertNotCalled(t, "LoadTagsForRooms", mock.Anything)
+		h.roomUser.AssertExpectations(t)
+	})
+
+	t.Run("failure: IsBlocked error is propagated", func(t *testing.T) {
+		h := newHarness(t)
+		blockErr := errors.New("block check failed")
+		h.roomUser.On("IsBlocked", uint(1), uint(7)).Return(false, blockErr)
+
+		got, err := h.svc.FindByID(1, 7)
+
+		require.Nil(t, got)
+		require.ErrorIs(t, err, blockErr)
+		h.repo.AssertNotCalled(t, "FindByID", mock.Anything)
+		h.roomUser.AssertExpectations(t)
 	})
 
 	t.Run("failure: LoadTagsForRooms error is propagated", func(t *testing.T) {
 		h := newHarness(t)
 		tagsErr := errors.New("tags failed")
+		h.roomUser.On("IsBlocked", uint(99), uint(7)).Return(false, nil)
 		h.repo.On("LoadTagsForRooms", []uint{99}).Return(nil, tagsErr)
 
-		got, err := h.svc.FindByID(99)
+		got, err := h.svc.FindByID(99, 7)
 
 		require.Nil(t, got)
 		require.ErrorIs(t, err, tagsErr)
@@ -128,10 +177,11 @@ func TestService_FindByID(t *testing.T) {
 	t.Run("failure: repo error propagated", func(t *testing.T) {
 		h := newHarness(t)
 		repoErr := errors.New("not found")
+		h.roomUser.On("IsBlocked", uint(99), uint(7)).Return(false, nil)
 		h.repo.On("LoadTagsForRooms", []uint{99}).Return(map[uint][]tag.Tag{}, nil)
 		h.repo.On("FindByID", uint(99)).Return(nil, repoErr)
 
-		got, err := h.svc.FindByID(99)
+		got, err := h.svc.FindByID(99, 7)
 
 		require.Nil(t, got)
 		require.ErrorIs(t, err, repoErr)
@@ -309,29 +359,77 @@ func TestService_List(t *testing.T) {
 	})
 }
 
-func TestService_CurrentRoomUser(t *testing.T) {
-	t.Run("success: delegates to roomUserService.FindBy", func(t *testing.T) {
+func TestService_ViewerContext(t *testing.T) {
+	t.Run("success: returns membership and favourite status", func(t *testing.T) {
 		h := newHarness(t)
-		want := &roomuser.RoomUser{}
-		h.roomUser.On("FindBy", uint(7), uint(4)).Return(want, nil)
+		ru := &roomuser.RoomUser{UserID: 7, RoomID: 4}
+		h.roomUser.On("MapByUserAndRoomIDs", uint(7), []uint{4}).Return(map[uint]*roomuser.RoomUser{4: ru}, nil)
+		h.favourite.On("FavouritedRoomIDs", uint(7), []uint{4}).Return(map[uint]bool{4: true}, nil)
 
-		got, err := h.svc.CurrentRoomUser(4, 7)
+		got, err := h.svc.ViewerContext(4, 7)
 
 		require.NoError(t, err)
-		assert.Same(t, want, got)
+		require.NotNil(t, got)
+		assert.Same(t, ru, got.RoomUser)
+		assert.True(t, got.IsFavourited)
 		h.roomUser.AssertExpectations(t)
+		h.favourite.AssertExpectations(t)
 	})
 
-	t.Run("failure: roomUserService error propagated (e.g. not a member)", func(t *testing.T) {
+	t.Run("success: non-member non-favourited viewer", func(t *testing.T) {
 		h := newHarness(t)
-		notFoundErr := errors.New("not a member of this room")
-		h.roomUser.On("FindBy", uint(7), uint(4)).Return(nil, notFoundErr)
+		h.roomUser.On("MapByUserAndRoomIDs", uint(7), []uint{4}).Return(map[uint]*roomuser.RoomUser{}, nil)
+		h.favourite.On("FavouritedRoomIDs", uint(7), []uint{4}).Return(map[uint]bool{}, nil)
 
-		got, err := h.svc.CurrentRoomUser(4, 7)
+		got, err := h.svc.ViewerContext(4, 7)
+
+		require.NoError(t, err)
+		require.NotNil(t, got)
+		assert.Nil(t, got.RoomUser)
+		assert.False(t, got.IsFavourited)
+	})
+
+	t.Run("failure: roomUserService error propagated", func(t *testing.T) {
+		h := newHarness(t)
+		findErr := errors.New("membership lookup failed")
+		h.roomUser.On("MapByUserAndRoomIDs", uint(7), []uint{4}).Return(nil, findErr)
+
+		got, err := h.svc.ViewerContext(4, 7)
 
 		require.Nil(t, got)
-		require.ErrorIs(t, err, notFoundErr)
-		h.roomUser.AssertExpectations(t)
+		require.ErrorIs(t, err, findErr)
+		h.favourite.AssertNotCalled(t, "FavouritedRoomIDs", mock.Anything, mock.Anything)
+	})
+
+	t.Run("failure: favouriteService error propagated", func(t *testing.T) {
+		h := newHarness(t)
+		favErr := errors.New("favourite lookup failed")
+		h.roomUser.On("MapByUserAndRoomIDs", uint(7), []uint{4}).Return(map[uint]*roomuser.RoomUser{}, nil)
+		h.favourite.On("FavouritedRoomIDs", uint(7), []uint{4}).Return(nil, favErr)
+
+		got, err := h.svc.ViewerContext(4, 7)
+
+		require.Nil(t, got)
+		require.ErrorIs(t, err, favErr)
+	})
+}
+
+func TestService_ViewerContexts(t *testing.T) {
+	t.Run("success: returns per-room viewer context", func(t *testing.T) {
+		h := newHarness(t)
+		ru := &roomuser.RoomUser{UserID: 7, RoomID: 4}
+		h.roomUser.On("MapByUserAndRoomIDs", uint(7), []uint{4, 5}).
+			Return(map[uint]*roomuser.RoomUser{4: ru}, nil)
+		h.favourite.On("FavouritedRoomIDs", uint(7), []uint{4, 5}).Return(map[uint]bool{5: true}, nil)
+
+		got, err := h.svc.ViewerContexts([]uint{4, 5}, 7)
+
+		require.NoError(t, err)
+		require.Len(t, got, 2)
+		assert.Same(t, ru, got[4].RoomUser)
+		assert.False(t, got[4].IsFavourited)
+		assert.Nil(t, got[5].RoomUser)
+		assert.True(t, got[5].IsFavourited)
 	})
 }
 
@@ -362,6 +460,7 @@ func TestService_AddRoomUser(t *testing.T) {
 	t.Run("success: adds user to a public room", func(t *testing.T) {
 		h := newHarness(t)
 		created := &roomuser.RoomUser{UserID: 1, RoomID: 4}
+		h.roomUser.On("IsBlocked", uint(4), uint(1)).Return(false, nil)
 		h.roomUser.On("FindBy", uint(1), uint(4)).Return(nil, nil)
 		h.repo.On("FindByID", uint(4)).Return(&Room{Type: RoomTypePublic}, nil)
 		h.roomUser.On("Create", (*gorm.DB)(nil), uint(1), uint(4), role.RoleListener).Return(created, nil)
@@ -377,6 +476,7 @@ func TestService_AddRoomUser(t *testing.T) {
 	t.Run("success: rejoins existing member", func(t *testing.T) {
 		h := newHarness(t)
 		existing := &roomuser.RoomUser{UserID: 1, RoomID: 4}
+		h.roomUser.On("IsBlocked", uint(4), uint(1)).Return(false, nil)
 		h.roomUser.On("FindBy", uint(1), uint(4)).Return(existing, nil)
 		h.roomUser.On("Rejoin", existing).Return(nil)
 
@@ -387,9 +487,23 @@ func TestService_AddRoomUser(t *testing.T) {
 		h.roomUser.AssertExpectations(t)
 	})
 
+	t.Run("failure: blocked user returns ErrUserBlocked", func(t *testing.T) {
+		h := newHarness(t)
+		h.roomUser.On("IsBlocked", uint(4), uint(1)).Return(true, nil)
+
+		got, err := h.svc.AddRoomUser(4, 1, "")
+
+		require.Nil(t, got)
+		require.ErrorIs(t, err, httpx.ErrUserBlocked)
+		h.roomUser.AssertNotCalled(t, "FindBy", mock.Anything, mock.Anything)
+		h.repo.AssertNotCalled(t, "FindByID", mock.Anything)
+		h.roomUser.AssertExpectations(t)
+	})
+
 	t.Run("failure: wrong private code returns ErrForbidden", func(t *testing.T) {
 		h := newHarness(t)
 		code := "secret-123"
+		h.roomUser.On("IsBlocked", uint(4), uint(1)).Return(false, nil)
 		h.roomUser.On("FindBy", uint(1), uint(4)).Return(nil, nil)
 		h.repo.On("FindByID", uint(4)).Return(&Room{Type: RoomTypePrivate, PrivateCode: &code}, nil)
 
@@ -404,6 +518,7 @@ func TestService_AddRoomUser(t *testing.T) {
 	t.Run("failure: room lookup error is propagated", func(t *testing.T) {
 		h := newHarness(t)
 		findErr := errors.New("db down")
+		h.roomUser.On("IsBlocked", uint(4), uint(1)).Return(false, nil)
 		h.roomUser.On("FindBy", uint(1), uint(4)).Return(nil, nil)
 		h.repo.On("FindByID", uint(4)).Return(nil, findErr)
 

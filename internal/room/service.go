@@ -18,6 +18,12 @@ type roomUserService interface {
 	RemoveUser(userID uint, roomID uint) error
 	FindBy(userID uint, roomID uint) (*roomuser.RoomUser, error)
 	HasRoles(userID uint, roomID uint, permissions []role.RoleName) (bool, error)
+	MapByUserAndRoomIDs(userID uint, roomIDs []uint) (map[uint]*roomuser.RoomUser, error)
+	IsBlocked(roomID, userID uint) (bool, error)
+}
+
+type roomUserFavouriteService interface {
+	FavouritedRoomIDs(userID uint, roomIDs []uint) (map[uint]bool, error)
 }
 
 type repository interface {
@@ -31,16 +37,31 @@ type repository interface {
 }
 
 type Service struct {
-	repo            repository
-	roomUserService roomUserService
-	db              *gorm.DB
+	repo             repository
+	roomUserService  roomUserService
+	favouriteService roomUserFavouriteService
+	db               *gorm.DB
 }
 
-func NewService(r repository, roomUserSvc roomUserService, db *gorm.DB) *Service {
-	return &Service{repo: r, roomUserService: roomUserSvc, db: db}
+func NewService(r repository, roomUserSvc roomUserService,
+	favouriteSvc roomUserFavouriteService, db *gorm.DB) *Service {
+	return &Service{
+		repo:             r,
+		roomUserService:  roomUserSvc,
+		favouriteService: favouriteSvc,
+		db:               db,
+	}
 }
 
-func (s *Service) FindByID(id uint) (*Room, error) {
+func (s *Service) FindByID(id, userID uint) (*Room, error) {
+	blocked, err := s.roomUserService.IsBlocked(id, userID)
+	if err != nil {
+		return nil, err
+	}
+	if blocked {
+		return nil, httpx.ErrRecordNotFound
+	}
+
 	tagToRooms, err := s.repo.LoadTagsForRooms([]uint{id})
 	if err != nil {
 		return nil, err
@@ -132,8 +153,28 @@ func (s *Service) List(filter RoomFilter, sort listopts.Sort, p listopts.Paginat
 	return rooms, count, nil
 }
 
-func (s *Service) CurrentRoomUser(roomID, userID uint) (*roomuser.RoomUser, error) {
-	return s.roomUserService.FindBy(userID, roomID)
+func (s *Service) ViewerContext(roomID, userID uint) (*RoomViewer, error) {
+	viewers, err := s.ViewerContexts([]uint{roomID}, userID)
+	if err != nil {
+		return nil, err
+	}
+	return viewers[roomID], nil
+}
+
+func (s *Service) ViewerContexts(roomIDs []uint, userID uint) (map[uint]*RoomViewer, error) {
+	memberships, err := s.roomUserService.MapByUserAndRoomIDs(userID, roomIDs)
+	if err != nil {
+		return nil, err
+	}
+	favourited, err := s.favouriteService.FavouritedRoomIDs(userID, roomIDs)
+	if err != nil {
+		return nil, err
+	}
+	viewers := make(map[uint]*RoomViewer, len(roomIDs))
+	for _, id := range roomIDs {
+		viewers[id] = &RoomViewer{RoomUser: memberships[id], IsFavourited: favourited[id]}
+	}
+	return viewers, nil
 }
 
 func (s *Service) UpdatePrivateCode(roomID uint) error {
@@ -145,6 +186,14 @@ func (s *Service) UpdatePrivateCode(roomID uint) error {
 }
 
 func (s *Service) AddRoomUser(roomID, userID uint, privateCode string) (*roomuser.RoomUser, error) {
+	blocked, err := s.roomUserService.IsBlocked(roomID, userID)
+	if err != nil {
+		return nil, err
+	}
+	if blocked {
+		return nil, httpx.ErrUserBlocked
+	}
+
 	ru, err := s.roomUserService.FindBy(userID, roomID)
 	if err != nil {
 		return nil, err

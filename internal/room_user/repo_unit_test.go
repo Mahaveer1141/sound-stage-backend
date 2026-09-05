@@ -23,8 +23,8 @@ func TestRepo_Create_Unit(t *testing.T) {
 
 		mock.ExpectBegin()
 		mock.ExpectQuery(regexp.QuoteMeta(
-			`INSERT INTO "room_users" ("created_at","updated_at","user_id","room_id","role_id","last_joined_at","last_left_at","is_online") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "id"`)).
-			WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), 1, 10, 100, sqlmock.AnyArg(), sqlmock.AnyArg(), false).
+			`INSERT INTO "room_users" ("created_at","updated_at","user_id","room_id","role_id","last_joined_at","last_left_at","is_online","is_blocked","blocked_by_id") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING "id"`)).
+			WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), 1, 10, 100, sqlmock.AnyArg(), sqlmock.AnyArg(), false, false, nil).
 			WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
 		mock.ExpectCommit()
 
@@ -48,8 +48,8 @@ func TestRepo_Create_Unit(t *testing.T) {
 		require.NoError(t, tx.Error)
 
 		mock.ExpectQuery(regexp.QuoteMeta(
-			`INSERT INTO "room_users" ("created_at","updated_at","user_id","room_id","role_id","last_joined_at","last_left_at","is_online") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "id"`)).
-			WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), 2, 20, 200, sqlmock.AnyArg(), sqlmock.AnyArg(), false).
+			`INSERT INTO "room_users" ("created_at","updated_at","user_id","room_id","role_id","last_joined_at","last_left_at","is_online","is_blocked","blocked_by_id") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING "id"`)).
+			WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), 2, 20, 200, sqlmock.AnyArg(), sqlmock.AnyArg(), false, false, nil).
 			WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(2))
 
 		got, err := repo.Create(tx, 2, 20, 200)
@@ -69,8 +69,8 @@ func TestRepo_Create_Unit(t *testing.T) {
 
 		mock.ExpectBegin()
 		mock.ExpectQuery(regexp.QuoteMeta(
-			`INSERT INTO "room_users" ("created_at","updated_at","user_id","room_id","role_id","last_joined_at","last_left_at","is_online") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "id"`)).
-			WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), 1, 10, 100, sqlmock.AnyArg(), sqlmock.AnyArg(), false).
+			`INSERT INTO "room_users" ("created_at","updated_at","user_id","room_id","role_id","last_joined_at","last_left_at","is_online","is_blocked","blocked_by_id") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING "id"`)).
+			WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), 1, 10, 100, sqlmock.AnyArg(), sqlmock.AnyArg(), false, false, nil).
 			WillReturnError(assert.AnError)
 		mock.ExpectRollback()
 
@@ -89,9 +89,9 @@ func TestRepo_FindBy_Unit(t *testing.T) {
 		repo := NewRepo(gdb)
 
 		mock.ExpectQuery(
-			`SELECT \* FROM "room_users" WHERE user_id = \$1 AND room_id = \$2 ORDER BY "room_users"\."id" LIMIT \$3`,
+			`SELECT \* FROM "room_users" WHERE user_id = \$1 AND room_id = \$2 AND is_blocked = \$3 ORDER BY "room_users"\."id" LIMIT \$4`,
 		).
-			WithArgs(1, 10, 1).
+			WithArgs(1, 10, false, 1).
 			WillReturnRows(
 				sqlmock.NewRows([]string{"id", "created_at", "updated_at", "user_id", "room_id", "role_id", "last_joined_at", "last_left_at", "is_online"}).
 					AddRow(1, time.Now(), time.Now(), 1, 10, 100, time.Now(), time.Now(), true),
@@ -127,9 +127,9 @@ func TestRepo_FindBy_Unit(t *testing.T) {
 		repo := NewRepo(gdb)
 
 		mock.ExpectQuery(
-			`SELECT \* FROM "room_users" WHERE user_id = \$1 AND room_id = \$2 ORDER BY "room_users"\."id" LIMIT \$3`,
+			`SELECT \* FROM "room_users" WHERE user_id = \$1 AND room_id = \$2 AND is_blocked = \$3 ORDER BY "room_users"\."id" LIMIT \$4`,
 		).
-			WithArgs(1, 10, 1).
+			WithArgs(1, 10, false, 1).
 			WillReturnError(gorm.ErrRecordNotFound)
 
 		got, err := repo.FindBy(1, 10)
@@ -144,9 +144,9 @@ func TestRepo_FindBy_Unit(t *testing.T) {
 		repo := NewRepo(gdb)
 
 		mock.ExpectQuery(
-			`SELECT \* FROM "room_users" WHERE user_id = \$1 AND room_id = \$2 ORDER BY "room_users"\."id" LIMIT \$3`,
+			`SELECT \* FROM "room_users" WHERE user_id = \$1 AND room_id = \$2 AND is_blocked = \$3 ORDER BY "room_users"\."id" LIMIT \$4`,
 		).
-			WithArgs(1, 10, 1).
+			WithArgs(1, 10, false, 1).
 			WillReturnError(assert.AnError)
 
 		got, err := repo.FindBy(1, 10)
@@ -200,9 +200,9 @@ func TestRepo_HasRoles_Unit(t *testing.T) {
 		repo := NewRepo(gdb)
 
 		mock.ExpectQuery(
-			`SELECT count\(\*\) FROM "room_users" JOIN roles ON roles\.id = room_users\.role_id WHERE room_users\.user_id = \$1 AND room_users\.room_id = \$2 AND roles\.name IN \(\$3\)`,
+			`SELECT count\(\*\) FROM "room_users" JOIN roles ON roles\.id = room_users\.role_id WHERE room_users\.user_id = \$1 AND room_users\.room_id = \$2 AND room_users\.is_blocked = \$3 AND roles\.name IN \(\$4\)`,
 		).
-			WithArgs(1, 10, "owner").
+			WithArgs(1, 10, false, "owner").
 			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
 
 		got, err := repo.HasRoles(1, 10, []role.RoleName{role.RoleOwner})
@@ -217,9 +217,9 @@ func TestRepo_HasRoles_Unit(t *testing.T) {
 		repo := NewRepo(gdb)
 
 		mock.ExpectQuery(
-			`SELECT count\(\*\) FROM "room_users" JOIN roles ON roles\.id = room_users\.role_id WHERE room_users\.user_id = \$1 AND room_users\.room_id = \$2 AND roles\.name IN \(\$3\)`,
+			`SELECT count\(\*\) FROM "room_users" JOIN roles ON roles\.id = room_users\.role_id WHERE room_users\.user_id = \$1 AND room_users\.room_id = \$2 AND room_users\.is_blocked = \$3 AND roles\.name IN \(\$4\)`,
 		).
-			WithArgs(1, 10, "owner").
+			WithArgs(1, 10, false, "owner").
 			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
 
 		got, err := repo.HasRoles(1, 10, []role.RoleName{role.RoleOwner})
@@ -234,9 +234,9 @@ func TestRepo_HasRoles_Unit(t *testing.T) {
 		repo := NewRepo(gdb)
 
 		mock.ExpectQuery(
-			`SELECT count\(\*\) FROM "room_users" JOIN roles ON roles\.id = room_users\.role_id WHERE room_users\.user_id = \$1 AND room_users\.room_id = \$2 AND roles\.name IN \(\$3\)`,
+			`SELECT count\(\*\) FROM "room_users" JOIN roles ON roles\.id = room_users\.role_id WHERE room_users\.user_id = \$1 AND room_users\.room_id = \$2 AND room_users\.is_blocked = \$3 AND roles\.name IN \(\$4\)`,
 		).
-			WithArgs(1, 10, "owner").
+			WithArgs(1, 10, false, "owner").
 			WillReturnError(assert.AnError)
 
 		got, err := repo.HasRoles(1, 10, []role.RoleName{role.RoleOwner})
@@ -254,9 +254,9 @@ func TestRepo_ListByRoomID_Unit(t *testing.T) {
 		repo := NewRepo(gdb)
 
 		mock.ExpectQuery(
-			`SELECT .*FROM "room_users" WHERE room_users\.room_id = \$1 ORDER BY room_users\.created_at desc LIMIT \$2`,
+			`SELECT .*FROM "room_users" WHERE room_users\.room_id = \$1 AND room_users\.is_blocked = \$2 ORDER BY room_users\.created_at desc LIMIT \$3`,
 		).
-			WithArgs(10, 10).
+			WithArgs(10, false, 10).
 			WillReturnRows(sqlmock.NewRows([]string{"id", "created_at", "updated_at", "user_id", "room_id", "role_id", "last_joined_at", "last_left_at", "is_online"}))
 
 		got, err := repo.ListByRoomID(10, RoomUserFilter{}, listopts.Sort{}, listopts.Pagination{Page: 1, PageSize: 10})
@@ -271,9 +271,9 @@ func TestRepo_ListByRoomID_Unit(t *testing.T) {
 		repo := NewRepo(gdb)
 
 		mock.ExpectQuery(
-			`SELECT .*FROM "room_users" JOIN roles ON roles\.id = room_users\.role_id WHERE room_users\.room_id = \$1 AND roles\.name IN \(\$2\) ORDER BY room_users\.created_at asc LIMIT \$3 OFFSET \$4`,
+			`SELECT .*FROM "room_users" JOIN roles ON roles\.id = room_users\.role_id WHERE \(room_users\.room_id = \$1 AND room_users\.is_blocked = \$2\) AND roles\.name IN \(\$3\) ORDER BY room_users\.created_at asc LIMIT \$4 OFFSET \$5`,
 		).
-			WithArgs(10, "listener", 2, 2).
+			WithArgs(10, false, "listener", 2, 2).
 			WillReturnRows(sqlmock.NewRows([]string{"id", "created_at", "updated_at", "user_id", "room_id", "role_id", "last_joined_at", "last_left_at", "is_online"}))
 
 		got, err := repo.ListByRoomID(
@@ -295,9 +295,9 @@ func TestRepo_CountByRoomID_Unit(t *testing.T) {
 		repo := NewRepo(gdb)
 
 		mock.ExpectQuery(
-			`SELECT count\(\*\) FROM "room_users" WHERE room_users\.room_id = \$1`,
+			`SELECT count\(\*\) FROM "room_users" WHERE room_users\.room_id = \$1 AND room_users\.is_blocked = \$2`,
 		).
-			WithArgs(10).
+			WithArgs(10, false).
 			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(5))
 
 		got, err := repo.CountByRoomID(10, RoomUserFilter{})
@@ -312,9 +312,9 @@ func TestRepo_CountByRoomID_Unit(t *testing.T) {
 		repo := NewRepo(gdb)
 
 		mock.ExpectQuery(
-			`SELECT count\(\*\) FROM "room_users" JOIN roles ON roles\.id = room_users\.role_id WHERE room_users\.room_id = \$1 AND roles\.name IN \(\$2\)`,
+			`SELECT count\(\*\) FROM "room_users" JOIN roles ON roles\.id = room_users\.role_id WHERE \(room_users\.room_id = \$1 AND room_users\.is_blocked = \$2\) AND roles\.name IN \(\$3\)`,
 		).
-			WithArgs(10, "listener").
+			WithArgs(10, false, "listener").
 			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(3))
 
 		got, err := repo.CountByRoomID(10, RoomUserFilter{Roles: []string{"listener"}})

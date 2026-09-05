@@ -4,6 +4,7 @@ import (
 	"sound-stage-backend/internal/category"
 	model "sound-stage-backend/internal/model"
 	"sound-stage-backend/internal/pkg/listopts"
+	roomuser "sound-stage-backend/internal/room_user"
 	"sound-stage-backend/internal/tag"
 	user "sound-stage-backend/internal/user"
 	"strings"
@@ -56,13 +57,20 @@ type UpdateRoomParams struct {
 }
 
 type RoomResponse struct {
-	ID          uint                        `json:"id"`
-	Name        string                      `json:"name"`
-	Description string                      `json:"description"`
-	Type        RoomType                    `json:"type"`
-	PrivateCode *string                     `json:"privateCode,omitempty"`
-	Categories  []category.CategoryResponse `json:"categories,omitempty"`
-	Tags        []tag.TagResponse           `json:"tags,omitempty"`
+	ID           uint                        `json:"id"`
+	Name         string                      `json:"name"`
+	Description  string                      `json:"description"`
+	Type         RoomType                    `json:"type"`
+	PrivateCode  *string                     `json:"privateCode,omitempty"`
+	Categories   []category.CategoryResponse `json:"categories,omitempty"`
+	Tags         []tag.TagResponse           `json:"tags,omitempty"`
+	IsRoomUser   bool                        `json:"isRoomUser"`
+	IsFavourited bool                        `json:"isFavourited"`
+}
+
+type RoomViewer struct {
+	RoomUser     *roomuser.RoomUser
+	IsFavourited bool
 }
 
 type RoomFilter struct {
@@ -125,8 +133,8 @@ func FilterByNotBlocked(userID uint) func(*gorm.DB) *gorm.DB {
 			return db
 		}
 		return db.Where(
-			"NOT EXISTS (SELECT 1 FROM room_user_blocks WHERE room_user_blocks.room_id = rooms.id AND room_user_blocks.user_id = ?)",
-			userID,
+			"NOT EXISTS (SELECT 1 FROM room_users WHERE room_users.room_id = rooms.id AND room_users.user_id = ? AND room_users.is_blocked = ?)",
+			userID, true,
 		)
 	}
 }

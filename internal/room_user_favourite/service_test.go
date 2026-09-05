@@ -2,6 +2,7 @@ package roomuserfavourite
 
 import (
 	"errors"
+	"sound-stage-backend/internal/pkg/httpx"
 	"sound-stage-backend/internal/pkg/listopts"
 	"testing"
 
@@ -27,32 +28,50 @@ func (m *mockRepo) ListUserFavourites(userID uint, p listopts.Pagination) ([]Roo
 	return favourites, args.Error(1)
 }
 
+func (m *mockRepo) FindRoomIDsByUserID(userID uint, roomIDs []uint) ([]uint, error) {
+	args := m.Called(userID, roomIDs)
+	ids, _ := args.Get(0).([]uint)
+	return ids, args.Error(1)
+}
+
 func (m *mockRepo) CountByUserID(userID uint) (int64, error) {
 	args := m.Called(userID)
 	return args.Get(0).(int64), args.Error(1)
 }
 
+type mockBlockedChecker struct{ mock.Mock }
+
+func (m *mockBlockedChecker) IsBlocked(roomID, userID uint) (bool, error) {
+	args := m.Called(roomID, userID)
+	return args.Bool(0), args.Error(1)
+}
+
 type serviceHarness struct {
-	repo *mockRepo
-	svc  *Service
+	repo    *mockRepo
+	checker *mockBlockedChecker
+	svc     *Service
 }
 
 func newServiceHarness() *serviceHarness {
 	repo := new(mockRepo)
+	checker := new(mockBlockedChecker)
 	return &serviceHarness{
-		repo: repo,
-		svc:  NewService(repo),
+		repo:    repo,
+		checker: checker,
+		svc:     NewService(repo, checker),
 	}
 }
 
 func (h *serviceHarness) assertAllExpectations(t *testing.T) {
 	t.Helper()
 	h.repo.AssertExpectations(t)
+	h.checker.AssertExpectations(t)
 }
 
 func TestService_Add(t *testing.T) {
 	t.Run("success: adds favourite through repo", func(t *testing.T) {
 		h := newServiceHarness()
+		h.checker.On("IsBlocked", uint(10), uint(20)).Return(false, nil)
 		h.repo.On("Add", uint(20), uint(10)).Return(nil)
 
 		err := h.svc.Add(20, 10)
@@ -61,8 +80,32 @@ func TestService_Add(t *testing.T) {
 		h.assertAllExpectations(t)
 	})
 
+	t.Run("failure: blocked user gets ErrUserBlocked before repo is called", func(t *testing.T) {
+		h := newServiceHarness()
+		h.checker.On("IsBlocked", uint(10), uint(20)).Return(true, nil)
+
+		err := h.svc.Add(20, 10)
+
+		require.ErrorIs(t, err, httpx.ErrUserBlocked)
+		h.repo.AssertNotCalled(t, "Add", mock.Anything, mock.Anything)
+		h.assertAllExpectations(t)
+	})
+
+	t.Run("failure: IsBlocked error is propagated", func(t *testing.T) {
+		h := newServiceHarness()
+		blockErr := errors.New("block check failed")
+		h.checker.On("IsBlocked", uint(10), uint(20)).Return(false, blockErr)
+
+		err := h.svc.Add(20, 10)
+
+		require.ErrorIs(t, err, blockErr)
+		h.repo.AssertNotCalled(t, "Add", mock.Anything, mock.Anything)
+		h.assertAllExpectations(t)
+	})
+
 	t.Run("failure: repo error is propagated", func(t *testing.T) {
 		h := newServiceHarness()
+		h.checker.On("IsBlocked", uint(10), uint(20)).Return(false, nil)
 		repoErr := errors.New("insert failed")
 		h.repo.On("Add", uint(20), uint(10)).Return(repoErr)
 
@@ -90,6 +133,30 @@ func TestService_Remove(t *testing.T) {
 		h.repo.On("Remove", uint(20), uint(10)).Return(repoErr)
 
 		err := h.svc.Remove(20, 10)
+
+		require.ErrorIs(t, err, repoErr)
+		h.assertAllExpectations(t)
+	})
+}
+
+func TestService_FavouritedRoomIDs(t *testing.T) {
+	t.Run("success: returns set of favourited room ids", func(t *testing.T) {
+		h := newServiceHarness()
+		h.repo.On("FindRoomIDsByUserID", uint(20), []uint{10, 11}).Return([]uint{10}, nil)
+
+		got, err := h.svc.FavouritedRoomIDs(20, []uint{10, 11})
+
+		require.NoError(t, err)
+		require.Equal(t, map[uint]bool{10: true}, got)
+		h.assertAllExpectations(t)
+	})
+
+	t.Run("failure: repo error is propagated", func(t *testing.T) {
+		h := newServiceHarness()
+		repoErr := errors.New("query failed")
+		h.repo.On("FindRoomIDsByUserID", uint(20), []uint{10}).Return(nil, repoErr)
+
+		_, err := h.svc.FavouritedRoomIDs(20, []uint{10})
 
 		require.ErrorIs(t, err, repoErr)
 		h.assertAllExpectations(t)

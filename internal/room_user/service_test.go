@@ -52,6 +52,37 @@ func (m *mockRepo) Delete(roomID, userID uint) error {
 	args := m.Called(roomID, userID)
 	return args.Error(0)
 }
+func (m *mockRepo) MapByUserAndRoomIDs(userID uint, roomIDs []uint) (map[uint]*RoomUser, error) {
+	args := m.Called(userID, roomIDs)
+	res, _ := args.Get(0).(map[uint]*RoomUser)
+	return res, args.Error(1)
+}
+func (m *mockRepo) FindAnyBy(userID, roomID uint) (*RoomUser, error) {
+	args := m.Called(userID, roomID)
+	ru, _ := args.Get(0).(*RoomUser)
+	return ru, args.Error(1)
+}
+func (m *mockRepo) IsBlocked(roomID, userID uint) (bool, error) {
+	args := m.Called(roomID, userID)
+	return args.Bool(0), args.Error(1)
+}
+func (m *mockRepo) Block(roomID, userID, blockedByID uint) error {
+	args := m.Called(roomID, userID, blockedByID)
+	return args.Error(0)
+}
+func (m *mockRepo) Unblock(roomID, userID uint) error {
+	args := m.Called(roomID, userID)
+	return args.Error(0)
+}
+func (m *mockRepo) ListBlockedByRoomID(roomID uint, p listopts.Pagination) ([]RoomUser, error) {
+	args := m.Called(roomID, p)
+	rus, _ := args.Get(0).([]RoomUser)
+	return rus, args.Error(1)
+}
+func (m *mockRepo) CountBlockedByRoomID(roomID uint) (int64, error) {
+	args := m.Called(roomID)
+	return args.Get(0).(int64), args.Error(1)
+}
 
 type mockRoleFinder struct{ mock.Mock }
 
@@ -198,6 +229,32 @@ func TestService_FindBy(t *testing.T) {
 	})
 }
 
+func TestService_MapByUserAndRoomIDs(t *testing.T) {
+	t.Run("success: returns map from repo", func(t *testing.T) {
+		h := newHarness()
+		want := map[uint]*RoomUser{2: {UserID: 1, RoomID: 2}}
+		h.repo.On("MapByUserAndRoomIDs", uint(1), []uint{2, 3}).Return(want, nil)
+
+		got, err := h.svc.MapByUserAndRoomIDs(1, []uint{2, 3})
+
+		require.NoError(t, err)
+		assert.Equal(t, want, got)
+		h.assertAllExpectations(t)
+	})
+
+	t.Run("failure: repo error propagated", func(t *testing.T) {
+		h := newHarness()
+		repoErr := errors.New("db down")
+		h.repo.On("MapByUserAndRoomIDs", uint(1), []uint{2, 3}).Return(nil, repoErr)
+
+		got, err := h.svc.MapByUserAndRoomIDs(1, []uint{2, 3})
+
+		require.Nil(t, got)
+		require.ErrorIs(t, err, repoErr)
+		h.assertAllExpectations(t)
+	})
+}
+
 func TestService_RemoveUser(t *testing.T) {
 	t.Run("success: marks activity as leave", func(t *testing.T) {
 		h := newHarness()
@@ -255,10 +312,11 @@ func TestService_ListByRoomID(t *testing.T) {
 		p := listopts.Pagination{Page: 1, PageSize: 10}
 		users := []RoomUser{{UserID: 1}, {UserID: 2}}
 
+		h.repo.On("IsBlocked", uint(4), uint(1)).Return(false, nil)
 		h.repo.On("ListByRoomID", uint(4), filter, sort, p).Return(users, nil)
 		h.repo.On("CountByRoomID", uint(4), filter).Return(int64(2), nil)
 
-		got, count, err := h.svc.ListByRoomID(4, filter, sort, p)
+		got, count, err := h.svc.ListByRoomID(4, 1, filter, sort, p)
 
 		require.NoError(t, err)
 		assert.Equal(t, users, got)
@@ -272,9 +330,10 @@ func TestService_ListByRoomID(t *testing.T) {
 		sort := listopts.Sort{}
 		p := listopts.Pagination{Page: 1, PageSize: 10}
 		listErr := errors.New("query failed")
+		h.repo.On("IsBlocked", uint(4), uint(1)).Return(false, nil)
 		h.repo.On("ListByRoomID", uint(4), filter, sort, p).Return(nil, listErr)
 
-		got, count, err := h.svc.ListByRoomID(4, filter, sort, p)
+		got, count, err := h.svc.ListByRoomID(4, 1, filter, sort, p)
 
 		require.Nil(t, got)
 		require.Zero(t, count)
@@ -290,14 +349,48 @@ func TestService_ListByRoomID(t *testing.T) {
 		p := listopts.Pagination{Page: 1, PageSize: 10}
 		users := []RoomUser{{UserID: 1}}
 		countErr := errors.New("count failed")
+		h.repo.On("IsBlocked", uint(4), uint(1)).Return(false, nil)
 		h.repo.On("ListByRoomID", uint(4), filter, sort, p).Return(users, nil)
 		h.repo.On("CountByRoomID", uint(4), filter).Return(int64(0), countErr)
 
-		got, count, err := h.svc.ListByRoomID(4, filter, sort, p)
+		got, count, err := h.svc.ListByRoomID(4, 1, filter, sort, p)
 
 		require.Nil(t, got)
 		require.Zero(t, count)
 		require.ErrorIs(t, err, countErr)
+		h.assertAllExpectations(t)
+	})
+
+	t.Run("failure: blocked user gets ErrUserBlocked before repo is called", func(t *testing.T) {
+		h := newHarness()
+		filter := RoomUserFilter{}
+		sort := listopts.Sort{}
+		p := listopts.Pagination{Page: 1, PageSize: 10}
+		h.repo.On("IsBlocked", uint(4), uint(1)).Return(true, nil)
+
+		got, count, err := h.svc.ListByRoomID(4, 1, filter, sort, p)
+
+		require.Nil(t, got)
+		require.Zero(t, count)
+		require.ErrorIs(t, err, httpx.ErrUserBlocked)
+		h.repo.AssertNotCalled(t, "ListByRoomID", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+		h.assertAllExpectations(t)
+	})
+
+	t.Run("failure: IsBlocked error is propagated", func(t *testing.T) {
+		h := newHarness()
+		filter := RoomUserFilter{}
+		sort := listopts.Sort{}
+		p := listopts.Pagination{Page: 1, PageSize: 10}
+		blockErr := errors.New("block check failed")
+		h.repo.On("IsBlocked", uint(4), uint(1)).Return(false, blockErr)
+
+		got, count, err := h.svc.ListByRoomID(4, 1, filter, sort, p)
+
+		require.Nil(t, got)
+		require.Zero(t, count)
+		require.ErrorIs(t, err, blockErr)
+		h.repo.AssertNotCalled(t, "ListByRoomID", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 		h.assertAllExpectations(t)
 	})
 }

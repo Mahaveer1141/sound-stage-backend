@@ -11,12 +11,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type roomUserBlock struct {
-	RoomID uint
-	UserID uint
+// roomUserRow maps to the room_users table created by Room's many2many join.
+// It carries only the columns needed to mark a user as blocked.
+type roomUserRow struct {
+	RoomID    uint
+	UserID    uint
+	IsBlocked bool
 }
 
-func (roomUserBlock) TableName() string { return "room_user_blocks" }
+func (roomUserRow) TableName() string { return "room_users" }
 
 func TestRepo_Add_Integration(t *testing.T) {
 	t.Run("persists a room user favourite", func(t *testing.T) {
@@ -69,7 +72,7 @@ func TestRepo_Remove_Integration(t *testing.T) {
 
 func TestRepo_ListUserFavourites_Integration(t *testing.T) {
 	t.Run("returns paginated favourite rooms for a user", func(t *testing.T) {
-		db := testutil.NewIntegrationDB(t, &RoomUserFavourite{}, &room.Room{}, &user.User{}, &roomUserBlock{})
+		db := testutil.NewIntegrationDB(t, &RoomUserFavourite{}, &room.Room{}, &user.User{}, &roomUserRow{})
 		repo := NewRepo(db)
 
 		creator := user.User{Email: "creator@example.com", FirstName: "Creator"}
@@ -85,7 +88,7 @@ func TestRepo_ListUserFavourites_Integration(t *testing.T) {
 		require.NoError(t, repo.Add(20, room1.ID))
 		require.NoError(t, repo.Add(20, room2.ID))
 		require.NoError(t, repo.Add(30, room3.ID))
-		require.NoError(t, db.Create(&roomUserBlock{RoomID: room2.ID, UserID: 20}).Error)
+		require.NoError(t, db.Create(&roomUserRow{RoomID: room2.ID, UserID: 20, IsBlocked: true}).Error)
 
 		favourites, err := repo.ListUserFavourites(20, listopts.Pagination{Page: 1, PageSize: 10})
 		require.NoError(t, err)

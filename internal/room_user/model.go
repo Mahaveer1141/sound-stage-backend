@@ -22,6 +22,9 @@ type RoomUser struct {
 	LastJoinedAt time.Time
 	LastLeftAt   time.Time
 	IsOnline     bool
+	IsBlocked    bool
+	BlockedByID  *uint
+	BlockedBy    *user.User `gorm:"foreignKey:BlockedByID"`
 }
 
 func (RoomUser) TableName() string {

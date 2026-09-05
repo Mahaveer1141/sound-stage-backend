@@ -29,6 +29,11 @@ var (
 	ErrRecordNotFound = errors.New("record not found")
 )
 
+// Room errors
+var (
+	ErrUserBlocked = errors.New("user is blocked from this room")
+)
+
 // WebRTC errors
 var (
 	ErrPeerConnectionNotFound = errors.New("peer connection not found")

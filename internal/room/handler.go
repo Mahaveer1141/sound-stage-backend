@@ -6,7 +6,6 @@ import (
 	"sound-stage-backend/internal/pkg/current"
 	"sound-stage-backend/internal/pkg/httpx"
 	"sound-stage-backend/internal/pkg/listopts"
-	roomuser "sound-stage-backend/internal/room_user"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -15,10 +14,11 @@ import (
 
 type roomService interface {
 	List(filter RoomFilter, sort listopts.Sort, p listopts.Pagination) ([]Room, int64, error)
-	FindByID(id uint) (*Room, error)
+	FindByID(id, userID uint) (*Room, error)
 	Create(input *CreateRoomParams) (*Room, error)
 	Update(id, userID uint, input *UpdateRoomParams) (*Room, error)
-	CurrentRoomUser(roomID uint, userID uint) (*roomuser.RoomUser, error)
+	ViewerContext(roomID, userID uint) (*RoomViewer, error)
+	ViewerContexts(roomIDs []uint, userID uint) (map[uint]*RoomViewer, error)
 	UpdatePrivateCode(roomID uint) error
 }
 
@@ -50,7 +50,7 @@ func (h *Handler) Create(c *gin.Context) {
 		return
 	}
 
-	viewer, _ := h.service.CurrentRoomUser(room.ID, userId)
+	viewer, _ := h.service.ViewerContext(room.ID, userId)
 	httpx.SuccessResponse(c, http.StatusOK, "Room created successfully", BuildRoomResponse(room, viewer))
 }
 
@@ -84,7 +84,7 @@ func (h *Handler) Update(c *gin.Context) {
 		return
 	}
 
-	viewer, _ := h.service.CurrentRoomUser(room.ID, userId)
+	viewer, _ := h.service.ViewerContext(room.ID, userId)
 	httpx.SuccessResponse(c, http.StatusOK, "Room updated successfully", BuildRoomResponse(room, viewer))
 }
 
@@ -118,7 +118,13 @@ func (h *Handler) List(c *gin.Context) {
 		return
 	}
 
-	responses := BuildRoomListResponse(rooms, nil)
+	roomIDs := make([]uint, len(rooms))
+	for i := range rooms {
+		roomIDs[i] = rooms[i].ID
+	}
+	viewers, _ := h.service.ViewerContexts(roomIDs, filter.UserID)
+
+	responses := BuildRoomListResponse(rooms, viewers)
 
 	httpx.PaginatedSuccessResponse(c, "Rooms fetched successfully", responses, p.Page, p.PageSize, int(count))
 }
@@ -131,16 +137,16 @@ func (h *Handler) FindByID(c *gin.Context) {
 		return
 	}
 
-	room, err := h.service.FindByID(uint(roomId))
+	currentUserID, _ := current.UserID(c)
+	room, err := h.service.FindByID(uint(roomId), currentUserID)
 	if err != nil {
-		httpx.ErrorResponse(c, http.StatusNotFound, "Failed to fetch room")
+		httpx.ErrorResponse(c, http.StatusNotFound, "Room not found")
 		return
 	}
 
-	currentUserID, _ := current.UserID(c)
-	viewerRoomUser, _ := h.service.CurrentRoomUser(room.ID, currentUserID)
+	viewer, _ := h.service.ViewerContext(room.ID, currentUserID)
 
-	httpx.SuccessResponse(c, http.StatusOK, "Room fetched successfully", BuildRoomResponse(room, viewerRoomUser))
+	httpx.SuccessResponse(c, http.StatusOK, "Room fetched successfully", BuildRoomResponse(room, viewer))
 }
 
 func (h *Handler) UpdatePrivateCode(c *gin.Context) {

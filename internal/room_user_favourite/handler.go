@@ -1,6 +1,7 @@
 package roomuserfavourite
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -52,7 +53,7 @@ func (h *Handler) ListUserFavourites(c *gin.Context) {
 
 	response := make([]room.RoomResponse, len(favourites))
 	for i := range favourites {
-		response[i] = room.BuildRoomResponse(&favourites[i].Room, nil)
+		response[i] = room.BuildRoomResponse(&favourites[i].Room, &room.RoomViewer{IsFavourited: true})
 	}
 
 	httpx.PaginatedSuccessResponse(c, "User favourites fetched successfully", response, p.Page, p.PageSize, int(count))
@@ -72,6 +73,10 @@ func (h *Handler) Add(c *gin.Context) {
 	}
 
 	if err := h.service.Add(userID, input.RoomID); err != nil {
+		if errors.Is(err, httpx.ErrUserBlocked) {
+			httpx.ErrorResponse(c, http.StatusForbidden, "You are blocked from this room")
+			return
+		}
 		httpx.ErrorResponse(c, http.StatusUnprocessableEntity, "Failed to add favorite")
 		return
 	}

@@ -15,12 +15,13 @@ import (
 	"gorm.io/gorm"
 )
 
-type roomUserBlock struct {
-	RoomID uint
-	UserID uint
+type roomUserRow struct {
+	RoomID    uint
+	UserID    uint
+	IsBlocked bool
 }
 
-func (roomUserBlock) TableName() string { return "room_user_blocks" }
+func (roomUserRow) TableName() string { return "room_users" }
 
 func TestRepo_Create_Integration(t *testing.T) {
 	t.Run("persists a new room and returns it", func(t *testing.T) {
@@ -228,7 +229,7 @@ func TestRepo_List_Integration(t *testing.T) {
 	})
 
 	t.Run("excludes rooms where the user is blocked", func(t *testing.T) {
-		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{}, &roomUserBlock{})
+		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{}, &roomUserRow{})
 		repo := NewRepo(db)
 
 		c := user.User{Email: "creator@example.com", FirstName: "Creator"}
@@ -241,7 +242,7 @@ func TestRepo_List_Integration(t *testing.T) {
 		require.NoError(t, db.Create(&r1).Error)
 		require.NoError(t, db.Create(&r2).Error)
 
-		require.NoError(t, db.Create(&roomUserBlock{RoomID: r2.ID, UserID: blockedUser.ID}).Error)
+		require.NoError(t, db.Create(&roomUserRow{RoomID: r2.ID, UserID: blockedUser.ID, IsBlocked: true}).Error)
 
 		got, err := repo.List(
 			RoomFilter{UserID: blockedUser.ID},
