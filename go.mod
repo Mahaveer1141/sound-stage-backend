@@ -4,6 +4,7 @@ go 1.25.5
 
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
+	github.com/alicebob/miniredis/v2 v2.39.0
 	github.com/gin-contrib/cors v1.7.6
 	github.com/gin-gonic/gin v1.11.0
 	github.com/go-playground/validator/v10 v10.30.1
@@ -38,6 +39,7 @@ require (
 	github.com/pion/turn/v5 v5.0.9 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
 	github.com/wlynxg/anet v0.0.5 // indirect
+	github.com/yuin/gopher-lua v1.1.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 

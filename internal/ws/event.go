@@ -17,6 +17,9 @@ const (
 	EventWebRTCAnswer    EventName = "webrtc_answer"
 
 	EventUserRoleUpdated EventName = "user_role_updated"
+
+	EventSetMuted      EventName = "set_muted"
+	EventSetHandRaised EventName = "set_hand_raised"
 )
 
 type Event struct {

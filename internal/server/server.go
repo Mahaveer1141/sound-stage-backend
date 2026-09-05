@@ -20,6 +20,7 @@ import (
 	otprequest "sound-stage-backend/internal/otp_request"
 	"sound-stage-backend/internal/role"
 	"sound-stage-backend/internal/room"
+	roomstate "sound-stage-backend/internal/room_state"
 	roomuser "sound-stage-backend/internal/room_user"
 	roomuserfavourite "sound-stage-backend/internal/room_user_favourite"
 	"sound-stage-backend/internal/router"
@@ -54,6 +55,12 @@ func (s *Server) Run() error {
 
 	hub := ws.NewHub(s.logger)
 
+	roomStateRepo := roomstate.NewRedisRepo(rdb)
+	roomStatePublisher := roomstate.NewPublisher(rdb, roomstate.DefaultChannel, s.logger)
+	roomStateService := roomstate.NewService(roomStateRepo, roomStatePublisher, s.logger)
+	roomStateSubscriber := roomstate.NewSubscriber(rdb, roomstate.DefaultChannel, hub, s.logger)
+	go roomStateSubscriber.Run(context.Background())
+
 	mediaRouter := mediarouter.NewMediaRouter(hub, s.logger)
 
 	mailService, err := mailer.NewService(s.cfg, s.logger, pool)
@@ -76,7 +83,7 @@ func (s *Server) Run() error {
 	otpRequestService := otprequest.NewService(otpRequestRepo)
 	authService := auth.NewService(userService, otpRequestService, apiTokenService, mailService)
 	roleService := role.NewService(roleRepo)
-	roomUserService := roomuser.NewService(roomUserRepo, roleService, mediaRouter)
+	roomUserService := roomuser.NewService(roomUserRepo, roleService, mediaRouter, roomStateService)
 	roomUserFavouriteService := roomuserfavourite.NewService(roomUserFavouriteRepo, roomUserService)
 	roomService := room.NewService(roomRepo, roomUserService, roomUserFavouriteService, db)
 	categoryService := category.NewService(categoryRepo)
@@ -146,6 +153,10 @@ func (s *Server) Run() error {
 
 	if err := srv.Shutdown(ctx); err != nil {
 		return fmt.Errorf("server forced to shutdown: %w", err)
+	}
+
+	if err := roomStateSubscriber.Shutdown(ctx); err != nil {
+		s.logger.Error("failed to close room state subscriber", slog.Any("error", err))
 	}
 
 	if err := database.Close(db); err != nil {

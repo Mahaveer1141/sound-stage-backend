@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type RoomUser struct {
@@ -25,6 +26,8 @@ type RoomUser struct {
 	IsBlocked    bool
 	BlockedByID  *uint
 	BlockedBy    *user.User `gorm:"foreignKey:BlockedByID"`
+	IsMuted      bool       `gorm:"-"`
+	IsHandRaised bool       `gorm:"-"`
 }
 
 func (RoomUser) TableName() string {
@@ -43,6 +46,8 @@ type RoomUserResponse struct {
 	LastJoinedAt string            `json:"lastJoinedAt"`
 	LastLeftAt   string            `json:"lastLeftAt"`
 	IsOnline     bool              `json:"isOnline"`
+	IsMuted      bool              `json:"isMuted"`
+	IsHandRaised bool              `json:"isHandRaised"`
 	CanManage    bool              `json:"canManage"`
 	CanSpeak     bool              `json:"canSpeak"`
 	IsAdmin      bool              `json:"isAdmin"`
@@ -111,5 +116,18 @@ func Sort(s listopts.Sort) func(*gorm.DB) *gorm.DB {
 			order = "desc"
 		}
 		return db.Order(col + " " + order)
+	}
+}
+
+func SortByUserIDs(userIDs []uint) func(*gorm.DB) *gorm.DB {
+	return func(db *gorm.DB) *gorm.DB {
+		placeholders := strings.TrimSuffix(strings.Repeat("?,", len(userIDs)), ",")
+		args := make([]any, len(userIDs))
+		for i, id := range userIDs {
+			args[i] = id
+		}
+		return db.Clauses(clause.OrderBy{
+			Expression: clause.Expr{SQL: "array_position(ARRAY[" + placeholders + "]::bigint[], user_id)", Vars: args},
+		})
 	}
 }

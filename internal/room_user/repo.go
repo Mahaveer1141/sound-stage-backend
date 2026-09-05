@@ -91,6 +91,20 @@ func (r *Repo) ListByRoomID(roomID uint, filter RoomUserFilter, sort listopts.So
 	return roomUsers, err
 }
 
+func (r *Repo) ListByUserIDs(roomID uint, userIDs []uint) ([]RoomUser, error) {
+	var roomUsers []RoomUser
+	if len(userIDs) == 0 {
+		return roomUsers, nil
+	}
+	err := r.db.
+		Preload("User").
+		Preload("Role").
+		Where("room_id = ? AND user_id IN ? AND is_blocked = ?", roomID, userIDs, false).
+		Scopes(SortByUserIDs(userIDs)).
+		Find(&roomUsers).Error
+	return roomUsers, err
+}
+
 func (r *Repo) CountByRoomID(roomID uint, filter RoomUserFilter) (int64, error) {
 	var count int64
 	err := r.db.

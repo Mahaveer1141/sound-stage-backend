@@ -15,6 +15,8 @@ func BuildRoomUserResponse(ru *RoomUser, viewerID uint) RoomUserResponse {
 		LastJoinedAt: ru.LastJoinedAt.Format(time.RFC3339),
 		LastLeftAt:   ru.LastLeftAt.Format(time.RFC3339),
 		IsOnline:     ru.IsOnline,
+		IsMuted:      ru.IsMuted,
+		IsHandRaised: ru.IsHandRaised,
 		CanManage:    ru.CanManage(),
 		CanSpeak:     ru.CanSpeak(),
 		IsAdmin:      ru.IsAdmin(),

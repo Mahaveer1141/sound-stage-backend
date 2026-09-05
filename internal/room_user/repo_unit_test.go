@@ -398,3 +398,108 @@ func TestRepo_Delete_Unit(t *testing.T) {
 		assert.NoError(t, mock.ExpectationsWereMet())
 	})
 }
+
+func TestRepo_ListByUserIDs_Unit(t *testing.T) {
+	t.Run("returns room users ordered by position in the given ids", func(t *testing.T) {
+		gdb, mock := testutil.NewMockDB(t)
+		repo := NewRepo(gdb)
+
+		mock.ExpectQuery(
+			`SELECT .*FROM "room_users" WHERE room_id = \$1 AND user_id IN \(\$2,\$3\) AND is_blocked = \$4 ORDER BY array_position\(ARRAY\[\$5,\$6\]::bigint\[\], user_id\)`,
+		).
+			WithArgs(10, 1, 2, false, 1, 2).
+			WillReturnRows(sqlmock.NewRows([]string{"id", "created_at", "updated_at", "user_id", "room_id", "role_id", "last_joined_at", "last_left_at", "is_online"}))
+
+		got, err := repo.ListByUserIDs(10, []uint{1, 2})
+
+		require.NoError(t, err)
+		assert.Empty(t, got)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("preloads user and role for returned rows", func(t *testing.T) {
+		gdb, mock := testutil.NewMockDB(t)
+		repo := NewRepo(gdb)
+
+		mock.ExpectQuery(
+			`SELECT .*FROM "room_users" WHERE room_id = \$1 AND user_id IN \(\$2\) AND is_blocked = \$3 ORDER BY array_position\(ARRAY\[\$4\]::bigint\[\], user_id\)`,
+		).
+			WithArgs(10, 7, false, 7).
+			WillReturnRows(
+				sqlmock.NewRows([]string{"id", "created_at", "updated_at", "user_id", "room_id", "role_id", "last_joined_at", "last_left_at", "is_online"}).
+					AddRow(1, time.Now(), time.Now(), 7, 10, 100, time.Now(), time.Now(), true),
+			)
+
+		mock.ExpectQuery(`SELECT \* FROM "roles" WHERE "roles"\."id" = \$1.*`).
+			WithArgs(100).
+			WillReturnRows(
+				sqlmock.NewRows([]string{"id", "created_at", "updated_at", "name", "description"}).
+					AddRow(100, time.Now(), time.Now(), "listener", nil),
+			)
+
+		mock.ExpectQuery(`SELECT \* FROM "users" WHERE "users"\."id" = \$1.*`).
+			WithArgs(7).
+			WillReturnRows(
+				sqlmock.NewRows([]string{"id", "created_at", "updated_at", "email", "first_name", "last_name", "last_login_at", "deleted_at"}).
+					AddRow(7, time.Now(), time.Now(), "u7@example.com", "U", "Seven", nil, nil),
+			)
+
+		got, err := repo.ListByUserIDs(10, []uint{7})
+
+		require.NoError(t, err)
+		require.Len(t, got, 1)
+		assert.Equal(t, uint(7), got[0].UserID)
+		assert.Equal(t, "u7@example.com", got[0].User.Email)
+		assert.Equal(t, role.RoleListener, got[0].Role.Name)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("orders by the position of each id in the input slice", func(t *testing.T) {
+		gdb, mock := testutil.NewMockDB(t)
+		repo := NewRepo(gdb)
+
+		mock.ExpectQuery(
+			`SELECT .*FROM "room_users" WHERE room_id = \$1 AND user_id IN \(\$2,\$3,\$4\) AND is_blocked = \$5 ORDER BY array_position\(ARRAY\[\$6,\$7,\$8\]::bigint\[\], user_id\)`,
+		).
+			WithArgs(10, 3, 1, 2, false, 3, 1, 2).
+			WillReturnRows(sqlmock.NewRows([]string{"id", "created_at", "updated_at", "user_id", "room_id", "role_id", "last_joined_at", "last_left_at", "is_online"}))
+
+		got, err := repo.ListByUserIDs(
+			10,
+			[]uint{3, 1, 2},
+		)
+
+		require.NoError(t, err)
+		assert.Empty(t, got)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("returns empty without querying when user ids are empty", func(t *testing.T) {
+		gdb, mock := testutil.NewMockDB(t)
+		repo := NewRepo(gdb)
+
+		got, err := repo.ListByUserIDs(10, nil)
+
+		require.NoError(t, err)
+		assert.Empty(t, got)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("returns error when query fails", func(t *testing.T) {
+		gdb, mock := testutil.NewMockDB(t)
+		repo := NewRepo(gdb)
+
+		mock.ExpectQuery(
+			`SELECT .*FROM "room_users" WHERE room_id = \$1 AND user_id IN \(\$2\) AND is_blocked = \$3 ORDER BY array_position\(ARRAY\[\$4\]::bigint\[\], user_id\)`,
+		).
+			WithArgs(10, 1, false, 1).
+			WillReturnError(assert.AnError)
+
+		got, err := repo.ListByUserIDs(10, []uint{1})
+
+		require.Error(t, err)
+		assert.Empty(t, got)
+		assert.ErrorIs(t, err, assert.AnError)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+}

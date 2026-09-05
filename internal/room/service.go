@@ -1,6 +1,7 @@
 package room
 
 import (
+	"context"
 	"crypto/rand"
 	"math/big"
 	"sound-stage-backend/internal/pkg/httpx"
@@ -15,11 +16,13 @@ import (
 type roomUserService interface {
 	Create(tx *gorm.DB, userID uint, roomID uint, roleName role.RoleName) (*roomuser.RoomUser, error)
 	Rejoin(ru *roomuser.RoomUser) error
-	RemoveUser(userID uint, roomID uint) error
+	RemoveUser(ctx context.Context, userID uint, roomID uint) error
 	FindBy(userID uint, roomID uint) (*roomuser.RoomUser, error)
 	HasRoles(userID uint, roomID uint, permissions []role.RoleName) (bool, error)
 	MapByUserAndRoomIDs(userID uint, roomIDs []uint) (map[uint]*roomuser.RoomUser, error)
 	IsBlocked(roomID, userID uint) (bool, error)
+	SetMuted(ctx context.Context, roomID, userID, actorID uint, isMuted bool) error
+	SetHandRaised(ctx context.Context, roomID, userID uint, isHandRaised bool) error
 }
 
 type roomUserFavouriteService interface {

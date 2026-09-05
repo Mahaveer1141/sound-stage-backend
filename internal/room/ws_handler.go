@@ -1,15 +1,27 @@
 package room
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"sound-stage-backend/internal/config"
+	"sound-stage-backend/internal/pkg/httpx"
 	webrtc "sound-stage-backend/internal/web_rtc"
 	"sound-stage-backend/internal/ws"
 
 	pion "github.com/pion/webrtc/v4"
 )
+
+type setHandRaisedPayload struct {
+	IsHandRaised bool `json:"isHandRaised"`
+}
+
+type setMutedPayload struct {
+	IsMuted bool `json:"isMuted"`
+	UserID  uint `json:"userId"`
+}
 
 type mediaRouter interface {
 	Session(clientID string) *webrtc.Session
@@ -34,8 +46,8 @@ type WsHandler struct {
 	logger          *slog.Logger
 }
 
-func NewWSHandler(hub webSocketHub, roomUserSvc roomUserService, media mediaRouter,
-	cfg *config.Config, logger *slog.Logger) *WsHandler {
+func NewWSHandler(hub webSocketHub, roomUserSvc roomUserService,
+	media mediaRouter, cfg *config.Config, logger *slog.Logger) *WsHandler {
 	return &WsHandler{
 		hub:             hub,
 		roomUserService: roomUserSvc,
@@ -48,6 +60,9 @@ func NewWSHandler(hub webSocketHub, roomUserSvc roomUserService, media mediaRout
 func (h *WsHandler) Register(wsh ws.Handler) {
 	wsh.On(ws.EventJoinRoom, h.handleUserJoined)
 	wsh.On(ws.EventLeaveRoom, h.handleUserLeft)
+
+	wsh.On(ws.EventSetMuted, h.handleSetMuted)
+	wsh.On(ws.EventSetHandRaised, h.handleSetHandRaised)
 
 	wsh.On(ws.EventWebRTCOffer, h.handleWebRTCOffer)
 	wsh.On(ws.EventWebRTCCandidate, h.handleWebRTCCandidate)
@@ -101,7 +116,7 @@ func (h *WsHandler) handleUserJoined(c *ws.Client, evt ws.Event) {
 }
 
 func (h *WsHandler) handleUserLeft(c *ws.Client, evt ws.Event) {
-	err := h.roomUserService.RemoveUser(c.UserID, c.RoomID)
+	err := h.roomUserService.RemoveUser(context.Background(), c.UserID, c.RoomID)
 	if err != nil {
 		h.hub.ErrorToClient(c, "Failed to remove user from room", http.StatusUnprocessableEntity)
 		return
@@ -109,11 +124,12 @@ func (h *WsHandler) handleUserLeft(c *ws.Client, evt ws.Event) {
 
 	h.media.StopPublishing(c)
 	_ = h.media.CloseSession(c.ID)
+
 	h.hub.BroadcastToRoom(c.RoomID, ws.EventLeaveRoom, nil)
 }
 
 func (h *WsHandler) handleClientDisconnected(c *ws.Client) {
-	if err := h.roomUserService.RemoveUser(c.UserID, c.RoomID); err != nil {
+	if err := h.roomUserService.RemoveUser(context.Background(), c.UserID, c.RoomID); err != nil {
 		h.logger.Error("Failed to remove disconnected user from room",
 			slog.Uint64("userId", uint64(c.UserID)),
 			slog.Uint64("roomId", uint64(c.RoomID)),
@@ -128,6 +144,43 @@ func (h *WsHandler) handleClientDisconnected(c *ws.Client) {
 	}
 
 	h.hub.BroadcastToRoom(c.RoomID, ws.EventLeaveRoom, nil)
+}
+
+func (h *WsHandler) handleSetMuted(c *ws.Client, evt ws.Event) {
+	var p setMutedPayload
+	if err := json.Unmarshal(evt.Payload, &p); err != nil {
+		h.hub.ErrorToClient(c, "Invalid mute payload", http.StatusUnprocessableEntity)
+		return
+	}
+
+	targetUserID := p.UserID
+	if targetUserID == 0 {
+		targetUserID = c.UserID
+	}
+
+	if err := h.roomUserService.SetMuted(context.Background(), c.RoomID, targetUserID, c.UserID, p.IsMuted); err != nil {
+		status := http.StatusInternalServerError
+		if errors.Is(err, httpx.ErrUserBlocked) || errors.Is(err, httpx.ErrForbidden) {
+			status = http.StatusForbidden
+		}
+		h.hub.ErrorToClient(c, "Failed to update mute state", status)
+	}
+}
+
+func (h *WsHandler) handleSetHandRaised(c *ws.Client, evt ws.Event) {
+	var p setHandRaisedPayload
+	if err := json.Unmarshal(evt.Payload, &p); err != nil {
+		h.hub.ErrorToClient(c, "Invalid hand raised payload", http.StatusUnprocessableEntity)
+		return
+	}
+
+	if err := h.roomUserService.SetHandRaised(context.Background(), c.RoomID, c.UserID, p.IsHandRaised); err != nil {
+		status := http.StatusInternalServerError
+		if errors.Is(err, httpx.ErrUserBlocked) {
+			status = http.StatusForbidden
+		}
+		h.hub.ErrorToClient(c, "Failed to update hand raised state", status)
+	}
 }
 
 func (h *WsHandler) handleWebRTCOffer(c *ws.Client, evt ws.Event) {

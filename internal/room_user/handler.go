@@ -1,6 +1,7 @@
 package roomuser
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"sound-stage-backend/internal/pkg/current"
@@ -15,10 +16,11 @@ import (
 )
 
 type roomUserService interface {
-	ListByRoomID(roomID, userID uint, filter RoomUserFilter, sort listopts.Sort, p listopts.Pagination) ([]RoomUser, int64, error)
-	FindBy(userID, roomID uint) (*RoomUser, error)
+	ListByRoomID(ctx context.Context, roomID, userID uint, filter RoomUserFilter, sort listopts.Sort, p listopts.Pagination) ([]RoomUser, int64, error)
+	FindByWithState(ctx context.Context, userID, roomID uint) (*RoomUser, error)
+	ListRaisedHands(ctx context.Context, roomID, userID uint, p listopts.Pagination) ([]RoomUser, int64, error)
 	UpdateRole(roomID, userID uint, roleName role.RoleName, actorID uint) error
-	DeleteUser(roomID, userID, actorID uint) error
+	DeleteUser(ctx context.Context, roomID, userID, actorID uint) error
 	Block(roomID, userID, actorID uint) error
 	Unblock(roomID, userID, actorID uint) error
 	ListBlockedByRoomID(roomID, actorID uint, p listopts.Pagination) ([]RoomUser, int64, error)
@@ -86,7 +88,7 @@ func (h *Handler) ListUsers(c *gin.Context) {
 	}
 
 	currentUserID, _ := current.UserID(c)
-	users, count, err := h.service.ListByRoomID(uint(roomId), currentUserID, filter, sort, p)
+	users, count, err := h.service.ListByRoomID(c.Request.Context(), uint(roomId), currentUserID, filter, sort, p)
 	if err != nil {
 		if errors.Is(err, httpx.ErrUserBlocked) {
 			httpx.ErrorResponse(c, http.StatusForbidden, "You are blocked from this room")
@@ -111,7 +113,7 @@ func (h *Handler) CurrentRoomUser(c *gin.Context) {
 	}
 	userID, _ := current.UserID(c)
 
-	ru, err := h.service.FindBy(userID, uint(roomId))
+	ru, err := h.service.FindByWithState(c.Request.Context(), userID, uint(roomId))
 	if err != nil || ru == nil {
 		httpx.ErrorResponse(c, http.StatusUnprocessableEntity, "Failed to fetch user")
 		return
@@ -206,9 +208,13 @@ func (h *Handler) DeleteUser(c *gin.Context) {
 	}
 	actorID, _ := current.UserID(c)
 
-	if err := h.service.DeleteUser(uint(roomID), uint(userID), actorID); err != nil {
+	if err := h.service.DeleteUser(c.Request.Context(), uint(roomID), uint(userID), actorID); err != nil {
 		if errors.Is(err, httpx.ErrForbidden) {
 			httpx.ErrorResponse(c, http.StatusForbidden, httpx.ErrForbidden.Error())
+			return
+		}
+		if errors.Is(err, httpx.ErrUserBlocked) {
+			httpx.ErrorResponse(c, http.StatusForbidden, "Cannot remove a blocked user")
 			return
 		}
 		httpx.ErrorResponse(c, http.StatusUnprocessableEntity, "Failed to remove user from room")
@@ -218,6 +224,38 @@ func (h *Handler) DeleteUser(c *gin.Context) {
 	h.hub.BroadcastToRoom(uint(roomID), ws.EventDeleteRoomUser, nil)
 
 	httpx.SuccessResponse(c, http.StatusOK, "User removed from room", nil)
+}
+
+func (h *Handler) ListRaisedHands(c *gin.Context) {
+	id := c.Param("id")
+	roomID, err := strconv.Atoi(id)
+	if err != nil {
+		httpx.ErrorResponse(c, http.StatusBadRequest, "Invalid room ID")
+		return
+	}
+
+	var p listopts.Pagination
+	if err := c.ShouldBindQuery(&p); err != nil {
+		httpx.ErrorResponse(c, http.StatusBadRequest, "Invalid pagination params")
+		return
+	}
+	if p.Page <= 0 || p.PageSize <= 0 {
+		httpx.ErrorResponse(c, http.StatusBadRequest, "page and pageSize must be positive")
+		return
+	}
+
+	currentUserID, _ := current.UserID(c)
+	users, count, err := h.service.ListRaisedHands(c.Request.Context(), uint(roomID), currentUserID, p)
+	if err != nil {
+		if errors.Is(err, httpx.ErrUserBlocked) {
+			httpx.ErrorResponse(c, http.StatusForbidden, "You are blocked from this room")
+			return
+		}
+		httpx.ErrorResponse(c, http.StatusInternalServerError, "Failed to fetch raised hands")
+		return
+	}
+
+	httpx.PaginatedSuccessResponse(c, "Raised hands fetched successfully", BuildRoomUserListResponse(users, currentUserID), p.Page, p.PageSize, int(count))
 }
 
 func (h *Handler) ListBlockedUsers(c *gin.Context) {

@@ -84,6 +84,7 @@ func Setup(cfg *config.Config, handlers *Handlers, tokenValidator middleware.Tok
 		rooms.GET("/:id/users", handlers.RoomUser.ListUsers)
 		rooms.POST("/:id/users", handlers.RoomUser.AddRoomUser)
 		rooms.GET("/:id/users/current", handlers.RoomUser.CurrentRoomUser)
+		rooms.GET("/:id/users/raised-hands", handlers.RoomUser.ListRaisedHands)
 		rooms.PUT("/:id/users/:userId/role", handlers.RoomUser.UpdateUserRole)
 		rooms.DELETE("/:id/users/:userId", handlers.RoomUser.DeleteUser)
 		rooms.PUT("/:id/private-code", handlers.Room.UpdatePrivateCode)

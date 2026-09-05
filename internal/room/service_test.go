@@ -1,6 +1,7 @@
 package room
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -65,8 +66,8 @@ func (m *mockRoomUserService) Rejoin(ru *roomuser.RoomUser) error {
 	args := m.Called(ru)
 	return args.Error(0)
 }
-func (m *mockRoomUserService) RemoveUser(userID, roomID uint) error {
-	args := m.Called(userID, roomID)
+func (m *mockRoomUserService) RemoveUser(ctx context.Context, userID, roomID uint) error {
+	args := m.Called(ctx, userID, roomID)
 	return args.Error(0)
 }
 func (m *mockRoomUserService) FindBy(userID, roomID uint) (*roomuser.RoomUser, error) {
@@ -86,6 +87,14 @@ func (m *mockRoomUserService) MapByUserAndRoomIDs(userID uint, roomIDs []uint) (
 func (m *mockRoomUserService) IsBlocked(roomID, userID uint) (bool, error) {
 	args := m.Called(roomID, userID)
 	return args.Bool(0), args.Error(1)
+}
+func (m *mockRoomUserService) SetMuted(ctx context.Context, roomID, userID, actorID uint, isMuted bool) error {
+	args := m.Called(ctx, roomID, userID, actorID, isMuted)
+	return args.Error(0)
+}
+func (m *mockRoomUserService) SetHandRaised(ctx context.Context, roomID, userID uint, isHandRaised bool) error {
+	args := m.Called(ctx, roomID, userID, isHandRaised)
+	return args.Error(0)
 }
 
 type mockFavouriteService struct{ mock.Mock }

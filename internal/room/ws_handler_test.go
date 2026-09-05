@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"sound-stage-backend/internal/config"
+	"sound-stage-backend/internal/pkg/httpx"
 	webrtc "sound-stage-backend/internal/web_rtc"
 	"sound-stage-backend/internal/ws"
 )
@@ -132,7 +133,7 @@ func TestWsHandler_handleUserLeft(t *testing.T) {
 	t.Run("success: removes user, stops publishing, closes session, broadcasts leave", func(t *testing.T) {
 		h := newWSHarness(t)
 		c := testClient()
-		h.roomUser.On("RemoveUser", uint(42), uint(4)).Return(nil)
+		h.roomUser.On("RemoveUser", mock.Anything, uint(42), uint(4)).Return(nil)
 		h.media.On("StopPublishing", c).Return()
 		h.media.On("CloseSession", "client-1").Return(nil)
 		h.hub.On("BroadcastToRoom", uint(4), ws.EventLeaveRoom, nil).Return()
@@ -147,7 +148,7 @@ func TestWsHandler_handleUserLeft(t *testing.T) {
 	t.Run("failure: RemoveUser error sends error to client, no cleanup or broadcast", func(t *testing.T) {
 		h := newWSHarness(t)
 		c := testClient()
-		h.roomUser.On("RemoveUser", uint(42), uint(4)).Return(errLike("failed to remove user"))
+		h.roomUser.On("RemoveUser", mock.Anything, uint(42), uint(4)).Return(errLike("failed to remove user"))
 		h.hub.On("ErrorToClient", c, "Failed to remove user from room", http.StatusUnprocessableEntity).Return()
 
 		h.wsHandler.handleUserLeft(c, ws.Event{})
@@ -164,7 +165,7 @@ func TestWsHandler_handleClientDisconnected(t *testing.T) {
 	t.Run("success: cleans up and broadcasts leave with no errors", func(t *testing.T) {
 		h := newWSHarness(t)
 		c := testClient()
-		h.roomUser.On("RemoveUser", uint(42), uint(4)).Return(nil)
+		h.roomUser.On("RemoveUser", mock.Anything, uint(42), uint(4)).Return(nil)
 		h.media.On("StopPublishing", c).Return()
 		h.media.On("CloseSession", "client-1").Return(nil)
 		h.hub.On("BroadcastToRoom", uint(4), ws.EventLeaveRoom, nil).Return()
@@ -179,7 +180,7 @@ func TestWsHandler_handleClientDisconnected(t *testing.T) {
 	t.Run("failure: RemoveUser and CloseSession errors are only logged, cleanup and broadcast still run", func(t *testing.T) {
 		h := newWSHarness(t)
 		c := testClient()
-		h.roomUser.On("RemoveUser", uint(42), uint(4)).Return(errLike("db down"))
+		h.roomUser.On("RemoveUser", mock.Anything, uint(42), uint(4)).Return(errLike("db down"))
 		h.media.On("StopPublishing", c).Return()
 		h.media.On("CloseSession", "client-1").Return(errLike("close failed"))
 		h.hub.On("BroadcastToRoom", uint(4), ws.EventLeaveRoom, nil).Return()
@@ -190,6 +191,86 @@ func TestWsHandler_handleClientDisconnected(t *testing.T) {
 		h.media.AssertExpectations(t)
 		h.hub.AssertExpectations(t)
 		h.hub.AssertNotCalled(t, "ErrorToClient", mock.Anything, mock.Anything, mock.Anything)
+	})
+}
+
+func TestWsHandler_handleSetMuted(t *testing.T) {
+	t.Run("success: updates own mute state", func(t *testing.T) {
+		h := newWSHarness(t)
+		c := testClient()
+		h.roomUser.On("SetMuted", mock.Anything, uint(4), uint(42), uint(42), true).Return(nil)
+
+		h.wsHandler.handleSetMuted(c, ws.Event{Payload: json.RawMessage(`{"isMuted":true}`)})
+
+		h.roomUser.AssertExpectations(t)
+	})
+
+	t.Run("success: updates mute state for a target user", func(t *testing.T) {
+		h := newWSHarness(t)
+		c := testClient()
+		h.roomUser.On("SetMuted", mock.Anything, uint(4), uint(7), uint(42), true).Return(nil)
+
+		h.wsHandler.handleSetMuted(c, ws.Event{Payload: json.RawMessage(`{"isMuted":true,"userId":7}`)})
+
+		h.roomUser.AssertExpectations(t)
+	})
+
+	t.Run("failure: forbidden error sends 403 to client", func(t *testing.T) {
+		h := newWSHarness(t)
+		c := testClient()
+		h.roomUser.On("SetMuted", mock.Anything, uint(4), uint(42), uint(42), true).Return(httpx.ErrUserBlocked)
+		h.hub.On("ErrorToClient", c, "Failed to update mute state", http.StatusForbidden).Return()
+
+		h.wsHandler.handleSetMuted(c, ws.Event{Payload: json.RawMessage(`{"isMuted":true}`)})
+
+		h.roomUser.AssertExpectations(t)
+		h.hub.AssertExpectations(t)
+	})
+
+	t.Run("failure: malformed payload sends error to client", func(t *testing.T) {
+		h := newWSHarness(t)
+		c := testClient()
+		h.hub.On("ErrorToClient", c, "Invalid mute payload", http.StatusUnprocessableEntity).Return()
+
+		h.wsHandler.handleSetMuted(c, ws.Event{Payload: json.RawMessage(`{not json`)})
+
+		h.hub.AssertExpectations(t)
+		h.roomUser.AssertNotCalled(t, "SetMuted", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+	})
+}
+
+func TestWsHandler_handleSetHandRaised(t *testing.T) {
+	t.Run("success: updates hand raised state", func(t *testing.T) {
+		h := newWSHarness(t)
+		c := testClient()
+		h.roomUser.On("SetHandRaised", mock.Anything, uint(4), uint(42), true).Return(nil)
+
+		h.wsHandler.handleSetHandRaised(c, ws.Event{Payload: json.RawMessage(`{"isHandRaised":true}`)})
+
+		h.roomUser.AssertExpectations(t)
+	})
+
+	t.Run("failure: blocked error sends 403 to client", func(t *testing.T) {
+		h := newWSHarness(t)
+		c := testClient()
+		h.roomUser.On("SetHandRaised", mock.Anything, uint(4), uint(42), true).Return(httpx.ErrUserBlocked)
+		h.hub.On("ErrorToClient", c, "Failed to update hand raised state", http.StatusForbidden).Return()
+
+		h.wsHandler.handleSetHandRaised(c, ws.Event{Payload: json.RawMessage(`{"isHandRaised":true}`)})
+
+		h.roomUser.AssertExpectations(t)
+		h.hub.AssertExpectations(t)
+	})
+
+	t.Run("failure: malformed payload sends error to client", func(t *testing.T) {
+		h := newWSHarness(t)
+		c := testClient()
+		h.hub.On("ErrorToClient", c, "Invalid hand raised payload", http.StatusUnprocessableEntity).Return()
+
+		h.wsHandler.handleSetHandRaised(c, ws.Event{Payload: json.RawMessage(`{not json`)})
+
+		h.hub.AssertExpectations(t)
+		h.roomUser.AssertNotCalled(t, "SetHandRaised", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 	})
 }
 
@@ -326,6 +407,7 @@ func TestWsHandler_handleWebRTCAnswer(t *testing.T) {
 		h.wsHandler.handleWebRTCAnswer(c, ws.Event{Payload: payload})
 
 		h.hub.AssertNotCalled(t, "ErrorToClient", mock.Anything, mock.Anything, mock.Anything)
+		h.hub.AssertNotCalled(t, "SendToClient", mock.Anything, mock.Anything, mock.Anything)
 		h.media.AssertExpectations(t)
 	})
 

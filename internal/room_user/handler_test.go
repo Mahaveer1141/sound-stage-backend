@@ -1,6 +1,7 @@
 package roomuser
 
 import (
+	"context"
 	"net/http"
 	"testing"
 
@@ -21,22 +22,27 @@ func init() {
 
 type mockRoomUserService struct{ mock.Mock }
 
-func (m *mockRoomUserService) ListByRoomID(roomID, userID uint, filter RoomUserFilter, sort listopts.Sort, p listopts.Pagination) ([]RoomUser, int64, error) {
-	args := m.Called(roomID, userID, filter, sort, p)
+func (m *mockRoomUserService) ListByRoomID(ctx context.Context, roomID, userID uint, filter RoomUserFilter, sort listopts.Sort, p listopts.Pagination) ([]RoomUser, int64, error) {
+	args := m.Called(ctx, roomID, userID, filter, sort, p)
 	rus, _ := args.Get(0).([]RoomUser)
 	return rus, args.Get(1).(int64), args.Error(2)
 }
-func (m *mockRoomUserService) FindBy(userID, roomID uint) (*RoomUser, error) {
-	args := m.Called(userID, roomID)
+func (m *mockRoomUserService) FindByWithState(ctx context.Context, userID, roomID uint) (*RoomUser, error) {
+	args := m.Called(ctx, userID, roomID)
 	ru, _ := args.Get(0).(*RoomUser)
 	return ru, args.Error(1)
+}
+func (m *mockRoomUserService) ListRaisedHands(ctx context.Context, roomID, userID uint, p listopts.Pagination) ([]RoomUser, int64, error) {
+	args := m.Called(ctx, roomID, userID, p)
+	rus, _ := args.Get(0).([]RoomUser)
+	return rus, args.Get(1).(int64), args.Error(2)
 }
 func (m *mockRoomUserService) UpdateRole(roomID, userID uint, roleName role.RoleName, actorID uint) error {
 	args := m.Called(roomID, userID, roleName, actorID)
 	return args.Error(0)
 }
-func (m *mockRoomUserService) DeleteUser(roomID, userID, actorID uint) error {
-	args := m.Called(roomID, userID, actorID)
+func (m *mockRoomUserService) DeleteUser(ctx context.Context, roomID, userID, actorID uint) error {
+	args := m.Called(ctx, roomID, userID, actorID)
 	return args.Error(0)
 }
 func (m *mockRoomUserService) Block(roomID, userID, actorID uint) error {
@@ -91,7 +97,7 @@ func TestHandler_ListUsers(t *testing.T) {
 	t.Run("success: returns 200 with mapped user responses", func(t *testing.T) {
 		h := newHandlerHarness(t)
 		users := []RoomUser{{UserID: 1}, {UserID: 2}}
-		h.svc.On("ListByRoomID", uint(4), uint(1), mock.Anything, mock.Anything, mock.Anything).Return(users, int64(2), nil)
+		h.svc.On("ListByRoomID", mock.Anything, uint(4), uint(1), mock.Anything, mock.Anything, mock.Anything).Return(users, int64(2), nil)
 
 		w, c := testutil.NewTestContext(http.MethodGet, "/rooms/4/users?page=1&pageSize=10", nil)
 		c.Params = gin.Params{{Key: "id", Value: "4"}}
@@ -112,12 +118,12 @@ func TestHandler_ListUsers(t *testing.T) {
 		h.handler.ListUsers(c)
 
 		assert.Equal(t, http.StatusBadRequest, w.Code)
-		h.svc.AssertNotCalled(t, "ListByRoomID", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+		h.svc.AssertNotCalled(t, "ListByRoomID", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 	})
 
 	t.Run("failure: service error returns 500", func(t *testing.T) {
 		h := newHandlerHarness(t)
-		h.svc.On("ListByRoomID", uint(4), uint(0), mock.Anything, mock.Anything, mock.Anything).Return(nil, int64(0), assert.AnError)
+		h.svc.On("ListByRoomID", mock.Anything, uint(4), uint(0), mock.Anything, mock.Anything, mock.Anything).Return(nil, int64(0), assert.AnError)
 
 		w, c := testutil.NewTestContext(http.MethodGet, "/rooms/4/users?page=1&pageSize=10", nil)
 		c.Params = gin.Params{{Key: "id", Value: "4"}}
@@ -130,7 +136,7 @@ func TestHandler_ListUsers(t *testing.T) {
 
 	t.Run("failure: blocked user gets 403", func(t *testing.T) {
 		h := newHandlerHarness(t)
-		h.svc.On("ListByRoomID", uint(4), uint(1), mock.Anything, mock.Anything, mock.Anything).Return(nil, int64(0), httpx.ErrUserBlocked)
+		h.svc.On("ListByRoomID", mock.Anything, uint(4), uint(1), mock.Anything, mock.Anything, mock.Anything).Return(nil, int64(0), httpx.ErrUserBlocked)
 
 		w, c := testutil.NewTestContext(http.MethodGet, "/rooms/4/users?page=1&pageSize=10", nil)
 		c.Params = gin.Params{{Key: "id", Value: "4"}}
@@ -147,7 +153,7 @@ func TestHandler_CurrentRoomUser(t *testing.T) {
 	t.Run("success: returns 200 with current room user", func(t *testing.T) {
 		h := newHandlerHarness(t)
 		want := &RoomUser{UserID: 1, RoomID: 4}
-		h.svc.On("FindBy", uint(1), uint(4)).Return(want, nil)
+		h.svc.On("FindByWithState", mock.Anything, uint(1), uint(4)).Return(want, nil)
 
 		w, c := testutil.NewTestContext(http.MethodGet, "/rooms/4/users/current", nil)
 		c.Params = gin.Params{{Key: "id", Value: "4"}}
@@ -168,12 +174,12 @@ func TestHandler_CurrentRoomUser(t *testing.T) {
 		h.handler.CurrentRoomUser(c)
 
 		assert.Equal(t, http.StatusBadRequest, w.Code)
-		h.svc.AssertNotCalled(t, "FindBy", mock.Anything, mock.Anything)
+		h.svc.AssertNotCalled(t, "FindByWithState", mock.Anything, mock.Anything, mock.Anything)
 	})
 
 	t.Run("failure: nil result (not a member) returns 422", func(t *testing.T) {
 		h := newHandlerHarness(t)
-		h.svc.On("FindBy", uint(1), uint(4)).Return(nil, nil)
+		h.svc.On("FindByWithState", mock.Anything, uint(1), uint(4)).Return(nil, nil)
 
 		w, c := testutil.NewTestContext(http.MethodGet, "/rooms/4/users/current", nil)
 		c.Params = gin.Params{{Key: "id", Value: "4"}}
@@ -323,7 +329,7 @@ func TestHandler_AddRoomUser(t *testing.T) {
 func TestHandler_DeleteUser(t *testing.T) {
 	t.Run("success: deletes user, broadcasts, returns 200", func(t *testing.T) {
 		h := newHandlerHarness(t)
-		h.svc.On("DeleteUser", uint(4), uint(7), uint(1)).Return(nil)
+		h.svc.On("DeleteUser", mock.Anything, uint(4), uint(7), uint(1)).Return(nil)
 		h.hub.On("BroadcastToRoom", uint(4), ws.EventDeleteRoomUser, mock.Anything).Return()
 
 		w, c := testutil.NewTestContext(http.MethodDelete, "/rooms/4/users/7", nil)
@@ -347,7 +353,7 @@ func TestHandler_DeleteUser(t *testing.T) {
 		h.handler.DeleteUser(c)
 
 		assert.Equal(t, http.StatusBadRequest, w.Code)
-		h.svc.AssertNotCalled(t, "DeleteUser", mock.Anything, mock.Anything, mock.Anything)
+		h.svc.AssertNotCalled(t, "DeleteUser", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 	})
 
 	t.Run("failure: non-numeric user ID returns 400 before service is called", func(t *testing.T) {
@@ -360,12 +366,12 @@ func TestHandler_DeleteUser(t *testing.T) {
 		h.handler.DeleteUser(c)
 
 		assert.Equal(t, http.StatusBadRequest, w.Code)
-		h.svc.AssertNotCalled(t, "DeleteUser", mock.Anything, mock.Anything, mock.Anything)
+		h.svc.AssertNotCalled(t, "DeleteUser", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 	})
 
 	t.Run("failure: forbidden error from service returns 403, no broadcast", func(t *testing.T) {
 		h := newHandlerHarness(t)
-		h.svc.On("DeleteUser", uint(4), uint(7), uint(1)).Return(httpx.ErrForbidden)
+		h.svc.On("DeleteUser", mock.Anything, uint(4), uint(7), uint(1)).Return(httpx.ErrForbidden)
 
 		w, c := testutil.NewTestContext(http.MethodDelete, "/rooms/4/users/7", nil)
 		c.Params = gin.Params{{Key: "id", Value: "4"}, {Key: "userId", Value: "7"}}
@@ -380,7 +386,7 @@ func TestHandler_DeleteUser(t *testing.T) {
 
 	t.Run("failure: other service error returns 422, no broadcast", func(t *testing.T) {
 		h := newHandlerHarness(t)
-		h.svc.On("DeleteUser", uint(4), uint(7), uint(1)).Return(assert.AnError)
+		h.svc.On("DeleteUser", mock.Anything, uint(4), uint(7), uint(1)).Return(assert.AnError)
 
 		w, c := testutil.NewTestContext(http.MethodDelete, "/rooms/4/users/7", nil)
 		c.Params = gin.Params{{Key: "id", Value: "4"}, {Key: "userId", Value: "7"}}
@@ -391,5 +397,74 @@ func TestHandler_DeleteUser(t *testing.T) {
 		assert.Equal(t, http.StatusUnprocessableEntity, w.Code)
 		h.svc.AssertExpectations(t)
 		h.hub.AssertNotCalled(t, "BroadcastToRoom", mock.Anything, mock.Anything, mock.Anything)
+	})
+}
+
+func TestHandler_ListRaisedHands(t *testing.T) {
+	t.Run("success: returns 200 with raised-hand user responses", func(t *testing.T) {
+		h := newHandlerHarness(t)
+		users := []RoomUser{{UserID: 7, IsHandRaised: true}, {UserID: 9, IsHandRaised: true}}
+		h.svc.On("ListRaisedHands", mock.Anything, uint(4), uint(1), mock.Anything).Return(users, int64(2), nil)
+
+		w, c := testutil.NewTestContext(http.MethodGet, "/rooms/4/users/raised-hands?page=1&pageSize=10", nil)
+		c.Params = gin.Params{{Key: "id", Value: "4"}}
+		c.Set("userId", uint(1))
+
+		h.handler.ListRaisedHands(c)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		h.svc.AssertExpectations(t)
+	})
+
+	t.Run("failure: non-numeric room ID returns 400 before service is called", func(t *testing.T) {
+		h := newHandlerHarness(t)
+
+		w, c := testutil.NewTestContext(http.MethodGet, "/rooms/abc/users/raised-hands?page=1&pageSize=10", nil)
+		c.Params = gin.Params{{Key: "id", Value: "abc"}}
+
+		h.handler.ListRaisedHands(c)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		h.svc.AssertNotCalled(t, "ListRaisedHands", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+	})
+
+	t.Run("failure: invalid pagination returns 400", func(t *testing.T) {
+		h := newHandlerHarness(t)
+
+		w, c := testutil.NewTestContext(http.MethodGet, "/rooms/4/users/raised-hands?page=0&pageSize=10", nil)
+		c.Params = gin.Params{{Key: "id", Value: "4"}}
+
+		h.handler.ListRaisedHands(c)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		h.svc.AssertNotCalled(t, "ListRaisedHands", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+	})
+
+	t.Run("failure: blocked user gets 403", func(t *testing.T) {
+		h := newHandlerHarness(t)
+		h.svc.On("ListRaisedHands", mock.Anything, uint(4), uint(1), mock.Anything).Return(nil, int64(0), httpx.ErrUserBlocked)
+
+		w, c := testutil.NewTestContext(http.MethodGet, "/rooms/4/users/raised-hands?page=1&pageSize=10", nil)
+		c.Params = gin.Params{{Key: "id", Value: "4"}}
+		c.Set("userId", uint(1))
+
+		h.handler.ListRaisedHands(c)
+
+		assert.Equal(t, http.StatusForbidden, w.Code)
+		h.svc.AssertExpectations(t)
+	})
+
+	t.Run("failure: service error returns 500", func(t *testing.T) {
+		h := newHandlerHarness(t)
+		h.svc.On("ListRaisedHands", mock.Anything, uint(4), uint(1), mock.Anything).Return(nil, int64(0), assert.AnError)
+
+		w, c := testutil.NewTestContext(http.MethodGet, "/rooms/4/users/raised-hands?page=1&pageSize=10", nil)
+		c.Params = gin.Params{{Key: "id", Value: "4"}}
+		c.Set("userId", uint(1))
+
+		h.handler.ListRaisedHands(c)
+
+		assert.Equal(t, http.StatusInternalServerError, w.Code)
+		h.svc.AssertExpectations(t)
 	})
 }
