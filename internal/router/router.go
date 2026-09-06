@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"sound-stage-backend/internal/auth"
 	"sound-stage-backend/internal/category"
+	chatmessage "sound-stage-backend/internal/chat_message"
 	"sound-stage-backend/internal/config"
 	"sound-stage-backend/internal/health"
 	"sound-stage-backend/internal/middleware"
@@ -28,6 +29,7 @@ type Handlers struct {
 	RoomUser          *roomuser.Handler
 	Tag               *tag.Handler
 	RoomUserFavourite *roomuserfavourite.Handler
+	ChatMessage       *chatmessage.Handler
 }
 
 func Setup(cfg *config.Config, handlers *Handlers, tokenValidator middleware.TokenValidator, logger *slog.Logger) *gin.Engine {
@@ -91,6 +93,7 @@ func Setup(cfg *config.Config, handlers *Handlers, tokenValidator middleware.Tok
 		rooms.GET("/:id/blocks", handlers.RoomUser.ListBlockedUsers)
 		rooms.POST("/:id/blocks", handlers.RoomUser.BlockUser)
 		rooms.DELETE("/:id/blocks/:userId", handlers.RoomUser.UnblockUser)
+		rooms.GET("/:id/messages", handlers.ChatMessage.List)
 	}
 
 	router.GET("/ws/rooms/:roomId", middleware.AuthMiddleware(tokenValidator), handlers.WS.ServeWS)

@@ -3,6 +3,7 @@ package ws
 import (
 	"net/http"
 	"sound-stage-backend/internal/config"
+	"sound-stage-backend/internal/pkg/current"
 	"sound-stage-backend/internal/pkg/httpx"
 	"strconv"
 
@@ -45,7 +46,7 @@ func (h *handler) OnDisconnect(handler DisconnectHandler) {
 
 func (h *handler) ServeWS(ctx *gin.Context) {
 	roomID := ctx.Param("roomId")
-	userID, _ := ctx.Get("userId")
+	userID, _ := current.UserID(ctx)
 	parsedRoomID, err := strconv.ParseUint(roomID, 10, 0)
 
 	var upgrader = websocket.Upgrader{
@@ -59,7 +60,7 @@ func (h *handler) ServeWS(ctx *gin.Context) {
 		httpx.ErrorResponse(ctx, http.StatusInternalServerError, "Failed to upgrade to WebSocket")
 		return
 	}
-	client := newClient(uint(parsedRoomID), userID.(uint), h.hub, conn, h.cfg)
+	client := newClient(uint(parsedRoomID), userID, h.hub, conn, h.cfg)
 	h.hub.register <- client
 
 	go client.writePump()

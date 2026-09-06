@@ -20,6 +20,9 @@ const (
 
 	EventSetMuted      EventName = "set_muted"
 	EventSetHandRaised EventName = "set_hand_raised"
+
+	EventCreateChatMessage EventName = "create_chat_message"
+	EventChatMessage       EventName = "chat_message"
 )
 
 type Event struct {

@@ -10,6 +10,7 @@ import (
 	apitoken "sound-stage-backend/internal/api_token"
 	"sound-stage-backend/internal/auth"
 	"sound-stage-backend/internal/category"
+	chatmessage "sound-stage-backend/internal/chat_message"
 	"sound-stage-backend/internal/config"
 	fileattachment "sound-stage-backend/internal/file_attachment"
 	"sound-stage-backend/internal/health"
@@ -81,6 +82,7 @@ func (s *Server) Run() error {
 	roomUserFavouriteRepo := roomuserfavourite.NewRepo(db)
 	categoryRepo := category.NewRepo(db)
 	tagRepo := tag.NewRepo(db)
+	chatMessageRepo := chatmessage.NewRepo(db)
 
 	apiTokenService := apitoken.NewService(s.cfg, apiTokenRepo)
 	userService := user.NewService(userRepo, fileAttachmentService)
@@ -92,10 +94,13 @@ func (s *Server) Run() error {
 	roomService := room.NewService(roomRepo, roomUserService, roomUserFavouriteService, db)
 	categoryService := category.NewService(categoryRepo)
 	tagService := tag.NewService(tagRepo)
+	chatMessageService := chatmessage.NewService(chatMessageRepo, roomUserService)
 
 	wsHandler := ws.NewHandler(hub, s.cfg)
 	roomWsHandler := room.NewWSHandler(hub, roomUserService, mediaRouter, s.cfg, s.logger)
 	roomWsHandler.Register(wsHandler)
+	chatMessageWsHandler := chatmessage.NewWSHandler(chatMessageService, hub)
+	chatMessageWsHandler.Register(wsHandler)
 
 	registrar := worker.NewTaskRegistrar(pool, s.logger)
 	registrar.RegisterAll(worker.TaskDeps{
@@ -116,6 +121,7 @@ func (s *Server) Run() error {
 	categoryHandler := category.NewHandler(categoryService)
 	tagHandler := tag.NewHandler(tagService)
 	roomUserFavouriteHandler := roomuserfavourite.NewHandler(roomUserFavouriteService)
+	chatMessageHandler := chatmessage.NewHandler(chatMessageService)
 
 	handlers := &router.Handlers{
 		Health:            healthHandler,
@@ -126,6 +132,7 @@ func (s *Server) Run() error {
 		RoomUser:          roomUserHandler,
 		Tag:               tagHandler,
 		RoomUserFavourite: roomUserFavouriteHandler,
+		ChatMessage:       chatMessageHandler,
 		WS:                wsHandler,
 	}
 

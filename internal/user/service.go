@@ -16,7 +16,8 @@ type repository interface {
 }
 
 type fileAttachmentService interface {
-	UploadOrReplaceFile(ctx context.Context, existing *fileattachment.FileAttachment, in fileattachment.UploadFileParams) (*fileattachment.FileAttachment, error)
+	UploadOrReplaceFile(ctx context.Context, existing *fileattachment.FileAttachment,
+		in fileattachment.UploadFileParams) (*fileattachment.FileAttachment, error)
 }
 
 type Service struct {
