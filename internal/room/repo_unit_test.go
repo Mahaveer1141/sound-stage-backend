@@ -203,7 +203,7 @@ func TestRepo_List_Unit(t *testing.T) {
 		mock.ExpectQuery(
 			`SELECT .* FROM "rooms" JOIN taggables ON taggables\.taggable_type = \$1 AND taggables\.taggable_id = rooms\.id WHERE taggables\.tag_id IN \(\$2,\$3\) AND "rooms"\."deleted_at" IS NULL ORDER BY rooms\.created_at desc LIMIT \$4`,
 		).
-			WithArgs("Room", uint(3), uint(4), 10).
+			WithArgs("rooms", uint(3), uint(4), 10).
 			WillReturnRows(sqlmock.NewRows([]string{"id", "created_at", "updated_at", "name", "description", "creator_id"}))
 
 		got, err := repo.List(
@@ -319,7 +319,7 @@ func TestRepo_Count_Unit(t *testing.T) {
 		mock.ExpectQuery(
 			`SELECT count\(\*\) FROM "rooms" JOIN taggables ON taggables\.taggable_type = \$1 AND taggables\.taggable_id = rooms\.id WHERE taggables\.tag_id IN \(\$2,\$3\) AND "rooms"\."deleted_at" IS NULL`,
 		).
-			WithArgs("Room", uint(3), uint(4)).
+			WithArgs("rooms", uint(3), uint(4)).
 			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(2))
 
 		got, err := repo.Count(RoomFilter{TagIds: []uint{3, 4}})
@@ -432,7 +432,7 @@ func TestRepo_LoadTagsForRooms_Unit(t *testing.T) {
 
 		mock.ExpectQuery(regexp.QuoteMeta(
 			`SELECT tags.*, taggables.taggable_id as room_id FROM "tags" JOIN taggables ON taggables.tag_id = tags.id WHERE taggables.taggable_type = $1 AND taggables.taggable_id IN ($2,$3)`)).
-			WithArgs("Room", uint(1), uint(2)).
+			WithArgs("rooms", uint(1), uint(2)).
 			WillReturnRows(
 				sqlmock.NewRows([]string{"id", "created_at", "updated_at", "name", "room_id"}).
 					AddRow(1, now, now, "jazz", 1).
@@ -458,7 +458,7 @@ func TestRepo_LoadTagsForRooms_Unit(t *testing.T) {
 
 		mock.ExpectQuery(regexp.QuoteMeta(
 			`SELECT tags.*, taggables.taggable_id as room_id FROM "tags" JOIN taggables ON taggables.tag_id = tags.id WHERE taggables.taggable_type = $1 AND taggables.taggable_id IN ($2)`)).
-			WithArgs("Room", uint(1)).
+			WithArgs("rooms", uint(1)).
 			WillReturnRows(sqlmock.NewRows([]string{"id", "created_at", "updated_at", "name", "room_id"}))
 
 		got, err := repo.LoadTagsForRooms([]uint{1})
@@ -474,7 +474,7 @@ func TestRepo_LoadTagsForRooms_Unit(t *testing.T) {
 
 		mock.ExpectQuery(regexp.QuoteMeta(
 			`SELECT tags.*, taggables.taggable_id as room_id FROM "tags" JOIN taggables ON taggables.tag_id = tags.id WHERE taggables.taggable_type = $1 AND taggables.taggable_id IN ($2)`)).
-			WithArgs("Room", uint(1)).
+			WithArgs("rooms", uint(1)).
 			WillReturnError(assert.AnError)
 
 		got, err := repo.LoadTagsForRooms([]uint{1})

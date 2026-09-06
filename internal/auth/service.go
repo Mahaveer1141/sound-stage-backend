@@ -119,9 +119,10 @@ func (s *Service) VerifyOTP(params VerifyOTPParams) (*apitoken.TokenResult, erro
 
 func (s *Service) SignUp(input *SignUpParams) (*apitoken.TokenResult, error) {
 	user, err := s.userService.Create(&user.CreateUserParams{
-		Email:     input.Email,
-		FirstName: input.FirstName,
-		LastName:  input.LastName,
+		Email:          input.Email,
+		FirstName:      input.FirstName,
+		LastName:       input.LastName,
+		ProfilePicture: input.ProfilePicture,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create user: %w", err)

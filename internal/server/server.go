@@ -11,6 +11,7 @@ import (
 	"sound-stage-backend/internal/auth"
 	"sound-stage-backend/internal/category"
 	"sound-stage-backend/internal/config"
+	fileattachment "sound-stage-backend/internal/file_attachment"
 	"sound-stage-backend/internal/health"
 	"sound-stage-backend/internal/infra/database"
 	"sound-stage-backend/internal/infra/mailer"
@@ -68,6 +69,9 @@ func (s *Server) Run() error {
 		return fmt.Errorf("Mailer Error: %w", err)
 	}
 
+	fileAttachmentRepo := fileattachment.NewRepo(db)
+	fileAttachmentService := fileattachment.NewService(s.cfg.Cloudinary, fileAttachmentRepo)
+
 	userRepo := user.NewRepo(db)
 	otpRequestRepo := otprequest.NewRepo(db)
 	apiTokenRepo := apitoken.NewRepo(db)
@@ -79,7 +83,7 @@ func (s *Server) Run() error {
 	tagRepo := tag.NewRepo(db)
 
 	apiTokenService := apitoken.NewService(s.cfg, apiTokenRepo)
-	userService := user.NewService(userRepo)
+	userService := user.NewService(userRepo, fileAttachmentService)
 	otpRequestService := otprequest.NewService(otpRequestRepo)
 	authService := auth.NewService(userService, otpRequestService, apiTokenService, mailService)
 	roleService := role.NewService(roleRepo)

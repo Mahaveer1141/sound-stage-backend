@@ -141,6 +141,9 @@ func TestRepo_FindByID_Unit(t *testing.T) {
 				sqlmock.NewRows([]string{"id", "created_at", "updated_at", "email", "first_name", "last_name", "last_login_at", "deleted_at"}).
 					AddRow(1, time.Now(), time.Now(), "user@example.com", "First", "Last", nil, nil),
 			)
+		mock.ExpectQuery(`SELECT \* FROM "file_attachments"`).
+			WithArgs("users", 1).
+			WillReturnRows(sqlmock.NewRows([]string{"id", "created_at", "updated_at", "deleted_at", "owner_type", "owner_id", "context", "public_id", "url", "resource_type", "format", "bytes", "width", "height"}))
 
 		got, err := repo.FindByID(1)
 
@@ -205,19 +208,14 @@ func TestRepo_UpdateLastLoginAt_Unit(t *testing.T) {
 	})
 }
 
-func TestRepo_Update_Unit(t *testing.T) {
+func TestRepo_Save_Unit(t *testing.T) {
 	t.Run("updates first and last name", func(t *testing.T) {
 		gdb, mock := testutil.NewMockDB(t)
 		repo := NewRepo(gdb)
 
-		mock.ExpectQuery(
-			`SELECT \* FROM "users" WHERE id = \$1 AND "users"\."deleted_at" IS NULL ORDER BY "users"\."id" LIMIT \$2`,
-		).
-			WithArgs(1, 1).
-			WillReturnRows(
-				sqlmock.NewRows([]string{"id", "created_at", "updated_at", "email", "first_name", "last_name", "last_login_at", "deleted_at"}).
-					AddRow(1, time.Now(), time.Now(), "user@example.com", "First", "Last", nil, nil),
-			)
+		last := "Last"
+		user := &User{Email: "user@example.com", FirstName: "First", LastName: &last}
+		user.ID = 1
 
 		mock.ExpectBegin()
 		mock.ExpectExec(regexp.QuoteMeta(
@@ -226,31 +224,15 @@ func TestRepo_Update_Unit(t *testing.T) {
 			WillReturnResult(sqlmock.NewResult(0, 1))
 		mock.ExpectCommit()
 
-		got, err := repo.Update(1, &UpdateUserParams{FirstName: "Updated", LastName: "New"})
+		newLast := "New"
+		user.FirstName = "Updated"
+		user.LastName = &newLast
+		err := repo.Save(user)
 
 		require.NoError(t, err)
-		require.NotNil(t, got)
-		assert.Equal(t, "Updated", got.FirstName)
-		require.NotNil(t, got.LastName)
-		assert.Equal(t, "New", *got.LastName)
-		assert.NoError(t, mock.ExpectationsWereMet())
-	})
-
-	t.Run("returns error when user not found", func(t *testing.T) {
-		gdb, mock := testutil.NewMockDB(t)
-		repo := NewRepo(gdb)
-
-		mock.ExpectQuery(
-			`SELECT \* FROM "users" WHERE id = \$1 AND "users"\."deleted_at" IS NULL ORDER BY "users"\."id" LIMIT \$2`,
-		).
-			WithArgs(999, 1).
-			WillReturnError(gorm.ErrRecordNotFound)
-
-		got, err := repo.Update(999, &UpdateUserParams{FirstName: "Updated", LastName: "Last"})
-
-		require.Error(t, err)
-		require.Nil(t, got)
-		assert.ErrorIs(t, err, gorm.ErrRecordNotFound)
+		assert.Equal(t, "Updated", user.FirstName)
+		require.NotNil(t, user.LastName)
+		assert.Equal(t, "New", *user.LastName)
 		assert.NoError(t, mock.ExpectationsWereMet())
 	})
 }

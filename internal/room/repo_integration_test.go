@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"sound-stage-backend/internal/category"
+	fileattachment "sound-stage-backend/internal/file_attachment"
 	"sound-stage-backend/internal/pkg/listopts"
 	"sound-stage-backend/internal/pkg/testutil"
 	roomcategory "sound-stage-backend/internal/room_category"
@@ -25,7 +26,7 @@ func (roomUserRow) TableName() string { return "room_users" }
 
 func TestRepo_Create_Integration(t *testing.T) {
 	t.Run("persists a new room and returns it", func(t *testing.T) {
-		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{})
+		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{}, &fileattachment.FileAttachment{})
 		repo := NewRepo(db)
 
 		u := user.User{Email: "creator@example.com", FirstName: "Creator"}
@@ -50,7 +51,7 @@ func TestRepo_Create_Integration(t *testing.T) {
 	})
 
 	t.Run("creates a room with categories and tags", func(t *testing.T) {
-		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{})
+		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{}, &fileattachment.FileAttachment{})
 		repo := NewRepo(db)
 
 		u := user.User{Email: "creator2@example.com", FirstName: "Creator"}
@@ -83,14 +84,14 @@ func TestRepo_Create_Integration(t *testing.T) {
 		require.Len(t, roomCategories, 2)
 
 		var taggings []tagging.Tagging
-		require.NoError(t, db.Where("taggable_type = ? AND taggable_id = ?", "Room", got.ID).Find(&taggings).Error)
+		require.NoError(t, db.Where("taggable_type = ? AND taggable_id = ?", "rooms", got.ID).Find(&taggings).Error)
 		require.Len(t, taggings, 2)
 	})
 }
 
 func TestRepo_List_Integration(t *testing.T) {
 	t.Run("returns rooms sorted and paginated with preloaded creator", func(t *testing.T) {
-		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{})
+		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{}, &fileattachment.FileAttachment{})
 		repo := NewRepo(db)
 
 		c1 := user.User{Email: "c1@example.com", FirstName: "C1"}
@@ -117,7 +118,7 @@ func TestRepo_List_Integration(t *testing.T) {
 	})
 
 	t.Run("filters rooms by name query", func(t *testing.T) {
-		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{})
+		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{}, &fileattachment.FileAttachment{})
 		repo := NewRepo(db)
 
 		c := user.User{Email: "creator@example.com", FirstName: "Creator"}
@@ -140,7 +141,7 @@ func TestRepo_List_Integration(t *testing.T) {
 	})
 
 	t.Run("filters rooms by category ids", func(t *testing.T) {
-		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{})
+		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{}, &fileattachment.FileAttachment{})
 		repo := NewRepo(db)
 
 		c := user.User{Email: "creator@example.com", FirstName: "Creator"}
@@ -173,7 +174,7 @@ func TestRepo_List_Integration(t *testing.T) {
 	})
 
 	t.Run("filters rooms by tag ids", func(t *testing.T) {
-		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{})
+		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{}, &fileattachment.FileAttachment{})
 		repo := NewRepo(db)
 
 		c := user.User{Email: "creator@example.com", FirstName: "Creator"}
@@ -191,8 +192,8 @@ func TestRepo_List_Integration(t *testing.T) {
 		require.NoError(t, db.Create(&room2).Error)
 		require.NoError(t, db.Create(&room3).Error)
 
-		require.NoError(t, db.Create(&tagging.Tagging{TagID: tag1.ID, TaggableID: room1.ID, TaggableType: "Room"}).Error)
-		require.NoError(t, db.Create(&tagging.Tagging{TagID: tag2.ID, TaggableID: room2.ID, TaggableType: "Room"}).Error)
+		require.NoError(t, db.Create(&tagging.Tagging{TagID: tag1.ID, TaggableID: room1.ID, TaggableType: "rooms"}).Error)
+		require.NoError(t, db.Create(&tagging.Tagging{TagID: tag2.ID, TaggableID: room2.ID, TaggableType: "rooms"}).Error)
 
 		got, err := repo.List(
 			RoomFilter{TagIds: []uint{tag1.ID}},
@@ -206,7 +207,7 @@ func TestRepo_List_Integration(t *testing.T) {
 	})
 
 	t.Run("filters rooms by type", func(t *testing.T) {
-		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{})
+		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{}, &fileattachment.FileAttachment{})
 		repo := NewRepo(db)
 
 		c := user.User{Email: "creator@example.com", FirstName: "Creator"}
@@ -229,7 +230,7 @@ func TestRepo_List_Integration(t *testing.T) {
 	})
 
 	t.Run("excludes rooms where the user is blocked", func(t *testing.T) {
-		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{}, &roomUserRow{})
+		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{}, &fileattachment.FileAttachment{}, &roomUserRow{})
 		repo := NewRepo(db)
 
 		c := user.User{Email: "creator@example.com", FirstName: "Creator"}
@@ -258,7 +259,7 @@ func TestRepo_List_Integration(t *testing.T) {
 
 func TestRepo_Count_Integration(t *testing.T) {
 	t.Run("returns total count without filter", func(t *testing.T) {
-		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{})
+		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{}, &fileattachment.FileAttachment{})
 		repo := NewRepo(db)
 
 		c := user.User{Email: "creator@example.com", FirstName: "Creator"}
@@ -273,7 +274,7 @@ func TestRepo_Count_Integration(t *testing.T) {
 	})
 
 	t.Run("returns count for matching filter", func(t *testing.T) {
-		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{})
+		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{}, &fileattachment.FileAttachment{})
 		repo := NewRepo(db)
 
 		c := user.User{Email: "creator@example.com", FirstName: "Creator"}
@@ -288,7 +289,7 @@ func TestRepo_Count_Integration(t *testing.T) {
 	})
 
 	t.Run("returns count for category filter", func(t *testing.T) {
-		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{})
+		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{}, &fileattachment.FileAttachment{})
 		repo := NewRepo(db)
 
 		c := user.User{Email: "creator@example.com", FirstName: "Creator"}
@@ -310,7 +311,7 @@ func TestRepo_Count_Integration(t *testing.T) {
 	})
 
 	t.Run("returns count for tag filter", func(t *testing.T) {
-		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{})
+		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{}, &fileattachment.FileAttachment{})
 		repo := NewRepo(db)
 
 		c := user.User{Email: "creator@example.com", FirstName: "Creator"}
@@ -324,7 +325,7 @@ func TestRepo_Count_Integration(t *testing.T) {
 		require.NoError(t, db.Create(&room1).Error)
 		require.NoError(t, db.Create(&room2).Error)
 
-		require.NoError(t, db.Create(&tagging.Tagging{TagID: tg.ID, TaggableID: room1.ID, TaggableType: "Room"}).Error)
+		require.NoError(t, db.Create(&tagging.Tagging{TagID: tg.ID, TaggableID: room1.ID, TaggableType: "rooms"}).Error)
 
 		got, err := repo.Count(RoomFilter{TagIds: []uint{tg.ID}})
 		require.NoError(t, err)
@@ -332,7 +333,7 @@ func TestRepo_Count_Integration(t *testing.T) {
 	})
 
 	t.Run("returns count for type filter", func(t *testing.T) {
-		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{})
+		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{}, &fileattachment.FileAttachment{})
 		repo := NewRepo(db)
 
 		c := user.User{Email: "creator@example.com", FirstName: "Creator"}
@@ -351,7 +352,7 @@ func TestRepo_Count_Integration(t *testing.T) {
 
 func TestRepo_FindByID_Integration(t *testing.T) {
 	t.Run("finds a room with creator and users preloaded", func(t *testing.T) {
-		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{})
+		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{}, &fileattachment.FileAttachment{})
 		repo := NewRepo(db)
 
 		c := user.User{Email: "creator@example.com", FirstName: "Creator"}
@@ -371,7 +372,7 @@ func TestRepo_FindByID_Integration(t *testing.T) {
 	})
 
 	t.Run("returns error when room does not exist", func(t *testing.T) {
-		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{})
+		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{}, &fileattachment.FileAttachment{})
 		repo := NewRepo(db)
 
 		got, err := repo.FindByID(999)
@@ -384,7 +385,7 @@ func TestRepo_FindByID_Integration(t *testing.T) {
 
 func TestRepo_Update_Integration(t *testing.T) {
 	t.Run("updates a room's name and description", func(t *testing.T) {
-		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{})
+		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{}, &fileattachment.FileAttachment{})
 		repo := NewRepo(db)
 
 		c := user.User{Email: "creator@example.com", FirstName: "Creator"}
@@ -410,7 +411,7 @@ func TestRepo_Update_Integration(t *testing.T) {
 	})
 
 	t.Run("returns error for non-existent room", func(t *testing.T) {
-		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{})
+		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{}, &fileattachment.FileAttachment{})
 		repo := NewRepo(db)
 
 		got, err := repo.Update(999, &UpdateRoomParams{Name: "Name", Description: "Desc"})
@@ -421,7 +422,7 @@ func TestRepo_Update_Integration(t *testing.T) {
 	})
 
 	t.Run("replaces categories and tags", func(t *testing.T) {
-		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{})
+		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{}, &fileattachment.FileAttachment{})
 		repo := NewRepo(db)
 
 		u := user.User{Email: "creator3@example.com", FirstName: "Creator"}
@@ -441,7 +442,7 @@ func TestRepo_Update_Integration(t *testing.T) {
 		require.NoError(t, db.Create(&room).Error)
 
 		require.NoError(t, db.Create(&roomcategory.RoomCategory{RoomID: room.ID, CategoryID: oldCat.ID}).Error)
-		require.NoError(t, db.Create(&tagging.Tagging{TagID: oldTag.ID, TaggableID: room.ID, TaggableType: "Room"}).Error)
+		require.NoError(t, db.Create(&tagging.Tagging{TagID: oldTag.ID, TaggableID: room.ID, TaggableType: "rooms"}).Error)
 
 		got, err := repo.Update(room.ID, &UpdateRoomParams{
 			Name:        "Updated",
@@ -459,7 +460,7 @@ func TestRepo_Update_Integration(t *testing.T) {
 		require.Equal(t, newCat.ID, roomCategories[0].CategoryID)
 
 		var taggings []tagging.Tagging
-		require.NoError(t, db.Where("taggable_type = ? AND taggable_id = ?", "Room", room.ID).Find(&taggings).Error)
+		require.NoError(t, db.Where("taggable_type = ? AND taggable_id = ?", "rooms", room.ID).Find(&taggings).Error)
 		require.Len(t, taggings, 1)
 		require.Equal(t, newTag.ID, taggings[0].TagID)
 	})
@@ -467,7 +468,7 @@ func TestRepo_Update_Integration(t *testing.T) {
 
 func TestRepo_LoadTagsForRooms_Integration(t *testing.T) {
 	t.Run("returns tags grouped by room id, ignoring other taggable types", func(t *testing.T) {
-		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{})
+		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{}, &fileattachment.FileAttachment{})
 		repo := NewRepo(db)
 
 		c := user.User{Email: "creator@example.com", FirstName: "Creator"}
@@ -485,9 +486,9 @@ func TestRepo_LoadTagsForRooms_Integration(t *testing.T) {
 		require.NoError(t, db.Create(&live).Error)
 		require.NoError(t, db.Create(&rock).Error)
 
-		require.NoError(t, db.Create(&tagging.Tagging{TagID: jazz.ID, TaggableID: room1.ID, TaggableType: "Room"}).Error)
-		require.NoError(t, db.Create(&tagging.Tagging{TagID: live.ID, TaggableID: room1.ID, TaggableType: "Room"}).Error)
-		require.NoError(t, db.Create(&tagging.Tagging{TagID: rock.ID, TaggableID: room2.ID, TaggableType: "Room"}).Error)
+		require.NoError(t, db.Create(&tagging.Tagging{TagID: jazz.ID, TaggableID: room1.ID, TaggableType: "rooms"}).Error)
+		require.NoError(t, db.Create(&tagging.Tagging{TagID: live.ID, TaggableID: room1.ID, TaggableType: "rooms"}).Error)
+		require.NoError(t, db.Create(&tagging.Tagging{TagID: rock.ID, TaggableID: room2.ID, TaggableType: "rooms"}).Error)
 		require.NoError(t, db.Create(&tagging.Tagging{TagID: rock.ID, TaggableID: c.ID, TaggableType: "User"}).Error)
 
 		got, err := repo.LoadTagsForRooms([]uint{room1.ID, room2.ID})
@@ -503,7 +504,7 @@ func TestRepo_LoadTagsForRooms_Integration(t *testing.T) {
 	})
 
 	t.Run("returns empty map when rooms have no tags", func(t *testing.T) {
-		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{})
+		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{}, &fileattachment.FileAttachment{})
 		repo := NewRepo(db)
 
 		c := user.User{Email: "creator@example.com", FirstName: "Creator"}
@@ -531,7 +532,7 @@ func TestRepo_UpdatePrivateCode_Integration(t *testing.T) {
 	}
 
 	t.Run("replaces an existing private code", func(t *testing.T) {
-		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{})
+		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{}, &fileattachment.FileAttachment{})
 		repo := NewRepo(db)
 
 		oldCode := "stale-code"
@@ -546,7 +547,7 @@ func TestRepo_UpdatePrivateCode_Integration(t *testing.T) {
 	})
 
 	t.Run("returns error when room not found", func(t *testing.T) {
-		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{})
+		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{}, &fileattachment.FileAttachment{})
 		repo := NewRepo(db)
 
 		err := repo.UpdatePrivateCode(9999, "secret-123")

@@ -6,6 +6,7 @@ import (
 	"sound-stage-backend/internal/pkg/httpx"
 
 	"github.com/gin-gonic/gin"
+	"github.com/go-playground/validator/v10"
 )
 
 type userService interface {
@@ -14,11 +15,12 @@ type userService interface {
 }
 
 type Handler struct {
-	service userService
+	service  userService
+	validate *validator.Validate
 }
 
 func NewHandler(service userService) *Handler {
-	return &Handler{service: service}
+	return &Handler{service: service, validate: httpx.NewValidator()}
 }
 
 func (h *Handler) CurrentUser(c *gin.Context) {
@@ -36,8 +38,12 @@ func (h *Handler) UpdateProfile(c *gin.Context) {
 	userId, _ := current.UserID(c)
 
 	var input UpdateUserParams
-	if err := c.ShouldBindJSON(&input); err != nil {
+	if err := c.ShouldBind(&input); err != nil {
 		httpx.ErrorResponse(c, http.StatusBadRequest, "Invalid request payload")
+		return
+	}
+	if err := h.validate.Struct(input); err != nil {
+		httpx.ErrorResponse(c, http.StatusUnprocessableEntity, "Validation error: "+err.Error())
 		return
 	}
 

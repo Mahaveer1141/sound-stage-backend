@@ -2,6 +2,7 @@ package room
 
 import (
 	"sound-stage-backend/internal/category"
+	"sound-stage-backend/internal/pkg/httpx"
 	"sound-stage-backend/internal/tag"
 )
 
@@ -32,6 +33,8 @@ func BuildRoomResponse(room *Room, viewer *RoomViewer) RoomResponse {
 		Description:  room.Description,
 		Type:         room.Type,
 		PrivateCode:  privateCode,
+		CoverImage:   httpx.BuildFileAttachmentResponse(room.CoverImage),
+		LogoImage:    httpx.BuildFileAttachmentResponse(room.LogoImage),
 		Categories:   cats,
 		Tags:         tags,
 		IsRoomUser:   isRoomUser,

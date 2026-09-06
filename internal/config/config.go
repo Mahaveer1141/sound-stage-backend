@@ -8,15 +8,16 @@ import (
 )
 
 type Config struct {
-	Server    ServerConfig
-	Database  DatabaseConfig
-	Logger    LoggerConfig
-	Mailer    MailerConfig
-	JWT       JWTConfig
-	Redis     RedisConfig
-	Worker    WorkerConfig
-	WebSocket WebSocketConfig
-	WebRTC    WebRTCConfig
+	Server     ServerConfig
+	Database   DatabaseConfig
+	Logger     LoggerConfig
+	Mailer     MailerConfig
+	JWT        JWTConfig
+	Redis      RedisConfig
+	Worker     WorkerConfig
+	WebSocket  WebSocketConfig
+	WebRTC     WebRTCConfig
+	Cloudinary CloudinaryConfig
 }
 
 type ServerConfig struct {
@@ -79,6 +80,12 @@ type WebRTCConfig struct {
 	TurnCredential string
 }
 
+type CloudinaryConfig struct {
+	CloudName string
+	APIKey    string
+	APISecret string
+}
+
 func Load() *Config {
 	appEnv := env.GetEnv("APP_ENV", "development")
 	var mode string
@@ -139,6 +146,11 @@ func Load() *Config {
 			TurnURL:        env.GetEnv("TURN_URL", ""),
 			TurnUsername:   env.GetEnv("TURN_USERNAME", ""),
 			TurnCredential: env.GetEnv("TURN_CREDENTIAL", ""),
+		},
+		Cloudinary: CloudinaryConfig{
+			CloudName: env.GetEnv("CLOUDINARY_CLOUD_NAME", ""),
+			APIKey:    env.GetEnv("CLOUDINARY_API_KEY", ""),
+			APISecret: env.GetEnv("CLOUDINARY_API_SECRET", ""),
 		},
 	}
 }

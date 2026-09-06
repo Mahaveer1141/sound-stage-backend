@@ -28,13 +28,13 @@ type Handler struct {
 }
 
 func NewHandler(service roomService) *Handler {
-	return &Handler{service: service, validate: validator.New()}
+	return &Handler{service: service, validate: httpx.NewValidator()}
 }
 
 func (h *Handler) Create(c *gin.Context) {
 	userId, _ := current.UserID(c)
 	var input CreateRoomParams
-	if err := c.ShouldBindJSON(&input); err != nil {
+	if err := c.ShouldBind(&input); err != nil {
 		httpx.ErrorResponse(c, http.StatusBadRequest, "Invalid request payload")
 		return
 	}
@@ -64,7 +64,7 @@ func (h *Handler) Update(c *gin.Context) {
 	userId, _ := current.UserID(c)
 
 	var input UpdateRoomParams
-	if err := c.ShouldBindJSON(&input); err != nil {
+	if err := c.ShouldBind(&input); err != nil {
 		httpx.ErrorResponse(c, http.StatusBadRequest, "Invalid request payload")
 		return
 	}
@@ -94,8 +94,8 @@ func (h *Handler) List(c *gin.Context) {
 		httpx.ErrorResponse(c, http.StatusBadRequest, "Invalid pagination params")
 		return
 	}
-	if p.Page <= 0 || p.PageSize <= 0 {
-		httpx.ErrorResponse(c, http.StatusBadRequest, "page and pageSize must be positive")
+	if p.Page <= 0 || p.PageSize <= 0 || p.PageSize > 50 {
+		httpx.ErrorResponse(c, http.StatusBadRequest, "page and pageSize must be positive and pageSize must be less than 50")
 		return
 	}
 

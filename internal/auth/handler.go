@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"mime/multipart"
 	"net/http"
 	apitoken "sound-stage-backend/internal/api_token"
 	otprequest "sound-stage-backend/internal/otp_request"
@@ -38,13 +39,14 @@ type RefreshTokenParams struct {
 }
 
 type SignUpParams struct {
-	Email     string `json:"email" validate:"required,email"`
-	FirstName string `json:"firstName" validate:"required"`
-	LastName  string `json:"lastName,omitempty"`
+	Email          string                `json:"email" form:"email" validate:"required,email"`
+	FirstName      string                `json:"firstName" form:"firstName" validate:"required"`
+	LastName       string                `json:"lastName" form:"lastName"`
+	ProfilePicture *multipart.FileHeader `json:"-" form:"profilePicture" validate:"omitempty,max_size=10485760"`
 }
 
 func NewHandler(service authService) *Handler {
-	return &Handler{service: service, validate: validator.New()}
+	return &Handler{service: service, validate: httpx.NewValidator()}
 }
 
 func (h *Handler) RequestOTP(c *gin.Context) {
@@ -138,7 +140,7 @@ func (h *Handler) Logout(c *gin.Context) {
 func (h *Handler) SignUp(c *gin.Context) {
 	var input SignUpParams
 
-	if err := c.ShouldBindJSON(&input); err != nil {
+	if err := c.ShouldBind(&input); err != nil {
 		httpx.ErrorResponse(c, http.StatusBadRequest, "Invalid request body")
 		return
 	}

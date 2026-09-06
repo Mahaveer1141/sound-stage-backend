@@ -2,9 +2,15 @@ package httpx
 
 import (
 	"net/http"
+	fileattachment "sound-stage-backend/internal/file_attachment"
 
 	"github.com/gin-gonic/gin"
 )
+
+type FileAttachmentResponse struct {
+	PublicID string `json:"publicId"`
+	URL      string `json:"url"`
+}
 
 type Response struct {
 	Success bool   `json:"success"`
@@ -56,4 +62,14 @@ func PaginatedSuccessResponse(c *gin.Context, message string, data any, page, pa
 			TotalPages: totalPages,
 		},
 	})
+}
+
+func BuildFileAttachmentResponse(attachment *fileattachment.FileAttachment) *FileAttachmentResponse {
+	if attachment == nil {
+		return nil
+	}
+	return &FileAttachmentResponse{
+		PublicID: attachment.PublicID,
+		URL:      attachment.URL,
+	}
 }

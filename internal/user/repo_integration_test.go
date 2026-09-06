@@ -3,10 +3,10 @@ package user
 import (
 	"testing"
 
+	fileattachment "sound-stage-backend/internal/file_attachment"
 	"sound-stage-backend/internal/pkg/testutil"
 
 	"github.com/stretchr/testify/require"
-	"gorm.io/gorm"
 )
 
 func TestRepo_Create_Integration(t *testing.T) {
@@ -103,7 +103,7 @@ func TestRepo_FindByEmail_Integration(t *testing.T) {
 
 func TestRepo_FindByID_Integration(t *testing.T) {
 	t.Run("finds user by id", func(t *testing.T) {
-		db := testutil.NewIntegrationDB(t, &User{})
+		db := testutil.NewIntegrationDB(t, &User{}, &fileattachment.FileAttachment{})
 		repo := NewRepo(db)
 
 		created, err := repo.Create(&CreateUserParams{
@@ -151,7 +151,7 @@ func TestRepo_UpdateLastLoginAt_Integration(t *testing.T) {
 	})
 }
 
-func TestRepo_Update_Integration(t *testing.T) {
+func TestRepo_Save_Integration(t *testing.T) {
 	t.Run("updates first and last name", func(t *testing.T) {
 		db := testutil.NewIntegrationDB(t, &User{})
 		repo := NewRepo(db)
@@ -163,30 +163,16 @@ func TestRepo_Update_Integration(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		got, err := repo.Update(created.ID, &UpdateUserParams{
-			FirstName: "Updated",
-			LastName:  "New",
-		})
-
+		newLast := "New"
+		created.FirstName = "Updated"
+		created.LastName = &newLast
+		err = repo.Save(created)
 		require.NoError(t, err)
-		require.NotNil(t, got)
-		require.Equal(t, "Updated", got.FirstName)
-		require.NotNil(t, got.LastName)
-		require.Equal(t, "New", *got.LastName)
 
 		var fetched User
 		require.NoError(t, db.First(&fetched, created.ID).Error)
 		require.Equal(t, "Updated", fetched.FirstName)
-	})
-
-	t.Run("returns error for non-existent user", func(t *testing.T) {
-		db := testutil.NewIntegrationDB(t, &User{})
-		repo := NewRepo(db)
-
-		got, err := repo.Update(999, &UpdateUserParams{FirstName: "Updated"})
-
-		require.Error(t, err)
-		require.Nil(t, got)
-		require.ErrorIs(t, err, gorm.ErrRecordNotFound)
+		require.NotNil(t, fetched.LastName)
+		require.Equal(t, "New", *fetched.LastName)
 	})
 }

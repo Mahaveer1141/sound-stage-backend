@@ -2,6 +2,7 @@ package room
 
 import (
 	"sound-stage-backend/internal/category"
+	fileattachment "sound-stage-backend/internal/file_attachment"
 	"sound-stage-backend/internal/pkg/listopts"
 	roomcategory "sound-stage-backend/internal/room_category"
 	"sound-stage-backend/internal/tag"
@@ -49,7 +50,10 @@ func (r *Repo) List(filter RoomFilter, sort listopts.Sort, p listopts.Pagination
 
 func (r *Repo) FindByID(id uint) (*Room, error) {
 	var room Room
-	result := r.db.Preload("Creator").Preload("Categories").First(&room, id)
+	result := r.db.Preload("Creator").Preload("Categories").
+		Preload("CoverImage", "context = ?", fileattachment.ContextRoomCover).
+		Preload("LogoImage", "context = ?", fileattachment.ContextRoomLogo).
+		First(&room, id)
 	if result.Error != nil {
 		return nil, result.Error
 	}
@@ -121,7 +125,7 @@ func (r *Repo) LoadTagsForRooms(roomIDs []uint) (map[uint][]tag.Tag, error) {
 	err := r.db.Table("tags").
 		Select("tags.*, taggables.taggable_id as room_id").
 		Joins("JOIN taggables ON taggables.tag_id = tags.id").
-		Where("taggables.taggable_type = ? AND taggables.taggable_id IN ?", "Room", roomIDs).
+		Where("taggables.taggable_type = ? AND taggables.taggable_id IN ?", "rooms", roomIDs).
 		Find(&rows).Error
 	if err != nil {
 		return nil, err
@@ -156,7 +160,7 @@ func addCategories(tx *gorm.DB, room *Room, categoryIds []uint, isCreate bool) e
 }
 
 func addTags(tx *gorm.DB, room *Room, tagIds []uint, isCreate bool) error {
-	deleteQuery := tx.Where("taggable_type = 'Room' AND taggable_id = ?", room.ID)
+	deleteQuery := tx.Where("taggable_type = 'rooms' AND taggable_id = ?", room.ID)
 	if !isCreate {
 		if len(tagIds) > 0 {
 			deleteQuery = deleteQuery.Where("tag_id NOT IN ?", tagIds)
@@ -168,7 +172,7 @@ func addTags(tx *gorm.DB, room *Room, tagIds []uint, isCreate bool) error {
 	if len(tagIds) > 0 {
 		var roomTags []tagging.Tagging
 		for _, id := range tagIds {
-			roomTags = append(roomTags, tagging.Tagging{TaggableType: "Room", TaggableID: room.ID, TagID: id})
+			roomTags = append(roomTags, tagging.Tagging{TaggableType: "rooms", TaggableID: room.ID, TagID: id})
 		}
 		if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&roomTags).Error; err != nil {
 			return err

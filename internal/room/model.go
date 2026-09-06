@@ -1,8 +1,11 @@
 package room
 
 import (
+	"mime/multipart"
 	"sound-stage-backend/internal/category"
+	fileattachment "sound-stage-backend/internal/file_attachment"
 	model "sound-stage-backend/internal/model"
+	"sound-stage-backend/internal/pkg/httpx"
 	"sound-stage-backend/internal/pkg/listopts"
 	roomuser "sound-stage-backend/internal/room_user"
 	"sound-stage-backend/internal/tag"
@@ -21,15 +24,17 @@ const (
 
 type Room struct {
 	model.BaseModel
-	Name        string              `gorm:"not null" validate:"required"`
-	Description string              `validate:"required"`
-	CreatorID   uint                `validate:"required"`
-	Creator     user.User           `gorm:"foreignKey:CreatorID"`
-	Users       []user.User         `gorm:"many2many:room_users"`
-	Categories  []category.Category `gorm:"many2many:room_categories"`
-	Tags        []tag.Tag           `gorm:"-"`
-	Type        RoomType            `gorm:"default:public" validate:"required,oneof=public private"`
-	PrivateCode *string             `validate:"omitempty"`
+	Name        string                         `gorm:"not null" validate:"required"`
+	Description string                         `validate:"required"`
+	CreatorID   uint                           `validate:"required"`
+	Creator     user.User                      `gorm:"foreignKey:CreatorID"`
+	Users       []user.User                    `gorm:"many2many:room_users"`
+	Categories  []category.Category            `gorm:"many2many:room_categories"`
+	Tags        []tag.Tag                      `gorm:"-"`
+	CoverImage  *fileattachment.FileAttachment `gorm:"polymorphic:Owner;"`
+	LogoImage   *fileattachment.FileAttachment `gorm:"polymorphic:Owner;"`
+	Type        RoomType                       `gorm:"default:public" validate:"required,oneof=public private"`
+	PrivateCode *string                        `validate:"omitempty"`
 	DeletedAt   gorm.DeletedAt
 }
 
@@ -38,34 +43,40 @@ func (Room) TableName() string {
 }
 
 type CreateRoomParams struct {
-	Name        string   `json:"name" validate:"required"`
-	Description string   `json:"description"`
-	CreatorID   uint     `json:"creatorID" validate:"required"`
-	CategoryIds []uint   `json:"categoryIds" validate:"lte=3"`
-	TagIds      []uint   `json:"tagIds" validate:"lte=5"`
-	Type        RoomType `validate:"required"`
+	Name        string                `json:"name" form:"name" validate:"required"`
+	Description string                `json:"description" form:"description"`
+	CreatorID   uint                  `json:"creatorID" validate:"required"`
+	CoverImage  *multipart.FileHeader `json:"-" form:"coverImage" validate:"omitempty,max_size=10485760"`
+	LogoImage   *multipart.FileHeader `json:"-" form:"logoImage" validate:"omitempty,max_size=10485760"`
+	CategoryIds []uint                `json:"categoryIds" form:"categoryIds" validate:"lte=3"`
+	TagIds      []uint                `json:"tagIds" form:"tagIds" validate:"lte=5"`
+	Type        RoomType              `json:"type" form:"type" validate:"required"`
 	privateCode *string
 }
 
 type UpdateRoomParams struct {
-	Name        string   `json:"name" validate:"required"`
-	Description string   `json:"description" validate:"omitempty"`
-	CategoryIds []uint   `json:"categoryIds" validate:"lte=3"`
-	TagIds      []uint   `json:"tagIds" validate:"lte=5"`
-	Type        RoomType `validate:"required"`
+	Name        string                `json:"name" form:"name" validate:"required"`
+	Description string                `json:"description" form:"description" validate:"omitempty"`
+	CoverImage  *multipart.FileHeader `json:"-" form:"coverImage" validate:"omitempty,max_size=10485760"`
+	LogoImage   *multipart.FileHeader `json:"-" form:"logoImage" validate:"omitempty,max_size=10485760"`
+	CategoryIds []uint                `json:"categoryIds" form:"categoryIds" validate:"lte=3"`
+	TagIds      []uint                `json:"tagIds" form:"tagIds" validate:"lte=5"`
+	Type        RoomType              `json:"type" form:"type" validate:"required"`
 	privateCode *string
 }
 
 type RoomResponse struct {
-	ID           uint                        `json:"id"`
-	Name         string                      `json:"name"`
-	Description  string                      `json:"description"`
-	Type         RoomType                    `json:"type"`
-	PrivateCode  *string                     `json:"privateCode,omitempty"`
-	Categories   []category.CategoryResponse `json:"categories,omitempty"`
-	Tags         []tag.TagResponse           `json:"tags,omitempty"`
-	IsRoomUser   bool                        `json:"isRoomUser"`
-	IsFavourited bool                        `json:"isFavourited"`
+	ID           uint                          `json:"id"`
+	Name         string                        `json:"name"`
+	Description  string                        `json:"description"`
+	Type         RoomType                      `json:"type"`
+	PrivateCode  *string                       `json:"privateCode,omitempty"`
+	CoverImage   *httpx.FileAttachmentResponse `json:"coverImage,omitempty"`
+	LogoImage    *httpx.FileAttachmentResponse `json:"logoImage,omitempty"`
+	Categories   []category.CategoryResponse   `json:"categories,omitempty"`
+	Tags         []tag.TagResponse             `json:"tags,omitempty"`
+	IsRoomUser   bool                          `json:"isRoomUser"`
+	IsFavourited bool                          `json:"isFavourited"`
 }
 
 type RoomViewer struct {
@@ -111,7 +122,7 @@ func FilterByTags(tagIds []uint) func(*gorm.DB) *gorm.DB {
 	return func(db *gorm.DB) *gorm.DB {
 		if len(tagIds) > 0 {
 			db = db.Joins("JOIN taggables ON taggables.taggable_type = ? AND taggables.taggable_id = rooms.id",
-				"Room", tagIds).
+				"rooms", tagIds).
 				Where("taggables.tag_id IN (?)", tagIds)
 		}
 		return db

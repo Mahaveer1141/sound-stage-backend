@@ -36,7 +36,7 @@ func (r *Repo) FindByEmail(email string) (*User, error) {
 
 func (r *Repo) FindByID(id uint) (*User, error) {
 	var user User
-	result := r.db.Where("id = ?", id).First(&user)
+	result := r.db.Where("id = ?", id).Preload("ProfilePicture").First(&user)
 	return gormutil.NilIfNotFound(&user, result.Error)
 }
 
@@ -44,18 +44,6 @@ func (r *Repo) UpdateLastLoginAt(id uint) error {
 	return r.db.Model(&User{}).Where("id = ?", id).Update("last_login_at", time.Now()).Error
 }
 
-func (r *Repo) Update(id uint, input *UpdateUserParams) (*User, error) {
-	var user User
-	result := r.db.Where("id = ?", id).First(&user)
-	if result.Error != nil {
-		return nil, result.Error
-	}
-
-	user.FirstName = input.FirstName
-	user.LastName = &input.LastName
-
-	if err := r.db.Save(&user).Error; err != nil {
-		return nil, err
-	}
-	return &user, nil
+func (r *Repo) Save(user *User) error {
+	return r.db.Save(user).Error
 }

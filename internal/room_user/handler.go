@@ -70,8 +70,8 @@ func (h *Handler) ListUsers(c *gin.Context) {
 		httpx.ErrorResponse(c, http.StatusBadRequest, "Invalid pagination params")
 		return
 	}
-	if p.Page <= 0 || p.PageSize <= 0 {
-		httpx.ErrorResponse(c, http.StatusBadRequest, "page and pageSize must be positive")
+	if p.Page <= 0 || p.PageSize <= 0 || p.PageSize > 50 {
+		httpx.ErrorResponse(c, http.StatusBadRequest, "page and pageSize must be positive and pageSize must be less than 50")
 		return
 	}
 
@@ -239,8 +239,8 @@ func (h *Handler) ListRaisedHands(c *gin.Context) {
 		httpx.ErrorResponse(c, http.StatusBadRequest, "Invalid pagination params")
 		return
 	}
-	if p.Page <= 0 || p.PageSize <= 0 {
-		httpx.ErrorResponse(c, http.StatusBadRequest, "page and pageSize must be positive")
+	if p.Page <= 0 || p.PageSize <= 0 || p.PageSize > 50 {
+		httpx.ErrorResponse(c, http.StatusBadRequest, "page and pageSize must be positive and pageSize must be less than 50")
 		return
 	}
 
@@ -271,8 +271,8 @@ func (h *Handler) ListBlockedUsers(c *gin.Context) {
 		httpx.ErrorResponse(c, http.StatusBadRequest, "Invalid pagination params")
 		return
 	}
-	if p.Page <= 0 || p.PageSize <= 0 {
-		httpx.ErrorResponse(c, http.StatusBadRequest, "page and pageSize must be positive")
+	if p.Page <= 0 || p.PageSize <= 0 || p.PageSize > 50 {
+		httpx.ErrorResponse(c, http.StatusBadRequest, "page and pageSize must be positive and pageSize must be less than 50")
 		return
 	}
 
