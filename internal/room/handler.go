@@ -19,7 +19,7 @@ type roomService interface {
 	Update(id, userID uint, input *UpdateRoomParams) (*Room, error)
 	ViewerContext(roomID, userID uint) (*RoomViewer, error)
 	ViewerContexts(roomIDs []uint, userID uint) (map[uint]*RoomViewer, error)
-	UpdatePrivateCode(roomID uint) error
+	UpdatePrivateCode(roomID, userID uint) error
 }
 
 type Handler struct {
@@ -140,6 +140,10 @@ func (h *Handler) FindByID(c *gin.Context) {
 	currentUserID, _ := current.UserID(c)
 	room, err := h.service.FindByID(uint(roomId), currentUserID)
 	if err != nil {
+		if errors.Is(err, httpx.ErrForbidden) {
+			httpx.ErrorResponse(c, http.StatusForbidden, "You are not allowed to view this room")
+			return
+		}
 		httpx.ErrorResponse(c, http.StatusNotFound, "Room not found")
 		return
 	}
@@ -156,9 +160,14 @@ func (h *Handler) UpdatePrivateCode(c *gin.Context) {
 		httpx.ErrorResponse(c, http.StatusBadRequest, "Invalid room ID")
 		return
 	}
+	currentUserID, _ := current.UserID(c)
 
-	err = h.service.UpdatePrivateCode(uint(roomId))
+	err = h.service.UpdatePrivateCode(uint(roomId), currentUserID)
 	if err != nil {
+		if errors.Is(err, httpx.ErrForbidden) {
+			httpx.ErrorResponse(c, http.StatusForbidden, "You are not allowed to update this room's private code")
+			return
+		}
 		httpx.ErrorResponse(c, http.StatusUnprocessableEntity, "Failed to update private code")
 		return
 	}

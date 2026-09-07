@@ -58,6 +58,10 @@ func (m *mockRoomUserService) ListBlockedByRoomID(roomID, actorID uint, p listop
 	rus, _ := args.Get(0).([]RoomUser)
 	return rus, args.Get(1).(int64), args.Error(2)
 }
+func (m *mockRoomUserService) SetMuted(ctx context.Context, roomID, userID, actorID uint, isMuted bool) error {
+	args := m.Called(ctx, roomID, userID, actorID, isMuted)
+	return args.Error(0)
+}
 
 type mockWebSocketHub struct{ mock.Mock }
 
@@ -330,7 +334,10 @@ func TestHandler_DeleteUser(t *testing.T) {
 	t.Run("success: deletes user, broadcasts, returns 200", func(t *testing.T) {
 		h := newHandlerHarness(t)
 		h.svc.On("DeleteUser", mock.Anything, uint(4), uint(7), uint(1)).Return(nil)
-		h.hub.On("BroadcastToRoom", uint(4), ws.EventDeleteRoomUser, mock.Anything).Return()
+		h.hub.On("BroadcastToRoom", uint(4), ws.EventUserKickedOut, mock.MatchedBy(func(payload any) bool {
+			gh, ok := payload.(gin.H)
+			return ok && gh["userId"] == 7
+		})).Return()
 
 		w, c := testutil.NewTestContext(http.MethodDelete, "/rooms/4/users/7", nil)
 		c.Params = gin.Params{{Key: "id", Value: "4"}, {Key: "userId", Value: "7"}}
@@ -398,6 +405,77 @@ func TestHandler_DeleteUser(t *testing.T) {
 		h.svc.AssertExpectations(t)
 		h.hub.AssertNotCalled(t, "BroadcastToRoom", mock.Anything, mock.Anything, mock.Anything)
 	})
+}
+
+func TestHandler_SetUserMuted(t *testing.T) {
+	t.Run("success: mutes user and returns 200", func(t *testing.T) {
+		h := newHandlerHarness(t)
+		h.svc.On("SetMuted", mock.Anything, uint(4), uint(7), uint(1), true).Return(nil)
+
+		w, c := testutil.NewTestContext(http.MethodPut, "/rooms/4/users/7/muted", true)
+		c.Params = gin.Params{{Key: "id", Value: "4"}, {Key: "userId", Value: "7"}}
+		c.Set("userId", uint(1))
+
+		h.handler.SetUserMuted(c)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		h.svc.AssertExpectations(t)
+	})
+
+	t.Run("failure: non-numeric room ID returns 400 before service is called", func(t *testing.T) {
+		h := newHandlerHarness(t)
+
+		w, c := testutil.NewTestContext(http.MethodPut, "/rooms/abc/users/7/muted", true)
+		c.Params = gin.Params{{Key: "id", Value: "abc"}, {Key: "userId", Value: "7"}}
+		c.Set("userId", uint(1))
+
+		h.handler.SetUserMuted(c)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		h.svc.AssertNotCalled(t, "SetMuted", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+	})
+
+	t.Run("failure: non-numeric user ID returns 400 before service is called", func(t *testing.T) {
+		h := newHandlerHarness(t)
+
+		w, c := testutil.NewTestContext(http.MethodPut, "/rooms/4/users/abc/muted", false)
+		c.Params = gin.Params{{Key: "id", Value: "4"}, {Key: "userId", Value: "abc"}}
+		c.Set("userId", uint(1))
+
+		h.handler.SetUserMuted(c)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		h.svc.AssertNotCalled(t, "SetMuted", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+	})
+
+	t.Run("failure: forbidden error from service returns 403", func(t *testing.T) {
+		h := newHandlerHarness(t)
+		h.svc.On("SetMuted", mock.Anything, uint(4), uint(7), uint(1), true).Return(httpx.ErrForbidden)
+
+		w, c := testutil.NewTestContext(http.MethodPut, "/rooms/4/users/7/muted", true)
+		c.Params = gin.Params{{Key: "id", Value: "4"}, {Key: "userId", Value: "7"}}
+		c.Set("userId", uint(1))
+
+		h.handler.SetUserMuted(c)
+
+		assert.Equal(t, http.StatusForbidden, w.Code)
+		h.svc.AssertExpectations(t)
+	})
+
+	t.Run("failure: blocked actor gets 403", func(t *testing.T) {
+		h := newHandlerHarness(t)
+		h.svc.On("SetMuted", mock.Anything, uint(4), uint(7), uint(1), true).Return(httpx.ErrUserBlocked)
+
+		w, c := testutil.NewTestContext(http.MethodPut, "/rooms/4/users/7/muted", false)
+		c.Params = gin.Params{{Key: "id", Value: "4"}, {Key: "userId", Value: "7"}}
+		c.Set("userId", uint(1))
+
+		h.handler.SetUserMuted(c)
+
+		assert.Equal(t, http.StatusForbidden, w.Code)
+		h.svc.AssertExpectations(t)
+	})
+
 }
 
 func TestHandler_ListRaisedHands(t *testing.T) {

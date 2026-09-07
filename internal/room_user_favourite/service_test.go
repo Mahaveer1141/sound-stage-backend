@@ -58,7 +58,7 @@ func newServiceHarness() *serviceHarness {
 	return &serviceHarness{
 		repo:    repo,
 		checker: checker,
-		svc:     NewService(repo, checker),
+		svc:     NewService(repo, NewAuthz(checker)),
 	}
 }
 

@@ -24,6 +24,7 @@ type roomUserService interface {
 	Block(roomID, userID, actorID uint) error
 	Unblock(roomID, userID, actorID uint) error
 	ListBlockedByRoomID(roomID, actorID uint, p listopts.Pagination) ([]RoomUser, int64, error)
+	SetMuted(ctx context.Context, roomID, userID, actorID uint, isMuted bool) error
 }
 
 type webSocketBroadcaster interface {
@@ -221,9 +222,44 @@ func (h *Handler) DeleteUser(c *gin.Context) {
 		return
 	}
 
-	h.hub.BroadcastToRoom(uint(roomID), ws.EventDeleteRoomUser, nil)
+	h.hub.BroadcastToRoom(uint(roomID), ws.EventUserKickedOut, gin.H{"userId": userID})
 
 	httpx.SuccessResponse(c, http.StatusOK, "User removed from room", nil)
+}
+
+func (h *Handler) SetUserMuted(c *gin.Context) {
+	id := c.Param("id")
+	roomID, err := strconv.Atoi(id)
+	if err != nil {
+		httpx.ErrorResponse(c, http.StatusBadRequest, "Invalid room ID")
+		return
+	}
+	userIDStr := c.Param("userId")
+	userID, err := strconv.Atoi(userIDStr)
+	if err != nil {
+		httpx.ErrorResponse(c, http.StatusBadRequest, "Invalid user ID")
+		return
+	}
+	actorID, _ := current.UserID(c)
+
+	if err := h.service.SetMuted(c.Request.Context(), uint(roomID), uint(userID), actorID, true); err != nil {
+		if errors.Is(err, httpx.ErrForbidden) {
+			httpx.ErrorResponse(c, http.StatusForbidden, httpx.ErrForbidden.Error())
+			return
+		}
+		if errors.Is(err, httpx.ErrUserBlocked) {
+			httpx.ErrorResponse(c, http.StatusForbidden, "You are blocked from this room")
+			return
+		}
+		if errors.Is(err, httpx.ErrRecordNotFound) {
+			httpx.ErrorResponse(c, http.StatusNotFound, "User not found in room")
+			return
+		}
+		httpx.ErrorResponse(c, http.StatusUnprocessableEntity, "Failed to update mute state")
+		return
+	}
+
+	httpx.SuccessResponse(c, http.StatusOK, "User mute state updated", nil)
 }
 
 func (h *Handler) ListRaisedHands(c *gin.Context) {
@@ -322,7 +358,7 @@ func (h *Handler) BlockUser(c *gin.Context) {
 		return
 	}
 
-	h.hub.BroadcastToRoom(uint(roomID), ws.EventDeleteRoomUser, gin.H{"userId": input.UserID, "blocked": true})
+	h.hub.BroadcastToRoom(uint(roomID), ws.EventUserKickedOut, gin.H{"userId": input.UserID, "blocked": true})
 
 	httpx.SuccessResponse(c, http.StatusOK, "User blocked from room", nil)
 }

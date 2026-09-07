@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sound-stage-backend/internal/ws"
+	"sync"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -63,6 +64,7 @@ type Subscriber struct {
 	channel     string
 	broadcaster Broadcaster
 	logger      *slog.Logger
+	mu          sync.Mutex
 	pubsub      *redis.PubSub
 }
 
@@ -74,8 +76,11 @@ func NewSubscriber(rdb *redis.Client, channel string, broadcaster Broadcaster, l
 }
 
 func (s *Subscriber) Run(ctx context.Context) error {
-	s.pubsub = s.rdb.Subscribe(ctx, s.channel)
-	ch := s.pubsub.Channel()
+	pubsub := s.rdb.Subscribe(ctx, s.channel)
+	s.mu.Lock()
+	s.pubsub = pubsub
+	s.mu.Unlock()
+	ch := pubsub.Channel()
 
 	for {
 		select {
@@ -93,10 +98,13 @@ func (s *Subscriber) Run(ctx context.Context) error {
 }
 
 func (s *Subscriber) Shutdown(context.Context) error {
-	if s.pubsub == nil {
+	s.mu.Lock()
+	pubsub := s.pubsub
+	s.mu.Unlock()
+	if pubsub == nil {
 		return nil
 	}
-	return s.pubsub.Close()
+	return pubsub.Close()
 }
 
 func (s *Subscriber) handle(msg *redis.Message) error {

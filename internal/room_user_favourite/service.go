@@ -1,7 +1,6 @@
 package roomuserfavourite
 
 import (
-	"sound-stage-backend/internal/pkg/httpx"
 	"sound-stage-backend/internal/pkg/listopts"
 )
 
@@ -13,26 +12,22 @@ type repo interface {
 	CountByUserID(userID uint) (int64, error)
 }
 
-type blockedChecker interface {
-	IsBlocked(roomID, userID uint) (bool, error)
+type authorizer interface {
+	CanAdd(userID, roomID uint) error
 }
 
 type Service struct {
-	repo    repo
-	checker blockedChecker
+	repo  repo
+	authz authorizer
 }
 
-func NewService(r repo, checker blockedChecker) *Service {
-	return &Service{repo: r, checker: checker}
+func NewService(r repo, authz authorizer) *Service {
+	return &Service{repo: r, authz: authz}
 }
 
 func (s *Service) Add(userID, roomID uint) error {
-	blocked, err := s.checker.IsBlocked(roomID, userID)
-	if err != nil {
+	if err := s.authz.CanAdd(userID, roomID); err != nil {
 		return err
-	}
-	if blocked {
-		return httpx.ErrUserBlocked
 	}
 	return s.repo.Add(userID, roomID)
 }

@@ -152,7 +152,7 @@ func newHarness() *harness {
 		roles:   roles,
 		revoker: revoker,
 		state:   state,
-		svc:     NewService(repo, roles, revoker, state),
+		svc:     NewService(repo, roles, revoker, state, NewAuthz(repo)),
 	}
 }
 
@@ -354,7 +354,7 @@ func TestService_ListByRoomID(t *testing.T) {
 		p := listopts.Pagination{Page: 1, PageSize: 10}
 		users := []RoomUser{{UserID: 1}, {UserID: 2}}
 
-		h.repo.On("IsBlocked", uint(4), uint(1)).Return(false, nil)
+		h.repo.On("FindAnyBy", uint(1), uint(4)).Return(&RoomUser{IsBlocked: false}, nil)
 		h.repo.On("ListByRoomID", uint(4), filter, sort, p).Return(users, nil)
 		h.repo.On("CountByRoomID", uint(4), filter).Return(int64(2), nil)
 		h.state.On("GetParticipantStates", mock.Anything, uint(4), []uint{1, 2}).
@@ -383,7 +383,7 @@ func TestService_ListByRoomID(t *testing.T) {
 		users := []RoomUser{{UserID: 1}}
 		stateErr := errors.New("redis down")
 
-		h.repo.On("IsBlocked", uint(4), uint(1)).Return(false, nil)
+		h.repo.On("FindAnyBy", uint(1), uint(4)).Return(&RoomUser{IsBlocked: false}, nil)
 		h.repo.On("ListByRoomID", uint(4), filter, sort, p).Return(users, nil)
 		h.repo.On("CountByRoomID", uint(4), filter).Return(int64(1), nil)
 		h.state.On("GetParticipantStates", mock.Anything, uint(4), []uint{1}).Return(nil, stateErr)
@@ -402,7 +402,7 @@ func TestService_ListByRoomID(t *testing.T) {
 		sort := listopts.Sort{}
 		p := listopts.Pagination{Page: 1, PageSize: 10}
 		listErr := errors.New("query failed")
-		h.repo.On("IsBlocked", uint(4), uint(1)).Return(false, nil)
+		h.repo.On("FindAnyBy", uint(1), uint(4)).Return(&RoomUser{IsBlocked: false}, nil)
 		h.repo.On("ListByRoomID", uint(4), filter, sort, p).Return(nil, listErr)
 
 		got, count, err := h.svc.ListByRoomID(context.Background(), 4, 1, filter, sort, p)
@@ -421,7 +421,7 @@ func TestService_ListByRoomID(t *testing.T) {
 		p := listopts.Pagination{Page: 1, PageSize: 10}
 		users := []RoomUser{{UserID: 1}}
 		countErr := errors.New("count failed")
-		h.repo.On("IsBlocked", uint(4), uint(1)).Return(false, nil)
+		h.repo.On("FindAnyBy", uint(1), uint(4)).Return(&RoomUser{IsBlocked: false}, nil)
 		h.repo.On("ListByRoomID", uint(4), filter, sort, p).Return(users, nil)
 		h.repo.On("CountByRoomID", uint(4), filter).Return(int64(0), countErr)
 
@@ -433,12 +433,28 @@ func TestService_ListByRoomID(t *testing.T) {
 		h.assertAllExpectations(t)
 	})
 
+	t.Run("failure: non-member gets ErrForbidden before repo is called", func(t *testing.T) {
+		h := newHarness()
+		filter := RoomUserFilter{}
+		sort := listopts.Sort{}
+		p := listopts.Pagination{Page: 1, PageSize: 10}
+		h.repo.On("FindAnyBy", uint(1), uint(4)).Return(nil, nil)
+
+		got, count, err := h.svc.ListByRoomID(context.Background(), 4, 1, filter, sort, p)
+
+		require.Nil(t, got)
+		require.Zero(t, count)
+		require.ErrorIs(t, err, httpx.ErrForbidden)
+		h.repo.AssertNotCalled(t, "ListByRoomID", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+		h.assertAllExpectations(t)
+	})
+
 	t.Run("failure: blocked user gets ErrUserBlocked before repo is called", func(t *testing.T) {
 		h := newHarness()
 		filter := RoomUserFilter{}
 		sort := listopts.Sort{}
 		p := listopts.Pagination{Page: 1, PageSize: 10}
-		h.repo.On("IsBlocked", uint(4), uint(1)).Return(true, nil)
+		h.repo.On("FindAnyBy", uint(1), uint(4)).Return(&RoomUser{IsBlocked: true}, nil)
 
 		got, count, err := h.svc.ListByRoomID(context.Background(), 4, 1, filter, sort, p)
 
@@ -449,19 +465,19 @@ func TestService_ListByRoomID(t *testing.T) {
 		h.assertAllExpectations(t)
 	})
 
-	t.Run("failure: IsBlocked error is propagated", func(t *testing.T) {
+	t.Run("failure: FindAnyBy error is propagated", func(t *testing.T) {
 		h := newHarness()
 		filter := RoomUserFilter{}
 		sort := listopts.Sort{}
 		p := listopts.Pagination{Page: 1, PageSize: 10}
-		blockErr := errors.New("block check failed")
-		h.repo.On("IsBlocked", uint(4), uint(1)).Return(false, blockErr)
+		findErr := errors.New("find failed")
+		h.repo.On("FindAnyBy", uint(1), uint(4)).Return(nil, findErr)
 
 		got, count, err := h.svc.ListByRoomID(context.Background(), 4, 1, filter, sort, p)
 
 		require.Nil(t, got)
 		require.Zero(t, count)
-		require.ErrorIs(t, err, blockErr)
+		require.ErrorIs(t, err, findErr)
 		h.repo.AssertNotCalled(t, "ListByRoomID", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 		h.assertAllExpectations(t)
 	})
@@ -559,6 +575,30 @@ func TestService_DeleteUser(t *testing.T) {
 		h.assertAllExpectations(t)
 	})
 
+	t.Run("success: non-owner can delete themselves", func(t *testing.T) {
+		h := newHarness()
+		h.repo.On("FindBy", uint(1), uint(2)).Return(&RoomUser{Role: role.Role{Name: role.RoleAdmin}}, nil)
+		h.repo.On("Delete", uint(2), uint(1)).Return(nil)
+		h.state.On("Leave", mock.Anything, uint(2), uint(1)).Return(nil)
+
+		err := h.svc.DeleteUser(context.Background(), 2, 1, 1)
+
+		require.NoError(t, err)
+		h.assertAllExpectations(t)
+	})
+
+	t.Run("failure: owner cannot delete themselves", func(t *testing.T) {
+		h := newHarness()
+		h.repo.On("FindBy", uint(1), uint(2)).Return(&RoomUser{Role: role.Role{Name: role.RoleOwner}}, nil)
+
+		err := h.svc.DeleteUser(context.Background(), 2, 1, 1)
+
+		require.ErrorIs(t, err, httpx.ErrForbidden)
+		h.repo.AssertNotCalled(t, "Delete", mock.Anything, mock.Anything)
+		h.state.AssertNotCalled(t, "Leave", mock.Anything, mock.Anything, mock.Anything)
+		h.assertAllExpectations(t)
+	})
+
 	t.Run("failure: admin cannot delete an owner", func(t *testing.T) {
 		h := newHarness()
 		h.repo.On("FindBy", uint(1), uint(2)).Return(&RoomUser{Role: role.Role{Name: role.RoleAdmin}}, nil)
@@ -648,7 +688,7 @@ func TestService_DeleteUser(t *testing.T) {
 func TestService_SetMuted(t *testing.T) {
 	t.Run("success: user mutes themselves", func(t *testing.T) {
 		h := newHarness()
-		h.repo.On("IsBlocked", uint(2), uint(1)).Return(false, nil)
+		h.repo.On("FindAnyBy", uint(1), uint(2)).Return(&RoomUser{IsBlocked: false}, nil)
 		h.state.On("SetMuted", mock.Anything, uint(2), uint(1), true).Return(nil)
 
 		err := h.svc.SetMuted(context.Background(), 2, 1, 1, true)
@@ -657,9 +697,19 @@ func TestService_SetMuted(t *testing.T) {
 		h.assertAllExpectations(t)
 	})
 
+	t.Run("success: user unmutes themselves", func(t *testing.T) {
+		h := newHarness()
+		h.repo.On("FindAnyBy", uint(1), uint(2)).Return(&RoomUser{IsBlocked: false}, nil)
+		h.state.On("SetMuted", mock.Anything, uint(2), uint(1), false).Return(nil)
+
+		err := h.svc.SetMuted(context.Background(), 2, 1, 1, false)
+
+		require.NoError(t, err)
+		h.assertAllExpectations(t)
+	})
+
 	t.Run("success: moderator mutes a listener", func(t *testing.T) {
 		h := newHarness()
-		h.repo.On("IsBlocked", uint(2), uint(1)).Return(false, nil)
 		h.repo.On("FindBy", uint(1), uint(2)).Return(&RoomUser{Role: role.Role{Name: role.RoleModerator}}, nil)
 		h.repo.On("FindAnyBy", uint(3), uint(2)).Return(&RoomUser{Role: role.Role{Name: role.RoleListener}}, nil)
 		h.state.On("SetMuted", mock.Anything, uint(2), uint(3), true).Return(nil)
@@ -672,7 +722,7 @@ func TestService_SetMuted(t *testing.T) {
 
 	t.Run("failure: blocked user cannot mute", func(t *testing.T) {
 		h := newHarness()
-		h.repo.On("IsBlocked", uint(2), uint(1)).Return(true, nil)
+		h.repo.On("FindAnyBy", uint(1), uint(2)).Return(&RoomUser{IsBlocked: true}, nil)
 
 		err := h.svc.SetMuted(context.Background(), 2, 1, 1, true)
 
@@ -681,9 +731,18 @@ func TestService_SetMuted(t *testing.T) {
 		h.assertAllExpectations(t)
 	})
 
+	t.Run("failure: admin cannot unmute another user", func(t *testing.T) {
+		h := newHarness()
+
+		err := h.svc.SetMuted(context.Background(), 2, 3, 1, false)
+
+		require.ErrorIs(t, err, httpx.ErrForbidden)
+		h.state.AssertNotCalled(t, "SetMuted", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+		h.assertAllExpectations(t)
+	})
+
 	t.Run("failure: speaker cannot mute a listener", func(t *testing.T) {
 		h := newHarness()
-		h.repo.On("IsBlocked", uint(2), uint(1)).Return(false, nil)
 		h.repo.On("FindBy", uint(1), uint(2)).Return(&RoomUser{Role: role.Role{Name: role.RoleSpeaker}}, nil)
 		h.repo.On("FindAnyBy", uint(3), uint(2)).Return(&RoomUser{Role: role.Role{Name: role.RoleListener}}, nil)
 
@@ -696,7 +755,6 @@ func TestService_SetMuted(t *testing.T) {
 
 	t.Run("failure: actor not in room is forbidden", func(t *testing.T) {
 		h := newHarness()
-		h.repo.On("IsBlocked", uint(2), uint(1)).Return(false, nil)
 		h.repo.On("FindBy", uint(1), uint(2)).Return(nil, nil)
 
 		err := h.svc.SetMuted(context.Background(), 2, 3, 1, true)
@@ -709,7 +767,6 @@ func TestService_SetMuted(t *testing.T) {
 
 	t.Run("failure: target not in room returns ErrRecordNotFound", func(t *testing.T) {
 		h := newHarness()
-		h.repo.On("IsBlocked", uint(2), uint(1)).Return(false, nil)
 		h.repo.On("FindBy", uint(1), uint(2)).Return(&RoomUser{Role: role.Role{Name: role.RoleOwner}}, nil)
 		h.repo.On("FindAnyBy", uint(3), uint(2)).Return(nil, nil)
 
@@ -724,7 +781,7 @@ func TestService_SetMuted(t *testing.T) {
 func TestService_SetHandRaised(t *testing.T) {
 	t.Run("success: user raises their hand", func(t *testing.T) {
 		h := newHarness()
-		h.repo.On("IsBlocked", uint(2), uint(1)).Return(false, nil)
+		h.repo.On("FindAnyBy", uint(1), uint(2)).Return(&RoomUser{IsBlocked: false}, nil)
 		h.state.On("SetHandRaised", mock.Anything, uint(2), uint(1), true).Return(nil)
 
 		err := h.svc.SetHandRaised(context.Background(), 2, 1, true)
@@ -735,7 +792,7 @@ func TestService_SetHandRaised(t *testing.T) {
 
 	t.Run("failure: blocked user cannot raise hand", func(t *testing.T) {
 		h := newHarness()
-		h.repo.On("IsBlocked", uint(2), uint(1)).Return(true, nil)
+		h.repo.On("FindAnyBy", uint(1), uint(2)).Return(&RoomUser{IsBlocked: true}, nil)
 
 		err := h.svc.SetHandRaised(context.Background(), 2, 1, true)
 
@@ -744,14 +801,25 @@ func TestService_SetHandRaised(t *testing.T) {
 		h.assertAllExpectations(t)
 	})
 
-	t.Run("failure: IsBlocked error is propagated", func(t *testing.T) {
+	t.Run("failure: non-member is forbidden", func(t *testing.T) {
 		h := newHarness()
-		blockErr := errors.New("db down")
-		h.repo.On("IsBlocked", uint(2), uint(1)).Return(false, blockErr)
+		h.repo.On("FindAnyBy", uint(1), uint(2)).Return(nil, nil)
 
 		err := h.svc.SetHandRaised(context.Background(), 2, 1, true)
 
-		require.ErrorIs(t, err, blockErr)
+		require.ErrorIs(t, err, httpx.ErrForbidden)
+		h.state.AssertNotCalled(t, "SetHandRaised", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+		h.assertAllExpectations(t)
+	})
+
+	t.Run("failure: membership lookup error is propagated", func(t *testing.T) {
+		h := newHarness()
+		lookupErr := errors.New("db down")
+		h.repo.On("FindAnyBy", uint(1), uint(2)).Return(nil, lookupErr)
+
+		err := h.svc.SetHandRaised(context.Background(), 2, 1, true)
+
+		require.ErrorIs(t, err, lookupErr)
 		h.state.AssertNotCalled(t, "SetHandRaised", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 		h.assertAllExpectations(t)
 	})
@@ -834,7 +902,7 @@ func TestService_ListRaisedHands(t *testing.T) {
 		h := newHarness()
 		p := listopts.Pagination{Page: 1, PageSize: 10}
 		users := []RoomUser{{UserID: 7}, {UserID: 9}}
-		h.repo.On("IsBlocked", uint(4), uint(1)).Return(false, nil)
+		h.repo.On("FindAnyBy", uint(1), uint(4)).Return(&RoomUser{IsBlocked: false}, nil)
 		h.state.On("GetRaisedHands", mock.Anything, uint(4), p).Return([]uint{7, 9}, nil)
 		h.state.On("CountRaisedHands", mock.Anything, uint(4)).Return(int64(2), nil)
 		h.repo.On("ListByUserIDs", uint(4), []uint{7, 9}).Return(users, nil)
@@ -858,7 +926,7 @@ func TestService_ListRaisedHands(t *testing.T) {
 	t.Run("success: pagination params are passed through to the state repo", func(t *testing.T) {
 		h := newHarness()
 		p := listopts.Pagination{Page: 2, PageSize: 2}
-		h.repo.On("IsBlocked", uint(4), uint(1)).Return(false, nil)
+		h.repo.On("FindAnyBy", uint(1), uint(4)).Return(&RoomUser{IsBlocked: false}, nil)
 		h.state.On("GetRaisedHands", mock.Anything, uint(4), p).Return([]uint{7, 9}, nil)
 		h.state.On("CountRaisedHands", mock.Anything, uint(4)).Return(int64(5), nil)
 		h.repo.On("ListByUserIDs", uint(4), []uint{7, 9}).Return([]RoomUser{{UserID: 7}, {UserID: 9}}, nil)
@@ -876,7 +944,7 @@ func TestService_ListRaisedHands(t *testing.T) {
 	t.Run("success: no raised hands returns empty list without repo lookup", func(t *testing.T) {
 		h := newHarness()
 		p := listopts.Pagination{Page: 1, PageSize: 10}
-		h.repo.On("IsBlocked", uint(4), uint(1)).Return(false, nil)
+		h.repo.On("FindAnyBy", uint(1), uint(4)).Return(&RoomUser{IsBlocked: false}, nil)
 		h.state.On("GetRaisedHands", mock.Anything, uint(4), p).Return([]uint{}, nil)
 		h.state.On("CountRaisedHands", mock.Anything, uint(4)).Return(int64(0), nil)
 		h.repo.On("ListByUserIDs", uint(4), []uint{}).Return([]RoomUser{}, nil)
@@ -890,10 +958,24 @@ func TestService_ListRaisedHands(t *testing.T) {
 		h.assertAllExpectations(t)
 	})
 
+	t.Run("failure: non-member gets ErrForbidden before any lookup", func(t *testing.T) {
+		h := newHarness()
+		p := listopts.Pagination{Page: 1, PageSize: 10}
+		h.repo.On("FindAnyBy", uint(1), uint(4)).Return(nil, nil)
+
+		got, count, err := h.svc.ListRaisedHands(context.Background(), 4, 1, p)
+
+		require.Nil(t, got)
+		require.Zero(t, count)
+		require.ErrorIs(t, err, httpx.ErrForbidden)
+		h.state.AssertNotCalled(t, "GetRaisedHands", mock.Anything, mock.Anything, mock.Anything)
+		h.assertAllExpectations(t)
+	})
+
 	t.Run("failure: blocked user gets ErrUserBlocked before any lookup", func(t *testing.T) {
 		h := newHarness()
 		p := listopts.Pagination{Page: 1, PageSize: 10}
-		h.repo.On("IsBlocked", uint(4), uint(1)).Return(true, nil)
+		h.repo.On("FindAnyBy", uint(1), uint(4)).Return(&RoomUser{IsBlocked: true}, nil)
 
 		got, count, err := h.svc.ListRaisedHands(context.Background(), 4, 1, p)
 
@@ -908,7 +990,7 @@ func TestService_ListRaisedHands(t *testing.T) {
 		h := newHarness()
 		p := listopts.Pagination{Page: 1, PageSize: 10}
 		stateErr := errors.New("redis down")
-		h.repo.On("IsBlocked", uint(4), uint(1)).Return(false, nil)
+		h.repo.On("FindAnyBy", uint(1), uint(4)).Return(&RoomUser{IsBlocked: false}, nil)
 		h.state.On("GetRaisedHands", mock.Anything, uint(4), p).Return(nil, stateErr)
 
 		got, count, err := h.svc.ListRaisedHands(context.Background(), 4, 1, p)
@@ -924,7 +1006,7 @@ func TestService_ListRaisedHands(t *testing.T) {
 		h := newHarness()
 		p := listopts.Pagination{Page: 1, PageSize: 10}
 		repoErr := errors.New("db down")
-		h.repo.On("IsBlocked", uint(4), uint(1)).Return(false, nil)
+		h.repo.On("FindAnyBy", uint(1), uint(4)).Return(&RoomUser{IsBlocked: false}, nil)
 		h.state.On("GetRaisedHands", mock.Anything, uint(4), p).Return([]uint{7}, nil)
 		h.state.On("CountRaisedHands", mock.Anything, uint(4)).Return(int64(1), nil)
 		h.repo.On("ListByUserIDs", uint(4), []uint{7}).Return(nil, repoErr)

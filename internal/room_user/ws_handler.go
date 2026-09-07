@@ -1,4 +1,4 @@
-package room
+package roomuser
 
 import (
 	"context"
@@ -20,7 +20,6 @@ type setHandRaisedPayload struct {
 
 type setMutedPayload struct {
 	IsMuted bool `json:"isMuted"`
-	UserID  uint `json:"userId"`
 }
 
 type mediaRouter interface {
@@ -32,28 +31,41 @@ type mediaRouter interface {
 	CloseSession(clientID string) error
 }
 
+type wsAuthorizer interface {
+	CanJoinRoom(roomID, userID uint) error
+}
+
 type webSocketHub interface {
 	BroadcastToRoom(roomID uint, eventName ws.EventName, payload any)
 	ErrorToClient(c *ws.Client, message string, statusCode int)
 	SendToClient(c *ws.Client, eventName ws.EventName, payload any)
 }
 
-type WsHandler struct {
-	hub             webSocketHub
-	roomUserService roomUserService
-	media           mediaRouter
-	cfg             *config.Config
-	logger          *slog.Logger
+type roomUserWSService interface {
+	FindBy(userID uint, roomID uint) (*RoomUser, error)
+	RemoveUser(ctx context.Context, userID uint, roomID uint) error
+	SetMuted(ctx context.Context, roomID, userID, actorID uint, isMuted bool) error
+	SetHandRaised(ctx context.Context, roomID, userID uint, isHandRaised bool) error
 }
 
-func NewWSHandler(hub webSocketHub, roomUserSvc roomUserService,
+type WsHandler struct {
+	hub     webSocketHub
+	service roomUserWSService
+	authz   wsAuthorizer
+	media   mediaRouter
+	cfg     *config.Config
+	logger  *slog.Logger
+}
+
+func NewWSHandler(hub webSocketHub, roomUserSvc roomUserWSService, authz wsAuthorizer,
 	media mediaRouter, cfg *config.Config, logger *slog.Logger) *WsHandler {
 	return &WsHandler{
-		hub:             hub,
-		roomUserService: roomUserSvc,
-		media:           media,
-		cfg:             cfg,
-		logger:          logger,
+		hub:     hub,
+		service: roomUserSvc,
+		authz:   authz,
+		media:   media,
+		cfg:     cfg,
+		logger:  logger,
 	}
 }
 
@@ -72,6 +84,10 @@ func (h *WsHandler) Register(wsh ws.Handler) {
 }
 
 func (h *WsHandler) handleUserJoined(c *ws.Client, evt ws.Event) {
+	if !h.checkMembership(c) {
+		return
+	}
+
 	pc, err := webrtc.NewPeerConnection(
 		h.cfg,
 		func(ice pion.ICECandidateInit) {
@@ -91,7 +107,7 @@ func (h *WsHandler) handleUserJoined(c *ws.Client, evt ws.Event) {
 	h.media.SubscribeToRoomTracks(c, session)
 
 	pc.OnTrack(func(tr *pion.TrackRemote, r *pion.RTPReceiver) {
-		ru, err := h.roomUserService.FindBy(c.UserID, c.RoomID)
+		ru, err := h.service.FindBy(c.UserID, c.RoomID)
 		if err != nil {
 			h.hub.ErrorToClient(c, "Failed to find user in room", http.StatusInternalServerError)
 			return
@@ -116,7 +132,7 @@ func (h *WsHandler) handleUserJoined(c *ws.Client, evt ws.Event) {
 }
 
 func (h *WsHandler) handleUserLeft(c *ws.Client, evt ws.Event) {
-	err := h.roomUserService.RemoveUser(context.Background(), c.UserID, c.RoomID)
+	err := h.service.RemoveUser(context.Background(), c.UserID, c.RoomID)
 	if err != nil {
 		h.hub.ErrorToClient(c, "Failed to remove user from room", http.StatusUnprocessableEntity)
 		return
@@ -129,7 +145,7 @@ func (h *WsHandler) handleUserLeft(c *ws.Client, evt ws.Event) {
 }
 
 func (h *WsHandler) handleClientDisconnected(c *ws.Client) {
-	if err := h.roomUserService.RemoveUser(context.Background(), c.UserID, c.RoomID); err != nil {
+	if err := h.service.RemoveUser(context.Background(), c.UserID, c.RoomID); err != nil {
 		h.logger.Error("Failed to remove disconnected user from room",
 			slog.Uint64("userId", uint64(c.UserID)),
 			slog.Uint64("roomId", uint64(c.RoomID)),
@@ -153,12 +169,7 @@ func (h *WsHandler) handleSetMuted(c *ws.Client, evt ws.Event) {
 		return
 	}
 
-	targetUserID := p.UserID
-	if targetUserID == 0 {
-		targetUserID = c.UserID
-	}
-
-	if err := h.roomUserService.SetMuted(context.Background(), c.RoomID, targetUserID, c.UserID, p.IsMuted); err != nil {
+	if err := h.service.SetMuted(context.Background(), c.RoomID, c.UserID, c.UserID, p.IsMuted); err != nil {
 		status := http.StatusInternalServerError
 		if errors.Is(err, httpx.ErrUserBlocked) || errors.Is(err, httpx.ErrForbidden) {
 			status = http.StatusForbidden
@@ -174,7 +185,7 @@ func (h *WsHandler) handleSetHandRaised(c *ws.Client, evt ws.Event) {
 		return
 	}
 
-	if err := h.roomUserService.SetHandRaised(context.Background(), c.RoomID, c.UserID, p.IsHandRaised); err != nil {
+	if err := h.service.SetHandRaised(context.Background(), c.RoomID, c.UserID, p.IsHandRaised); err != nil {
 		status := http.StatusInternalServerError
 		if errors.Is(err, httpx.ErrUserBlocked) {
 			status = http.StatusForbidden
@@ -184,6 +195,10 @@ func (h *WsHandler) handleSetHandRaised(c *ws.Client, evt ws.Event) {
 }
 
 func (h *WsHandler) handleWebRTCOffer(c *ws.Client, evt ws.Event) {
+	if !h.checkMembership(c) {
+		return
+	}
+
 	var offer pion.SessionDescription
 	if err := json.Unmarshal(evt.Payload, &offer); err != nil {
 		h.hub.ErrorToClient(c, "Invalid offer payload", http.StatusUnprocessableEntity)
@@ -204,6 +219,10 @@ func (h *WsHandler) handleWebRTCOffer(c *ws.Client, evt ws.Event) {
 }
 
 func (h *WsHandler) handleWebRTCCandidate(c *ws.Client, evt ws.Event) {
+	if !h.checkMembership(c) {
+		return
+	}
+
 	var ice pion.ICECandidateInit
 	if err := json.Unmarshal(evt.Payload, &ice); err != nil {
 		h.hub.ErrorToClient(c, "Invalid ICE candidate payload", http.StatusUnprocessableEntity)
@@ -221,6 +240,10 @@ func (h *WsHandler) handleWebRTCCandidate(c *ws.Client, evt ws.Event) {
 }
 
 func (h *WsHandler) handleWebRTCAnswer(c *ws.Client, evt ws.Event) {
+	if !h.checkMembership(c) {
+		return
+	}
+
 	var answer pion.SessionDescription
 	if err := json.Unmarshal(evt.Payload, &answer); err != nil {
 		h.hub.ErrorToClient(c, "Invalid answer payload", http.StatusUnprocessableEntity)
@@ -235,4 +258,17 @@ func (h *WsHandler) handleWebRTCAnswer(c *ws.Client, evt ws.Event) {
 	if err := webrtc.HandleAnswer(session.PC, answer); err != nil {
 		h.hub.ErrorToClient(c, "Failed to handle answer", http.StatusUnprocessableEntity)
 	}
+}
+
+func (h *WsHandler) checkMembership(c *ws.Client) bool {
+	err := h.authz.CanJoinRoom(c.RoomID, c.UserID)
+	if err == nil {
+		return true
+	}
+	status := http.StatusInternalServerError
+	if errors.Is(err, httpx.ErrForbidden) || errors.Is(err, httpx.ErrUserBlocked) {
+		status = http.StatusForbidden
+	}
+	h.hub.ErrorToClient(c, "You are not a member of this room", status)
+	return false
 }

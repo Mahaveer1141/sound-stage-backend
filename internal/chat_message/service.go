@@ -1,9 +1,7 @@
 package chatmessage
 
 import (
-	"sound-stage-backend/internal/pkg/httpx"
 	"sound-stage-backend/internal/pkg/listopts"
-	roomuser "sound-stage-backend/internal/room_user"
 )
 
 type repository interface {
@@ -12,30 +10,23 @@ type repository interface {
 	Count(filter ChatMessageFilter) (int64, error)
 }
 
-type roomUserService interface {
-	FindBy(userID uint, roomID uint) (*roomuser.RoomUser, error)
+type authorizer interface {
+	CanCreate(input *CreateChatMessageParams) error
+	CanList(userID, roomID uint) error
 }
 
 type Service struct {
-	repo      repository
-	roomUsers roomUserService
+	repo  repository
+	authz authorizer
 }
 
-func NewService(r repository, roomUsers roomUserService) *Service {
-	return &Service{repo: r, roomUsers: roomUsers}
+func NewService(r repository, authz authorizer) *Service {
+	return &Service{repo: r, authz: authz}
 }
 
 func (s *Service) Create(input *CreateChatMessageParams) (*ChatMessage, error) {
-	ru, err := s.roomUsers.FindBy(input.UserID, input.RoomID)
-	if err != nil {
+	if err := s.authz.CanCreate(input); err != nil {
 		return nil, err
-	}
-	if ru == nil {
-		return nil, httpx.ErrForbidden
-	}
-
-	if input.IsPinned && !ru.IsAdmin() {
-		return nil, httpx.ErrForbidden
 	}
 
 	msg, err := s.repo.Create(input)
@@ -47,12 +38,8 @@ func (s *Service) Create(input *CreateChatMessageParams) (*ChatMessage, error) {
 }
 
 func (s *Service) List(userID uint, filter ChatMessageFilter, p listopts.Pagination) ([]ChatMessage, int64, error) {
-	ru, err := s.roomUsers.FindBy(userID, filter.RoomID)
-	if err != nil {
+	if err := s.authz.CanList(userID, filter.RoomID); err != nil {
 		return nil, 0, err
-	}
-	if ru == nil {
-		return nil, 0, httpx.ErrForbidden
 	}
 
 	messages, err := s.repo.List(filter, p)

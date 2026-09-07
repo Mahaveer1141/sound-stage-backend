@@ -159,6 +159,7 @@ func (r *Repo) Block(roomID, userID, blockedByID uint) error {
 		Updates(map[string]any{
 			"is_blocked":    true,
 			"blocked_by_id": blockedByID,
+			"last_left_at":  time.Now(),
 			"is_online":     false,
 		}).Error
 }

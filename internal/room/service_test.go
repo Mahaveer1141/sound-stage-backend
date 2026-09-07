@@ -122,7 +122,7 @@ func newHarness(t *testing.T) *harness {
 		repo:      repo,
 		roomUser:  ru,
 		favourite: fav,
-		svc:       NewService(repo, ru, fav, db),
+		svc:       NewService(repo, ru, fav, db, NewAuthz(ru)),
 	}
 }
 
@@ -131,9 +131,9 @@ func TestService_FindByID(t *testing.T) {
 		h := newHarness(t)
 		want := &Room{Name: "Main Stage"}
 		tags := map[uint][]tag.Tag{1: {{Name: "jazz"}}}
-		h.roomUser.On("IsBlocked", uint(1), uint(7)).Return(false, nil)
-		h.repo.On("LoadTagsForRooms", []uint{1}).Return(tags, nil)
 		h.repo.On("FindByID", uint(1)).Return(want, nil)
+		h.roomUser.On("FindBy", uint(7), uint(1)).Return(&roomuser.RoomUser{}, nil)
+		h.repo.On("LoadTagsForRooms", []uint{1}).Return(tags, nil)
 
 		got, err := h.svc.FindByID(1, 7)
 
@@ -144,36 +144,38 @@ func TestService_FindByID(t *testing.T) {
 		h.roomUser.AssertExpectations(t)
 	})
 
-	t.Run("failure: blocked user gets ErrRecordNotFound", func(t *testing.T) {
+	t.Run("failure: non-member gets ErrForbidden", func(t *testing.T) {
 		h := newHarness(t)
-		h.roomUser.On("IsBlocked", uint(1), uint(7)).Return(true, nil)
+		h.repo.On("FindByID", uint(1)).Return(&Room{Name: "Main Stage"}, nil)
+		h.roomUser.On("FindBy", uint(7), uint(1)).Return(nil, nil)
 
 		got, err := h.svc.FindByID(1, 7)
 
 		require.Nil(t, got)
-		require.ErrorIs(t, err, httpx.ErrRecordNotFound)
-		h.repo.AssertNotCalled(t, "FindByID", mock.Anything)
-		h.repo.AssertNotCalled(t, "LoadTagsForRooms", mock.Anything)
+		require.ErrorIs(t, err, httpx.ErrForbidden)
+		h.repo.AssertExpectations(t)
 		h.roomUser.AssertExpectations(t)
 	})
 
-	t.Run("failure: IsBlocked error is propagated", func(t *testing.T) {
+	t.Run("failure: FindBy error is propagated", func(t *testing.T) {
 		h := newHarness(t)
-		blockErr := errors.New("block check failed")
-		h.roomUser.On("IsBlocked", uint(1), uint(7)).Return(false, blockErr)
+		findErr := errors.New("db down")
+		h.repo.On("FindByID", uint(1)).Return(&Room{Name: "Main Stage"}, nil)
+		h.roomUser.On("FindBy", uint(7), uint(1)).Return(nil, findErr)
 
 		got, err := h.svc.FindByID(1, 7)
 
 		require.Nil(t, got)
-		require.ErrorIs(t, err, blockErr)
-		h.repo.AssertNotCalled(t, "FindByID", mock.Anything)
+		require.ErrorIs(t, err, findErr)
+		h.repo.AssertExpectations(t)
 		h.roomUser.AssertExpectations(t)
 	})
 
 	t.Run("failure: LoadTagsForRooms error is propagated", func(t *testing.T) {
 		h := newHarness(t)
 		tagsErr := errors.New("tags failed")
-		h.roomUser.On("IsBlocked", uint(99), uint(7)).Return(false, nil)
+		h.repo.On("FindByID", uint(99)).Return(&Room{Name: "Main Stage"}, nil)
+		h.roomUser.On("FindBy", uint(7), uint(99)).Return(&roomuser.RoomUser{}, nil)
 		h.repo.On("LoadTagsForRooms", []uint{99}).Return(nil, tagsErr)
 
 		got, err := h.svc.FindByID(99, 7)
@@ -181,13 +183,12 @@ func TestService_FindByID(t *testing.T) {
 		require.Nil(t, got)
 		require.ErrorIs(t, err, tagsErr)
 		h.repo.AssertExpectations(t)
+		h.roomUser.AssertExpectations(t)
 	})
 
 	t.Run("failure: repo error propagated", func(t *testing.T) {
 		h := newHarness(t)
 		repoErr := errors.New("not found")
-		h.roomUser.On("IsBlocked", uint(99), uint(7)).Return(false, nil)
-		h.repo.On("LoadTagsForRooms", []uint{99}).Return(map[uint][]tag.Tag{}, nil)
 		h.repo.On("FindByID", uint(99)).Return(nil, repoErr)
 
 		got, err := h.svc.FindByID(99, 7)
@@ -443,24 +444,51 @@ func TestService_ViewerContexts(t *testing.T) {
 }
 
 func TestService_UpdatePrivateCode(t *testing.T) {
-	t.Run("success: generates and updates the private code", func(t *testing.T) {
+	t.Run("success: admin updates the private code", func(t *testing.T) {
 		h := newHarness(t)
+		h.roomUser.On("HasRoles", uint(1), uint(5), []role.RoleName{role.RoleOwner, role.RoleAdmin}).Return(true, nil)
 		h.repo.On("UpdatePrivateCode", uint(5), mock.AnythingOfType("string")).Return(nil)
 
-		err := h.svc.UpdatePrivateCode(5)
+		err := h.svc.UpdatePrivateCode(5, 1)
 
 		require.NoError(t, err)
+		h.roomUser.AssertExpectations(t)
 		h.repo.AssertExpectations(t)
+	})
+
+	t.Run("failure: non-admin gets ErrForbidden", func(t *testing.T) {
+		h := newHarness(t)
+		h.roomUser.On("HasRoles", uint(1), uint(5), []role.RoleName{role.RoleOwner, role.RoleAdmin}).Return(false, nil)
+
+		err := h.svc.UpdatePrivateCode(5, 1)
+
+		require.ErrorIs(t, err, httpx.ErrForbidden)
+		h.repo.AssertNotCalled(t, "UpdatePrivateCode", mock.Anything, mock.Anything)
+		h.roomUser.AssertExpectations(t)
+	})
+
+	t.Run("failure: HasRoles error is propagated", func(t *testing.T) {
+		h := newHarness(t)
+		permErr := errors.New("permission check failed")
+		h.roomUser.On("HasRoles", uint(1), uint(5), []role.RoleName{role.RoleOwner, role.RoleAdmin}).Return(false, permErr)
+
+		err := h.svc.UpdatePrivateCode(5, 1)
+
+		require.ErrorIs(t, err, permErr)
+		h.repo.AssertNotCalled(t, "UpdatePrivateCode", mock.Anything, mock.Anything)
+		h.roomUser.AssertExpectations(t)
 	})
 
 	t.Run("failure: repo error is propagated", func(t *testing.T) {
 		h := newHarness(t)
+		h.roomUser.On("HasRoles", uint(1), uint(5), []role.RoleName{role.RoleOwner, role.RoleAdmin}).Return(true, nil)
 		repoErr := errors.New("not found")
 		h.repo.On("UpdatePrivateCode", uint(5), mock.AnythingOfType("string")).Return(repoErr)
 
-		err := h.svc.UpdatePrivateCode(5)
+		err := h.svc.UpdatePrivateCode(5, 1)
 
 		require.ErrorIs(t, err, repoErr)
+		h.roomUser.AssertExpectations(t)
 		h.repo.AssertExpectations(t)
 	})
 }

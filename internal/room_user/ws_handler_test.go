@@ -1,6 +1,7 @@
-package room
+package roomuser
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -16,6 +17,33 @@ import (
 	webrtc "sound-stage-backend/internal/web_rtc"
 	"sound-stage-backend/internal/ws"
 )
+
+type mockRoomUserWSService struct{ mock.Mock }
+
+func (m *mockRoomUserWSService) FindBy(userID uint, roomID uint) (*RoomUser, error) {
+	args := m.Called(userID, roomID)
+	ru, _ := args.Get(0).(*RoomUser)
+	return ru, args.Error(1)
+}
+func (m *mockRoomUserWSService) RemoveUser(ctx context.Context, userID uint, roomID uint) error {
+	args := m.Called(ctx, userID, roomID)
+	return args.Error(0)
+}
+func (m *mockRoomUserWSService) SetMuted(ctx context.Context, roomID, userID, actorID uint, isMuted bool) error {
+	args := m.Called(ctx, roomID, userID, actorID, isMuted)
+	return args.Error(0)
+}
+func (m *mockRoomUserWSService) SetHandRaised(ctx context.Context, roomID, userID uint, isHandRaised bool) error {
+	args := m.Called(ctx, roomID, userID, isHandRaised)
+	return args.Error(0)
+}
+
+type mockWSAuthorizer struct{ mock.Mock }
+
+func (m *mockWSAuthorizer) CanJoinRoom(roomID, userID uint) error {
+	args := m.Called(roomID, userID)
+	return args.Error(0)
+}
 
 type mockMediaRouter struct{ mock.Mock }
 
@@ -56,7 +84,8 @@ func (m *mockWSHub) SendToClient(c *ws.Client, eventName ws.EventName, payload a
 }
 
 type wsHarness struct {
-	roomUser  *mockRoomUserService
+	roomUser  *mockRoomUserWSService
+	authz     *mockWSAuthorizer
 	media     *mockMediaRouter
 	hub       *mockWSHub
 	wsHandler *WsHandler
@@ -64,16 +93,18 @@ type wsHarness struct {
 
 func newWSHarness(t *testing.T) *wsHarness {
 	t.Helper()
-	ru := new(mockRoomUserService)
+	ru := new(mockRoomUserWSService)
+	authz := new(mockWSAuthorizer)
 	media := new(mockMediaRouter)
 	hub := new(mockWSHub)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	cfg := &config.Config{WebRTC: config.WebRTCConfig{StunURL: "stun:stun.l.google.com:19302"}}
 	return &wsHarness{
 		roomUser:  ru,
+		authz:     authz,
 		media:     media,
 		hub:       hub,
-		wsHandler: NewWSHandler(hub, ru, media, cfg, logger),
+		wsHandler: NewWSHandler(hub, ru, authz, media, cfg, logger),
 	}
 }
 
@@ -116,6 +147,7 @@ func TestWsHandler_handleUserJoined(t *testing.T) {
 	t.Run("success: adds user, creates session, subscribes, broadcasts join", func(t *testing.T) {
 		h := newWSHarness(t)
 		c := testClient()
+		h.authz.On("CanJoinRoom", uint(4), uint(42)).Return(nil)
 		h.media.On("AddSession", "client-1", mock.AnythingOfType("*webrtc.PeerConnection")).
 			Return(&webrtc.Session{})
 		h.media.On("SubscribeToRoomTracks", c, mock.Anything).Return()
@@ -123,9 +155,23 @@ func TestWsHandler_handleUserJoined(t *testing.T) {
 
 		h.wsHandler.handleUserJoined(c, ws.Event{})
 
-		h.roomUser.AssertExpectations(t)
+		h.authz.AssertExpectations(t)
 		h.media.AssertExpectations(t)
 		h.hub.AssertExpectations(t)
+	})
+
+	t.Run("failure: non-member is rejected with 403 before creating session", func(t *testing.T) {
+		h := newWSHarness(t)
+		c := testClient()
+		h.authz.On("CanJoinRoom", uint(4), uint(42)).Return(httpx.ErrForbidden)
+		h.hub.On("ErrorToClient", c, "You are not a member of this room", http.StatusForbidden).Return()
+
+		h.wsHandler.handleUserJoined(c, ws.Event{})
+
+		h.authz.AssertExpectations(t)
+		h.hub.AssertExpectations(t)
+		h.media.AssertNotCalled(t, "AddSession", mock.Anything, mock.Anything)
+		h.hub.AssertNotCalled(t, "BroadcastToRoom", mock.Anything, mock.Anything, mock.Anything)
 	})
 }
 
@@ -205,10 +251,10 @@ func TestWsHandler_handleSetMuted(t *testing.T) {
 		h.roomUser.AssertExpectations(t)
 	})
 
-	t.Run("success: updates mute state for a target user", func(t *testing.T) {
+	t.Run("success: ignores userId in payload and updates own mute state", func(t *testing.T) {
 		h := newWSHarness(t)
 		c := testClient()
-		h.roomUser.On("SetMuted", mock.Anything, uint(4), uint(7), uint(42), true).Return(nil)
+		h.roomUser.On("SetMuted", mock.Anything, uint(4), uint(42), uint(42), true).Return(nil)
 
 		h.wsHandler.handleSetMuted(c, ws.Event{Payload: json.RawMessage(`{"isMuted":true,"userId":7}`)})
 
@@ -278,6 +324,7 @@ func TestWsHandler_handleWebRTCOffer(t *testing.T) {
 	t.Run("failure: malformed payload sends error to client, no session lookup", func(t *testing.T) {
 		h := newWSHarness(t)
 		c := testClient()
+		h.authz.On("CanJoinRoom", uint(4), uint(42)).Return(nil)
 		h.hub.On("ErrorToClient", c, "Invalid offer payload", http.StatusUnprocessableEntity).Return()
 
 		h.wsHandler.handleWebRTCOffer(c, ws.Event{Payload: json.RawMessage(`{not json`)})
@@ -289,6 +336,7 @@ func TestWsHandler_handleWebRTCOffer(t *testing.T) {
 	t.Run("failure: no session for client is a silent no-op", func(t *testing.T) {
 		h := newWSHarness(t)
 		c := testClient()
+		h.authz.On("CanJoinRoom", uint(4), uint(42)).Return(nil)
 		offer := pion.SessionDescription{Type: pion.SDPTypeOffer, SDP: "v=0"}
 		payload, _ := json.Marshal(offer)
 		h.media.On("Session", "client-1").Return(nil)
@@ -303,6 +351,7 @@ func TestWsHandler_handleWebRTCOffer(t *testing.T) {
 	t.Run("failure: session not in stable state is a silent no-op (glare protection)", func(t *testing.T) {
 		h := newWSHarness(t)
 		c := testClient()
+		h.authz.On("CanJoinRoom", uint(4), uint(42)).Return(nil)
 		offer := pion.SessionDescription{Type: pion.SDPTypeOffer, SDP: "v=0"}
 		payload, _ := json.Marshal(offer)
 		pc := newPeerConnectionInState(t, pion.SignalingStateHaveLocalOffer)
@@ -318,6 +367,7 @@ func TestWsHandler_handleWebRTCOffer(t *testing.T) {
 	t.Run("stable session with garbage offer: HandleOffer error surfaces to client", func(t *testing.T) {
 		h := newWSHarness(t)
 		c := testClient()
+		h.authz.On("CanJoinRoom", uint(4), uint(42)).Return(nil)
 		offer := pion.SessionDescription{Type: pion.SDPTypeOffer, SDP: "v=0"}
 		payload, _ := json.Marshal(offer)
 		pc := newPeerConnectionInState(t, pion.SignalingStateStable)
@@ -335,6 +385,7 @@ func TestWsHandler_handleWebRTCCandidate(t *testing.T) {
 	t.Run("success: valid candidate on active session is added without error", func(t *testing.T) {
 		h := newWSHarness(t)
 		c := testClient()
+		h.authz.On("CanJoinRoom", uint(4), uint(42)).Return(nil)
 		ice := pion.ICECandidateInit{Candidate: "candidate:1 1 UDP 1 127.0.0.1 9 typ host"}
 		payload, _ := json.Marshal(ice)
 		pc := newPeerConnectionInState(t, pion.SignalingStateHaveRemoteOffer)
@@ -349,6 +400,7 @@ func TestWsHandler_handleWebRTCCandidate(t *testing.T) {
 	t.Run("failure: malformed payload sends error to client, no session lookup", func(t *testing.T) {
 		h := newWSHarness(t)
 		c := testClient()
+		h.authz.On("CanJoinRoom", uint(4), uint(42)).Return(nil)
 		h.hub.On("ErrorToClient", c, "Invalid ICE candidate payload", http.StatusUnprocessableEntity).Return()
 
 		h.wsHandler.handleWebRTCCandidate(c, ws.Event{Payload: json.RawMessage(`{not json`)})
@@ -360,6 +412,7 @@ func TestWsHandler_handleWebRTCCandidate(t *testing.T) {
 	t.Run("failure: no session for client is a silent no-op", func(t *testing.T) {
 		h := newWSHarness(t)
 		c := testClient()
+		h.authz.On("CanJoinRoom", uint(4), uint(42)).Return(nil)
 		ice := pion.ICECandidateInit{Candidate: "candidate:1 1 UDP 1 127.0.0.1 9 typ host"}
 		payload, _ := json.Marshal(ice)
 		h.media.On("Session", "client-1").Return(nil)
@@ -375,6 +428,7 @@ func TestWsHandler_handleWebRTCAnswer(t *testing.T) {
 	t.Run("failure: malformed payload sends error to client, no session lookup", func(t *testing.T) {
 		h := newWSHarness(t)
 		c := testClient()
+		h.authz.On("CanJoinRoom", uint(4), uint(42)).Return(nil)
 		h.hub.On("ErrorToClient", c, "Invalid answer payload", http.StatusUnprocessableEntity).Return()
 
 		h.wsHandler.handleWebRTCAnswer(c, ws.Event{Payload: json.RawMessage(`{not json`)})
@@ -386,6 +440,7 @@ func TestWsHandler_handleWebRTCAnswer(t *testing.T) {
 	t.Run("failure: no session for client is a silent no-op", func(t *testing.T) {
 		h := newWSHarness(t)
 		c := testClient()
+		h.authz.On("CanJoinRoom", uint(4), uint(42)).Return(nil)
 		answer := pion.SessionDescription{Type: pion.SDPTypeAnswer, SDP: "v=0"}
 		payload, _ := json.Marshal(answer)
 		h.media.On("Session", "client-1").Return(nil)
@@ -399,6 +454,7 @@ func TestWsHandler_handleWebRTCAnswer(t *testing.T) {
 	t.Run("failure: session not awaiting a local offer is a silent no-op", func(t *testing.T) {
 		h := newWSHarness(t)
 		c := testClient()
+		h.authz.On("CanJoinRoom", uint(4), uint(42)).Return(nil)
 		answer := pion.SessionDescription{Type: pion.SDPTypeAnswer, SDP: "v=0"}
 		payload, _ := json.Marshal(answer)
 		pc := newPeerConnectionInState(t, pion.SignalingStateStable)
@@ -414,6 +470,7 @@ func TestWsHandler_handleWebRTCAnswer(t *testing.T) {
 	t.Run("awaiting-offer session with garbage answer: HandleAnswer error surfaces to client", func(t *testing.T) {
 		h := newWSHarness(t)
 		c := testClient()
+		h.authz.On("CanJoinRoom", uint(4), uint(42)).Return(nil)
 		answer := pion.SessionDescription{Type: pion.SDPTypeAnswer, SDP: "v=0"}
 		payload, _ := json.Marshal(answer)
 		pc := newPeerConnectionInState(t, pion.SignalingStateHaveLocalOffer)

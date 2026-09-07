@@ -46,15 +46,29 @@ type repo interface {
 	CountBlockedByRoomID(roomID uint) (int64, error)
 }
 
+type authorizer interface {
+	CanBlock(roomID, actorID, targetID uint) error
+	CanUnblock(roomID, actorID, targetID uint) error
+	CanListBlocked(roomID, actorID uint) error
+	CanListUsers(roomID, userID uint) error
+	CanListRaisedHands(roomID, userID uint) error
+	CanUpdateRole(roomID, actorID uint, roleName role.RoleName) error
+	CanDeleteUser(roomID, userID, actorID uint) error
+	CanSetMuted(roomID, actorID, targetID uint, isMuted bool) error
+	CanSetHandRaised(roomID, userID uint) error
+	CanModerate(roomID, actorID, targetID uint) (*RoomUser, *RoomUser, error)
+}
+
 type Service struct {
 	repo        repo
 	roleService roleFinder
 	revoker     publishRevoker
 	roomState   roomStateService
+	authz       authorizer
 }
 
-func NewService(r repo, roleService roleFinder, revoker publishRevoker, roomState roomStateService) *Service {
-	return &Service{repo: r, roleService: roleService, revoker: revoker, roomState: roomState}
+func NewService(r repo, roleService roleFinder, revoker publishRevoker, roomState roomStateService, authz authorizer) *Service {
+	return &Service{repo: r, roleService: roleService, revoker: revoker, roomState: roomState, authz: authz}
 }
 
 func (s *Service) Rejoin(ru *RoomUser) error {
@@ -85,12 +99,7 @@ func (s *Service) IsBlocked(roomID, userID uint) (bool, error) {
 }
 
 func (s *Service) Block(roomID, userID, actorID uint) error {
-	if userID == actorID {
-		return httpx.ErrForbidden
-	}
-
-	_, _, err := s.canModerate(roomID, actorID, userID)
-	if err != nil {
+	if err := s.authz.CanBlock(roomID, actorID, userID); err != nil {
 		return err
 	}
 
@@ -104,24 +113,16 @@ func (s *Service) Block(roomID, userID, actorID uint) error {
 }
 
 func (s *Service) Unblock(roomID, userID, actorID uint) error {
-	_, targetRoomUser, err := s.canModerate(roomID, actorID, userID)
-	if err != nil {
+	if err := s.authz.CanUnblock(roomID, actorID, userID); err != nil {
 		return err
-	}
-	if !targetRoomUser.IsBlocked {
-		return httpx.ErrRecordNotFound
 	}
 
 	return s.repo.Unblock(roomID, userID)
 }
 
 func (s *Service) ListBlockedByRoomID(roomID, actorID uint, p listopts.Pagination) ([]RoomUser, int64, error) {
-	actorRoomUser, err := s.repo.FindBy(actorID, roomID)
-	if err != nil {
+	if err := s.authz.CanListBlocked(roomID, actorID); err != nil {
 		return nil, 0, err
-	}
-	if actorRoomUser == nil || !actorRoomUser.CanManage() {
-		return nil, 0, httpx.ErrForbidden
 	}
 
 	users, err := s.repo.ListBlockedByRoomID(roomID, p)
@@ -154,12 +155,8 @@ func (s *Service) RemoveUser(ctx context.Context, userID uint, roomID uint) erro
 }
 
 func (s *Service) ListByRoomID(ctx context.Context, roomID, userID uint, filter RoomUserFilter, sort listopts.Sort, p listopts.Pagination) ([]RoomUser, int64, error) {
-	blocked, err := s.repo.IsBlocked(roomID, userID)
-	if err != nil {
+	if err := s.authz.CanListUsers(roomID, userID); err != nil {
 		return nil, 0, err
-	}
-	if blocked {
-		return nil, 0, httpx.ErrUserBlocked
 	}
 
 	users, err := s.repo.ListByRoomID(roomID, filter, sort, p)
@@ -193,12 +190,8 @@ func (s *Service) FindByWithState(ctx context.Context, userID, roomID uint) (*Ro
 }
 
 func (s *Service) ListRaisedHands(ctx context.Context, roomID, userID uint, p listopts.Pagination) ([]RoomUser, int64, error) {
-	blocked, err := s.repo.IsBlocked(roomID, userID)
-	if err != nil {
+	if err := s.authz.CanListRaisedHands(roomID, userID); err != nil {
 		return nil, 0, err
-	}
-	if blocked {
-		return nil, 0, httpx.ErrUserBlocked
 	}
 
 	userIDs, err := s.roomState.GetRaisedHands(ctx, roomID, p)
@@ -246,12 +239,8 @@ func (s *Service) HasRoles(userID uint, roomID uint, permissions []role.RoleName
 }
 
 func (s *Service) UpdateRole(roomID uint, userID uint, roleName role.RoleName, actorID uint) error {
-	hasPermission, err := s.repo.HasRoles(actorID, roomID, role.RoleAssignmentPermissions[roleName])
-	if err != nil {
+	if err := s.authz.CanUpdateRole(roomID, actorID, roleName); err != nil {
 		return err
-	}
-	if !hasPermission {
-		return httpx.ErrForbidden
 	}
 	r, err := s.roleService.FindByName(roleName)
 	if err != nil {
@@ -269,26 +258,8 @@ func (s *Service) UpdateRole(roomID uint, userID uint, roleName role.RoleName, a
 }
 
 func (s *Service) DeleteUser(ctx context.Context, roomID, userID, actorID uint) error {
-	if userID == actorID {
-		ru, err := s.repo.FindBy(actorID, roomID)
-		if err != nil {
-			return err
-		}
-		if ru == nil || ru.IsBlocked {
-			return httpx.ErrForbidden
-		}
-		if err := s.repo.Delete(roomID, userID); err != nil {
-			return err
-		}
-		return s.roomState.Leave(ctx, roomID, userID)
-	}
-
-	_, targetRoomUser, err := s.canModerate(roomID, actorID, userID)
-	if err != nil {
+	if err := s.authz.CanDeleteUser(roomID, userID, actorID); err != nil {
 		return err
-	}
-	if targetRoomUser.IsBlocked {
-		return httpx.ErrUserBlocked
 	}
 
 	if err := s.repo.Delete(roomID, userID); err != nil {
@@ -298,54 +269,16 @@ func (s *Service) DeleteUser(ctx context.Context, roomID, userID, actorID uint) 
 }
 
 func (s *Service) SetMuted(ctx context.Context, roomID, userID, actorID uint, isMuted bool) error {
-	blocked, err := s.repo.IsBlocked(roomID, actorID)
-	if err != nil {
+	if err := s.authz.CanSetMuted(roomID, actorID, userID, isMuted); err != nil {
 		return err
-	}
-	if blocked {
-		return httpx.ErrUserBlocked
-	}
-
-	if userID != actorID {
-		if _, _, err := s.canModerate(roomID, actorID, userID); err != nil {
-			return err
-		}
 	}
 
 	return s.roomState.SetMuted(ctx, roomID, userID, isMuted)
 }
 
 func (s *Service) SetHandRaised(ctx context.Context, roomID, userID uint, isHandRaised bool) error {
-	blocked, err := s.repo.IsBlocked(roomID, userID)
-	if err != nil {
+	if err := s.authz.CanSetHandRaised(roomID, userID); err != nil {
 		return err
 	}
-	if blocked {
-		return httpx.ErrUserBlocked
-	}
 	return s.roomState.SetHandRaised(ctx, roomID, userID, isHandRaised)
-}
-
-func (s *Service) canModerate(roomID, actorID, targetID uint) (*RoomUser, *RoomUser, error) {
-	actorRoomUser, err := s.repo.FindBy(actorID, roomID)
-	if err != nil {
-		return nil, nil, err
-	}
-	if actorRoomUser == nil {
-		return nil, nil, httpx.ErrForbidden
-	}
-
-	targetRoomUser, err := s.repo.FindAnyBy(targetID, roomID)
-	if err != nil {
-		return nil, nil, err
-	}
-	if targetRoomUser == nil {
-		return nil, nil, httpx.ErrRecordNotFound
-	}
-
-	if !role.CanModerate(actorRoomUser.Role.Name, targetRoomUser.Role.Name) {
-		return nil, nil, httpx.ErrForbidden
-	}
-
-	return actorRoomUser, targetRoomUser, nil
 }

@@ -21,18 +21,22 @@ type Handler interface {
 	ServeWS(ctx *gin.Context)
 }
 
+type JoinValidator func(roomID, userID uint) error
+
 type handler struct {
 	hub         *Hub
 	handlers    map[EventName]EventHandler
 	disconnects []DisconnectHandler
 	cfg         *config.Config
+	canJoin     JoinValidator
 }
 
-func NewHandler(hub *Hub, cfg *config.Config) Handler {
+func NewHandler(hub *Hub, cfg *config.Config, canJoin JoinValidator) Handler {
 	return &handler{
 		hub:      hub,
 		handlers: make(map[EventName]EventHandler),
 		cfg:      cfg,
+		canJoin:  canJoin,
 	}
 }
 
@@ -48,6 +52,15 @@ func (h *handler) ServeWS(ctx *gin.Context) {
 	roomID := ctx.Param("roomId")
 	userID, _ := current.UserID(ctx)
 	parsedRoomID, err := strconv.ParseUint(roomID, 10, 0)
+	if err != nil {
+		httpx.ErrorResponse(ctx, http.StatusBadRequest, "Invalid room ID")
+		return
+	}
+
+	if err := h.canJoin(uint(parsedRoomID), userID); err != nil {
+		httpx.ErrorResponse(ctx, http.StatusForbidden, "You are not a member of this room")
+		return
+	}
 
 	var upgrader = websocket.Upgrader{
 		ReadBufferSize:  h.cfg.WebSocket.ReadBufferSize,

@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 
+	"sound-stage-backend/internal/pkg/httpx"
 	"sound-stage-backend/internal/pkg/listopts"
 	"sound-stage-backend/internal/pkg/testutil"
 	"sound-stage-backend/internal/role"
@@ -50,8 +51,8 @@ func (m *mockRoomService) ViewerContexts(roomIDs []uint, userID uint) (map[uint]
 	v, _ := args.Get(0).(map[uint]*RoomViewer)
 	return v, args.Error(1)
 }
-func (m *mockRoomService) UpdatePrivateCode(roomID uint) error {
-	args := m.Called(roomID)
+func (m *mockRoomService) UpdatePrivateCode(roomID, userID uint) error {
+	args := m.Called(roomID, userID)
 	return args.Error(0)
 }
 
@@ -161,10 +162,11 @@ func TestHandler_Update(t *testing.T) {
 func TestHandler_UpdatePrivateCode(t *testing.T) {
 	t.Run("success: updates private code and returns 200", func(t *testing.T) {
 		h := newHandlerHarness(t)
-		h.svc.On("UpdatePrivateCode", uint(5)).Return(nil)
+		h.svc.On("UpdatePrivateCode", uint(5), uint(42)).Return(nil)
 
 		w, c := testutil.NewTestContext(http.MethodPatch, "/rooms/5/private-code", nil)
 		c.Params = gin.Params{{Key: "id", Value: "5"}}
+		c.Set("userId", uint(42))
 
 		h.handler.UpdatePrivateCode(c)
 
@@ -181,15 +183,30 @@ func TestHandler_UpdatePrivateCode(t *testing.T) {
 		h.handler.UpdatePrivateCode(c)
 
 		assert.Equal(t, http.StatusBadRequest, w.Code)
-		h.svc.AssertNotCalled(t, "UpdatePrivateCode", mock.Anything)
+		h.svc.AssertNotCalled(t, "UpdatePrivateCode", mock.Anything, mock.Anything)
+	})
+
+	t.Run("failure: forbidden returns 403", func(t *testing.T) {
+		h := newHandlerHarness(t)
+		h.svc.On("UpdatePrivateCode", uint(5), uint(42)).Return(httpx.ErrForbidden)
+
+		w, c := testutil.NewTestContext(http.MethodPatch, "/rooms/5/private-code", nil)
+		c.Params = gin.Params{{Key: "id", Value: "5"}}
+		c.Set("userId", uint(42))
+
+		h.handler.UpdatePrivateCode(c)
+
+		assert.Equal(t, http.StatusForbidden, w.Code)
+		h.svc.AssertExpectations(t)
 	})
 
 	t.Run("failure: service error returns 422", func(t *testing.T) {
 		h := newHandlerHarness(t)
-		h.svc.On("UpdatePrivateCode", uint(5)).Return(assert.AnError)
+		h.svc.On("UpdatePrivateCode", uint(5), uint(42)).Return(assert.AnError)
 
 		w, c := testutil.NewTestContext(http.MethodPatch, "/rooms/5/private-code", nil)
 		c.Params = gin.Params{{Key: "id", Value: "5"}}
+		c.Set("userId", uint(42))
 
 		h.handler.UpdatePrivateCode(c)
 
@@ -277,6 +294,20 @@ func TestHandler_FindByID(t *testing.T) {
 		h.handler.FindByID(c)
 
 		assert.Equal(t, http.StatusNotFound, w.Code)
+		h.svc.AssertExpectations(t)
+	})
+
+	t.Run("failure: forbidden returns 403", func(t *testing.T) {
+		h := newHandlerHarness(t)
+		h.svc.On("FindByID", uint(7), uint(1)).Return(nil, httpx.ErrForbidden)
+
+		w, c := testutil.NewTestContext(http.MethodGet, "/rooms/7", nil)
+		c.Params = gin.Params{{Key: "id", Value: "7"}}
+		c.Set("userId", uint(1))
+
+		h.handler.FindByID(c)
+
+		assert.Equal(t, http.StatusForbidden, w.Code)
 		h.svc.AssertExpectations(t)
 	})
 }

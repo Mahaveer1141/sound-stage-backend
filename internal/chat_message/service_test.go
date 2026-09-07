@@ -54,7 +54,7 @@ func newHarness(t *testing.T) *harness {
 	return &harness{
 		repo:      repo,
 		roomUsers: ru,
-		svc:       NewService(repo, ru),
+		svc:       NewService(repo, NewAuthz(ru)),
 	}
 }
 

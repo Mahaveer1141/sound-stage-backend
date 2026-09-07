@@ -1,8 +1,10 @@
 package ws
 
 import (
+	"errors"
 	"io"
 	"log/slog"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -39,7 +41,7 @@ func newTestHub(t *testing.T) *Hub {
 func TestHandler_On(t *testing.T) {
 	t.Run("registers and invokes an event handler", func(t *testing.T) {
 		hub := newTestHub(t)
-		handler := NewHandler(hub, &config.Config{}).(*handler)
+		handler := NewHandler(hub, &config.Config{}, func(roomID, userID uint) error { return nil }).(*handler)
 
 		called := false
 		handler.On(EventJoinRoom, func(c *Client, evt Event) {
@@ -54,7 +56,7 @@ func TestHandler_On(t *testing.T) {
 
 	t.Run("unknown event is a no-op", func(t *testing.T) {
 		hub := newTestHub(t)
-		handler := NewHandler(hub, &config.Config{}).(*handler)
+		handler := NewHandler(hub, &config.Config{}, func(roomID, userID uint) error { return nil }).(*handler)
 
 		called := false
 		handler.On(EventLeaveRoom, func(c *Client, evt Event) { called = true })
@@ -66,7 +68,7 @@ func TestHandler_On(t *testing.T) {
 
 	t.Run("overwrites an existing handler", func(t *testing.T) {
 		hub := newTestHub(t)
-		handler := NewHandler(hub, &config.Config{}).(*handler)
+		handler := NewHandler(hub, &config.Config{}, func(roomID, userID uint) error { return nil }).(*handler)
 
 		first := false
 		second := false
@@ -83,7 +85,7 @@ func TestHandler_On(t *testing.T) {
 func TestHandler_ServeWS(t *testing.T) {
 	t.Run("upgrades, calls registered event handler and disconnect handler", func(t *testing.T) {
 		hub := newTestHub(t)
-		h := NewHandler(hub, newTestWSConfig())
+		h := NewHandler(hub, newTestWSConfig(), func(roomID, userID uint) error { return nil })
 
 		eventCalled := make(chan *Client, 1)
 		disconnectCalled := make(chan *Client, 1)
@@ -133,4 +135,25 @@ func TestHandler_ServeWS(t *testing.T) {
 		}
 	})
 
+	t.Run("rejects upgrade when join validator fails", func(t *testing.T) {
+		hub := newTestHub(t)
+		h := NewHandler(hub, newTestWSConfig(), func(roomID, userID uint) error {
+			return errors.New("not a member")
+		})
+
+		gin.SetMode(gin.TestMode)
+		r := gin.New()
+		r.GET("/ws/:roomId", func(ctx *gin.Context) {
+			ctx.Set("userId", uint(42))
+			h.ServeWS(ctx)
+		})
+
+		server := httptest.NewServer(r)
+		defer server.Close()
+
+		url := "ws" + strings.TrimPrefix(server.URL, "http") + "/ws/4"
+		_, resp, err := websocket.DefaultDialer.Dial(url, nil)
+		require.Error(t, err)
+		require.Equal(t, http.StatusForbidden, resp.StatusCode)
+	})
 }

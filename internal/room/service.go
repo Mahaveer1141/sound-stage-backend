@@ -1,7 +1,6 @@
 package room
 
 import (
-	"context"
 	"crypto/rand"
 	"math/big"
 	"sound-stage-backend/internal/pkg/httpx"
@@ -16,13 +15,8 @@ import (
 type roomUserService interface {
 	Create(tx *gorm.DB, userID uint, roomID uint, roleName role.RoleName) (*roomuser.RoomUser, error)
 	Rejoin(ru *roomuser.RoomUser) error
-	RemoveUser(ctx context.Context, userID uint, roomID uint) error
 	FindBy(userID uint, roomID uint) (*roomuser.RoomUser, error)
-	HasRoles(userID uint, roomID uint, permissions []role.RoleName) (bool, error)
 	MapByUserAndRoomIDs(userID uint, roomIDs []uint) (map[uint]*roomuser.RoomUser, error)
-	IsBlocked(roomID, userID uint) (bool, error)
-	SetMuted(ctx context.Context, roomID, userID, actorID uint, isMuted bool) error
-	SetHandRaised(ctx context.Context, roomID, userID uint, isHandRaised bool) error
 }
 
 type roomUserFavouriteService interface {
@@ -39,37 +33,42 @@ type repository interface {
 	LoadTagsForRooms(roomIds []uint) (map[uint][]tag.Tag, error)
 }
 
+type authorizer interface {
+	CanView(roomID, userID uint) error
+	CanUpdate(roomID, userID uint) error
+	CanAddRoomUser(roomID, userID uint) error
+}
+
 type Service struct {
 	repo             repository
 	roomUserService  roomUserService
 	favouriteService roomUserFavouriteService
+	authz            authorizer
 	db               *gorm.DB
 }
 
 func NewService(r repository, roomUserSvc roomUserService,
-	favouriteSvc roomUserFavouriteService, db *gorm.DB) *Service {
+	favouriteSvc roomUserFavouriteService, db *gorm.DB, authz authorizer) *Service {
 	return &Service{
 		repo:             r,
 		roomUserService:  roomUserSvc,
 		favouriteService: favouriteSvc,
+		authz:            authz,
 		db:               db,
 	}
 }
 
 func (s *Service) FindByID(id, userID uint) (*Room, error) {
-	blocked, err := s.roomUserService.IsBlocked(id, userID)
+	room, err := s.repo.FindByID(id)
 	if err != nil {
 		return nil, err
 	}
-	if blocked {
-		return nil, httpx.ErrRecordNotFound
+
+	if err := s.authz.CanView(id, userID); err != nil {
+		return nil, err
 	}
 
 	tagToRooms, err := s.repo.LoadTagsForRooms([]uint{id})
-	if err != nil {
-		return nil, err
-	}
-	room, err := s.repo.FindByID(id)
 	if err != nil {
 		return nil, err
 	}
@@ -102,12 +101,8 @@ func (s *Service) Create(input *CreateRoomParams) (*Room, error) {
 }
 
 func (s *Service) Update(id, userID uint, input *UpdateRoomParams) (*Room, error) {
-	ok, err := s.roomUserService.HasRoles(userID, id, []role.RoleName{role.RoleOwner, role.RoleAdmin})
-	if err != nil {
+	if err := s.authz.CanUpdate(id, userID); err != nil {
 		return nil, err
-	}
-	if !ok {
-		return nil, httpx.ErrForbidden
 	}
 
 	room, err := s.repo.FindByID(id)
@@ -180,7 +175,10 @@ func (s *Service) ViewerContexts(roomIDs []uint, userID uint) (map[uint]*RoomVie
 	return viewers, nil
 }
 
-func (s *Service) UpdatePrivateCode(roomID uint) error {
+func (s *Service) UpdatePrivateCode(roomID, userID uint) error {
+	if err := s.authz.CanUpdate(roomID, userID); err != nil {
+		return err
+	}
 	code, err := generatePrivateCode(8)
 	if err != nil {
 		return err
@@ -189,12 +187,8 @@ func (s *Service) UpdatePrivateCode(roomID uint) error {
 }
 
 func (s *Service) AddRoomUser(roomID, userID uint, privateCode string) (*roomuser.RoomUser, error) {
-	blocked, err := s.roomUserService.IsBlocked(roomID, userID)
-	if err != nil {
+	if err := s.authz.CanAddRoomUser(roomID, userID); err != nil {
 		return nil, err
-	}
-	if blocked {
-		return nil, httpx.ErrUserBlocked
 	}
 
 	ru, err := s.roomUserService.FindBy(userID, roomID)
