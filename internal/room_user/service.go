@@ -36,6 +36,7 @@ type repo interface {
 	ListByRoomID(roomID uint, filter RoomUserFilter, sort listopts.Sort, p listopts.Pagination) ([]RoomUser, error)
 	ListByUserIDs(roomID uint, userIDs []uint) ([]RoomUser, error)
 	CountByRoomID(roomID uint, filter RoomUserFilter) (int64, error)
+	CountByRoomIDs(roomIDs []uint, filter RoomUserFilter) (map[uint]int64, error)
 	UpdateRole(roomID uint, userID uint, roleID uint) error
 	Delete(roomID uint, userID uint) error
 	MapByUserAndRoomIDs(userID uint, roomIDs []uint) (map[uint]*RoomUser, error)
@@ -138,6 +139,10 @@ func (s *Service) ListBlockedByRoomID(roomID, actorID uint, p listopts.Paginatio
 
 func (s *Service) MapByUserAndRoomIDs(userID uint, roomIDs []uint) (map[uint]*RoomUser, error) {
 	return s.repo.MapByUserAndRoomIDs(userID, roomIDs)
+}
+
+func (s *Service) CountByRoomIDs(roomIDs []uint, filter RoomUserFilter) (map[uint]int64, error) {
+	return s.repo.CountByRoomIDs(roomIDs, filter)
 }
 
 func (s *Service) RemoveUser(ctx context.Context, userID uint, roomID uint) error {

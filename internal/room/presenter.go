@@ -28,17 +28,20 @@ func BuildRoomResponse(room *Room, viewer *RoomViewer) RoomResponse {
 	}
 
 	return RoomResponse{
-		ID:           room.ID,
-		Name:         room.Name,
-		Description:  room.Description,
-		Type:         room.Type,
-		PrivateCode:  privateCode,
-		CoverImage:   httpx.BuildFileAttachmentResponse(room.CoverImage),
-		LogoImage:    httpx.BuildFileAttachmentResponse(room.LogoImage),
-		Categories:   cats,
-		Tags:         tags,
-		IsRoomUser:   isRoomUser,
-		IsFavourited: isFavourited,
+		ID:            room.ID,
+		Name:          room.Name,
+		Description:   room.Description,
+		Type:          room.Type,
+		IsChatEnabled: room.IsChatEnabled,
+		PrivateCode:   privateCode,
+		CoverImage:    httpx.BuildFileAttachmentResponse(room.CoverImage),
+		LogoImage:     httpx.BuildFileAttachmentResponse(room.LogoImage),
+		Categories:    cats,
+		Tags:          tags,
+		IsRoomUser:    isRoomUser,
+		IsFavourited:  isFavourited,
+		TotalUsers:    room.TotalUsers,
+		LiveUsers:     room.LiveUsers,
 	}
 }
 

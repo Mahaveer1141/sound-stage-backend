@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 
+	fileattachment "sound-stage-backend/internal/file_attachment"
 	"sound-stage-backend/internal/pkg/httpx"
 	"sound-stage-backend/internal/pkg/listopts"
 	"sound-stage-backend/internal/pkg/testutil"
@@ -84,6 +85,11 @@ func (m *mockRoomUserService) MapByUserAndRoomIDs(userID uint, roomIDs []uint) (
 	res, _ := args.Get(0).(map[uint]*roomuser.RoomUser)
 	return res, args.Error(1)
 }
+func (m *mockRoomUserService) CountByRoomIDs(roomIDs []uint, filter roomuser.RoomUserFilter) (map[uint]int64, error) {
+	args := m.Called(roomIDs, filter)
+	res, _ := args.Get(0).(map[uint]int64)
+	return res, args.Error(1)
+}
 func (m *mockRoomUserService) IsBlocked(roomID, userID uint) (bool, error) {
 	args := m.Called(roomID, userID)
 	return args.Bool(0), args.Error(1)
@@ -105,10 +111,20 @@ func (m *mockFavouriteService) FavouritedRoomIDs(userID uint, roomIDs []uint) (m
 	return res, args.Error(1)
 }
 
+type mockFileAttachmentService struct{ mock.Mock }
+
+func (m *mockFileAttachmentService) UploadOrReplaceFile(ctx context.Context, existing *fileattachment.FileAttachment,
+	in fileattachment.UploadFileParams) (*fileattachment.FileAttachment, error) {
+	args := m.Called(ctx, existing, in)
+	att, _ := args.Get(0).(*fileattachment.FileAttachment)
+	return att, args.Error(1)
+}
+
 type harness struct {
 	repo      *mockRepository
 	roomUser  *mockRoomUserService
 	favourite *mockFavouriteService
+	file      *mockFileAttachmentService
 	svc       *Service
 }
 
@@ -118,11 +134,13 @@ func newHarness(t *testing.T) *harness {
 	repo := new(mockRepository)
 	ru := new(mockRoomUserService)
 	fav := new(mockFavouriteService)
+	file := new(mockFileAttachmentService)
 	return &harness{
 		repo:      repo,
 		roomUser:  ru,
 		favourite: fav,
-		svc:       NewService(repo, ru, fav, db, NewAuthz(ru)),
+		file:      file,
+		svc:       NewService(repo, ru, fav, db, NewAuthz(ru), file),
 	}
 }
 
@@ -134,6 +152,7 @@ func TestService_FindByID(t *testing.T) {
 		h.repo.On("FindByID", uint(1)).Return(want, nil)
 		h.roomUser.On("FindBy", uint(7), uint(1)).Return(&roomuser.RoomUser{}, nil)
 		h.repo.On("LoadTagsForRooms", []uint{1}).Return(tags, nil)
+		h.roomUser.On("CountByRoomIDs", []uint{0}, mock.Anything).Return(map[uint]int64{}, nil).Times(2)
 
 		got, err := h.svc.FindByID(1, 7)
 
@@ -209,6 +228,7 @@ func TestService_Create(t *testing.T) {
 		h.repo.On("Create", mock.AnythingOfType("*gorm.DB"), input).Return(created, nil)
 		h.roomUser.On("Create", mock.AnythingOfType("*gorm.DB"), uint(5), uint(10), role.RoleOwner).
 			Return(&roomuser.RoomUser{}, nil)
+		h.roomUser.On("CountByRoomIDs", []uint{10}, mock.Anything).Return(map[uint]int64{}, nil).Times(2)
 
 		got, err := h.svc.Create(input)
 
@@ -246,6 +266,7 @@ func TestService_Update(t *testing.T) {
 		h.roomUser.On("HasRoles", uint(1), uint(3), []role.RoleName{role.RoleOwner, role.RoleAdmin}).Return(true, nil)
 		h.repo.On("FindByID", uint(3)).Return(&Room{PrivateCode: nil}, nil)
 		h.repo.On("Update", uint(3), input).Return(updated, nil)
+		h.roomUser.On("CountByRoomIDs", []uint{0}, mock.Anything).Return(map[uint]int64{}, nil).Times(2)
 
 		got, err := h.svc.Update(3, 1, input)
 
@@ -298,6 +319,7 @@ func TestService_List(t *testing.T) {
 		h.repo.On("List", filter, sort, p).Return(rooms, nil)
 		h.repo.On("LoadTagsForRooms", []uint{1, 2}).Return(tags, nil)
 		h.repo.On("Count", filter).Return(int64(2), nil)
+		h.roomUser.On("CountByRoomIDs", []uint{1, 2}, mock.Anything).Return(map[uint]int64{}, nil).Times(2)
 
 		got, count, err := h.svc.List(filter, sort, p)
 

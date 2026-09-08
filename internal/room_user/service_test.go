@@ -56,6 +56,11 @@ func (m *mockRepo) CountByRoomID(roomID uint, filter RoomUserFilter) (int64, err
 	args := m.Called(roomID, filter)
 	return args.Get(0).(int64), args.Error(1)
 }
+func (m *mockRepo) CountByRoomIDs(roomIDs []uint, filter RoomUserFilter) (map[uint]int64, error) {
+	args := m.Called(roomIDs, filter)
+	res, _ := args.Get(0).(map[uint]int64)
+	return res, args.Error(1)
+}
 func (m *mockRepo) UpdateRole(roomID, userID, roleID uint) error {
 	args := m.Called(roomID, userID, roleID)
 	return args.Error(0)

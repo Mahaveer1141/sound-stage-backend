@@ -13,6 +13,7 @@ import (
 	"sound-stage-backend/internal/pkg/testutil"
 	"sound-stage-backend/internal/role"
 	roomuser "sound-stage-backend/internal/room_user"
+	"sound-stage-backend/internal/ws"
 )
 
 func init() {
@@ -56,17 +57,26 @@ func (m *mockRoomService) UpdatePrivateCode(roomID, userID uint) error {
 	return args.Error(0)
 }
 
+type mockWebSocketHub struct{ mock.Mock }
+
+func (m *mockWebSocketHub) BroadcastToRoom(roomID uint, eventName ws.EventName, payload any) {
+	m.Called(roomID, eventName, payload)
+}
+
 type handlerHarness struct {
 	svc     *mockRoomService
+	hub     *mockWebSocketHub
 	handler *Handler
 }
 
 func newHandlerHarness(t *testing.T) *handlerHarness {
 	t.Helper()
 	svc := new(mockRoomService)
+	hub := new(mockWebSocketHub)
 	return &handlerHarness{
 		svc:     svc,
-		handler: NewHandler(svc),
+		hub:     hub,
+		handler: NewHandler(svc, hub),
 	}
 }
 
@@ -120,6 +130,10 @@ func TestHandler_Update(t *testing.T) {
 		updated := &Room{Name: "Renamed"}
 		h.svc.On("Update", uint(5), uint(42), mock.AnythingOfType("*room.UpdateRoomParams")).Return(updated, nil)
 		h.svc.On("ViewerContext", uint(0), uint(42)).Return(&RoomViewer{RoomUser: &roomuser.RoomUser{Role: role.Role{Name: role.RoleOwner}}}, nil)
+		h.hub.On("BroadcastToRoom", uint(0), ws.EventChatEnabledUpdated, mock.MatchedBy(func(payload any) bool {
+			gh, ok := payload.(gin.H)
+			return ok && gh["isChatEnabled"] == false
+		})).Return()
 
 		w, c := testutil.NewTestContext(http.MethodPatch, "/rooms/5", UpdateRoomParams{Name: "Renamed", Type: RoomTypePublic})
 		c.Params = gin.Params{{Key: "id", Value: "5"}}
@@ -129,6 +143,44 @@ func TestHandler_Update(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, w.Code)
 		h.svc.AssertExpectations(t)
+		h.hub.AssertExpectations(t)
+	})
+
+	t.Run("success: broadcasts chat_enabled_updated with isChatEnabled true", func(t *testing.T) {
+		h := newHandlerHarness(t)
+		updated := &Room{Name: "Renamed", IsChatEnabled: true}
+		updated.ID = 5
+		h.svc.On("Update", uint(5), uint(42), mock.AnythingOfType("*room.UpdateRoomParams")).Return(updated, nil)
+		h.svc.On("ViewerContext", uint(5), uint(42)).Return(&RoomViewer{RoomUser: &roomuser.RoomUser{Role: role.Role{Name: role.RoleOwner}}}, nil)
+		h.hub.On("BroadcastToRoom", uint(5), ws.EventChatEnabledUpdated, mock.MatchedBy(func(payload any) bool {
+			gh, ok := payload.(gin.H)
+			return ok && gh["isChatEnabled"] == true
+		})).Return()
+
+		w, c := testutil.NewTestContext(http.MethodPatch, "/rooms/5", UpdateRoomParams{Name: "Renamed", Type: RoomTypePublic, IsChatEnabled: true})
+		c.Params = gin.Params{{Key: "id", Value: "5"}}
+		c.Set("userId", uint(42))
+
+		h.handler.Update(c)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		h.svc.AssertExpectations(t)
+		h.hub.AssertExpectations(t)
+	})
+
+	t.Run("failure: service error returns 422 and does not broadcast", func(t *testing.T) {
+		h := newHandlerHarness(t)
+		h.svc.On("Update", uint(5), uint(42), mock.Anything).Return(nil, assert.AnError)
+
+		w, c := testutil.NewTestContext(http.MethodPatch, "/rooms/5", UpdateRoomParams{Name: "Renamed", Type: RoomTypePublic})
+		c.Params = gin.Params{{Key: "id", Value: "5"}}
+		c.Set("userId", uint(42))
+
+		h.handler.Update(c)
+
+		assert.Equal(t, http.StatusUnprocessableEntity, w.Code)
+		h.svc.AssertExpectations(t)
+		h.hub.AssertNotCalled(t, "BroadcastToRoom", mock.Anything, mock.Anything, mock.Anything)
 	})
 
 	t.Run("failure: non-numeric room ID returns 400 before service is called", func(t *testing.T) {
@@ -142,20 +194,6 @@ func TestHandler_Update(t *testing.T) {
 
 		assert.Equal(t, http.StatusBadRequest, w.Code)
 		h.svc.AssertNotCalled(t, "Update", mock.Anything, mock.Anything, mock.Anything)
-	})
-
-	t.Run("failure: service error returns 422", func(t *testing.T) {
-		h := newHandlerHarness(t)
-		h.svc.On("Update", uint(5), uint(42), mock.Anything).Return(nil, assert.AnError)
-
-		w, c := testutil.NewTestContext(http.MethodPatch, "/rooms/5", UpdateRoomParams{Name: "Renamed", Type: RoomTypePublic})
-		c.Params = gin.Params{{Key: "id", Value: "5"}}
-		c.Set("userId", uint(42))
-
-		h.handler.Update(c)
-
-		assert.Equal(t, http.StatusUnprocessableEntity, w.Code)
-		h.svc.AssertExpectations(t)
 	})
 }
 

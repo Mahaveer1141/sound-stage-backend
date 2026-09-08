@@ -6,6 +6,7 @@ import (
 	"sound-stage-backend/internal/pkg/current"
 	"sound-stage-backend/internal/pkg/httpx"
 	"sound-stage-backend/internal/pkg/listopts"
+	"sound-stage-backend/internal/ws"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -22,13 +23,18 @@ type roomService interface {
 	UpdatePrivateCode(roomID, userID uint) error
 }
 
+type webSocketBroadcaster interface {
+	BroadcastToRoom(roomID uint, eventName ws.EventName, payload any)
+}
+
 type Handler struct {
 	service  roomService
 	validate *validator.Validate
+	hub      webSocketBroadcaster
 }
 
-func NewHandler(service roomService) *Handler {
-	return &Handler{service: service, validate: httpx.NewValidator()}
+func NewHandler(service roomService, hub webSocketBroadcaster) *Handler {
+	return &Handler{service: service, validate: httpx.NewValidator(), hub: hub}
 }
 
 func (h *Handler) Create(c *gin.Context) {
@@ -83,6 +89,8 @@ func (h *Handler) Update(c *gin.Context) {
 		httpx.ErrorResponse(c, http.StatusUnprocessableEntity, "Failed to update room")
 		return
 	}
+
+	h.hub.BroadcastToRoom(room.ID, ws.EventChatEnabledUpdated, gin.H{"isChatEnabled": room.IsChatEnabled})
 
 	viewer, _ := h.service.ViewerContext(room.ID, userId)
 	httpx.SuccessResponse(c, http.StatusOK, "Room updated successfully", BuildRoomResponse(room, viewer))

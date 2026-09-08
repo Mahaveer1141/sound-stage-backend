@@ -24,18 +24,21 @@ const (
 
 type Room struct {
 	model.BaseModel
-	Name        string                         `gorm:"not null" validate:"required"`
-	Description string                         `validate:"required"`
-	CreatorID   uint                           `validate:"required"`
-	Creator     user.User                      `gorm:"foreignKey:CreatorID"`
-	Users       []user.User                    `gorm:"many2many:room_users"`
-	Categories  []category.Category            `gorm:"many2many:room_categories"`
-	Tags        []tag.Tag                      `gorm:"-"`
-	CoverImage  *fileattachment.FileAttachment `gorm:"polymorphic:Owner;"`
-	LogoImage   *fileattachment.FileAttachment `gorm:"polymorphic:Owner;"`
-	Type        RoomType                       `gorm:"default:public" validate:"required,oneof=public private"`
-	PrivateCode *string                        `validate:"omitempty"`
-	DeletedAt   gorm.DeletedAt
+	Name          string                         `gorm:"not null" validate:"required"`
+	Description   string                         `validate:"required"`
+	CreatorID     uint                           `validate:"required"`
+	Creator       user.User                      `gorm:"foreignKey:CreatorID"`
+	Users         []user.User                    `gorm:"many2many:room_users"`
+	Categories    []category.Category            `gorm:"many2many:room_categories"`
+	Tags          []tag.Tag                      `gorm:"-"`
+	CoverImage    *fileattachment.FileAttachment `gorm:"polymorphic:Owner;"`
+	LogoImage     *fileattachment.FileAttachment `gorm:"polymorphic:Owner;"`
+	Type          RoomType                       `gorm:"default:public" validate:"required,oneof=public private"`
+	PrivateCode   *string                        `validate:"omitempty"`
+	IsChatEnabled bool                           `gorm:"default:true" validate:"boolean"`
+	TotalUsers    int64                          `gorm:"-"`
+	LiveUsers     int64                          `gorm:"-"`
+	DeletedAt     gorm.DeletedAt
 }
 
 func (Room) TableName() string {
@@ -43,40 +46,45 @@ func (Room) TableName() string {
 }
 
 type CreateRoomParams struct {
-	Name        string                `json:"name" form:"name" validate:"required"`
-	Description string                `json:"description" form:"description"`
-	CreatorID   uint                  `json:"creatorID" validate:"required"`
-	CoverImage  *multipart.FileHeader `json:"-" form:"coverImage" validate:"omitempty,max_size=10485760"`
-	LogoImage   *multipart.FileHeader `json:"-" form:"logoImage" validate:"omitempty,max_size=10485760"`
-	CategoryIds []uint                `json:"categoryIds" form:"categoryIds" validate:"lte=3"`
-	TagIds      []uint                `json:"tagIds" form:"tagIds" validate:"lte=5"`
-	Type        RoomType              `json:"type" form:"type" validate:"required"`
-	privateCode *string
+	Name          string                `json:"name" form:"name" validate:"required"`
+	Description   string                `json:"description" form:"description"`
+	CreatorID     uint                  `json:"creatorID" validate:"required"`
+	CoverImage    *multipart.FileHeader `json:"-" form:"coverImage" validate:"omitempty,max_size=10485760"`
+	LogoImage     *multipart.FileHeader `json:"-" form:"logoImage" validate:"omitempty,max_size=10485760"`
+	CategoryIds   []uint                `json:"categoryIds" form:"categoryIds" validate:"lte=3"`
+	TagIds        []uint                `json:"tagIds" form:"tagIds" validate:"lte=5"`
+	Type          RoomType              `json:"type" form:"type" validate:"required"`
+	IsChatEnabled bool                  `json:"isChatEnabled" form:"isChatEnabled" validate:"boolean"`
+	privateCode   *string
 }
 
 type UpdateRoomParams struct {
-	Name        string                `json:"name" form:"name" validate:"required"`
-	Description string                `json:"description" form:"description" validate:"omitempty"`
-	CoverImage  *multipart.FileHeader `json:"-" form:"coverImage" validate:"omitempty,max_size=10485760"`
-	LogoImage   *multipart.FileHeader `json:"-" form:"logoImage" validate:"omitempty,max_size=10485760"`
-	CategoryIds []uint                `json:"categoryIds" form:"categoryIds" validate:"lte=3"`
-	TagIds      []uint                `json:"tagIds" form:"tagIds" validate:"lte=5"`
-	Type        RoomType              `json:"type" form:"type" validate:"required"`
-	privateCode *string
+	Name          string                `json:"name" form:"name" validate:"required"`
+	Description   string                `json:"description" form:"description" validate:"omitempty"`
+	CoverImage    *multipart.FileHeader `json:"-" form:"coverImage" validate:"omitempty,max_size=10485760"`
+	LogoImage     *multipart.FileHeader `json:"-" form:"logoImage" validate:"omitempty,max_size=10485760"`
+	CategoryIds   []uint                `json:"categoryIds" form:"categoryIds" validate:"lte=3"`
+	TagIds        []uint                `json:"tagIds" form:"tagIds" validate:"lte=5"`
+	Type          RoomType              `json:"type" form:"type" validate:"required"`
+	IsChatEnabled bool                  `json:"isChatEnabled" form:"isChatEnabled" validate:"boolean"`
+	privateCode   *string
 }
 
 type RoomResponse struct {
-	ID           uint                          `json:"id"`
-	Name         string                        `json:"name"`
-	Description  string                        `json:"description"`
-	Type         RoomType                      `json:"type"`
-	PrivateCode  *string                       `json:"privateCode,omitempty"`
-	CoverImage   *httpx.FileAttachmentResponse `json:"coverImage,omitempty"`
-	LogoImage    *httpx.FileAttachmentResponse `json:"logoImage,omitempty"`
-	Categories   []category.CategoryResponse   `json:"categories,omitempty"`
-	Tags         []tag.TagResponse             `json:"tags,omitempty"`
-	IsRoomUser   bool                          `json:"isRoomUser"`
-	IsFavourited bool                          `json:"isFavourited"`
+	ID            uint                          `json:"id"`
+	Name          string                        `json:"name"`
+	Description   string                        `json:"description"`
+	Type          RoomType                      `json:"type"`
+	PrivateCode   *string                       `json:"privateCode,omitempty"`
+	CoverImage    *httpx.FileAttachmentResponse `json:"coverImage,omitempty"`
+	LogoImage     *httpx.FileAttachmentResponse `json:"logoImage,omitempty"`
+	Categories    []category.CategoryResponse   `json:"categories,omitempty"`
+	Tags          []tag.TagResponse             `json:"tags,omitempty"`
+	IsRoomUser    bool                          `json:"isRoomUser"`
+	IsFavourited  bool                          `json:"isFavourited"`
+	IsChatEnabled bool                          `json:"isChatEnabled"`
+	TotalUsers    int64                         `json:"totalUsers"`
+	LiveUsers     int64                         `json:"liveUsers"`
 }
 
 type RoomViewer struct {
@@ -89,6 +97,7 @@ type RoomFilter struct {
 	CategoryIds []uint    `form:"categoryIds"`
 	TagIds      []uint    `form:"tagIds"`
 	Type        *RoomType `form:"type"`
+	IsLive      *bool     `form:"isLive"`
 	UserID      uint      `form:"-"`
 }
 
@@ -150,6 +159,24 @@ func FilterByNotBlocked(userID uint) func(*gorm.DB) *gorm.DB {
 	}
 }
 
+func FilterByIsLive(isLive *bool) func(*gorm.DB) *gorm.DB {
+	return func(db *gorm.DB) *gorm.DB {
+		if isLive == nil {
+			return db
+		}
+		if *isLive {
+			return db.Where(
+				"EXISTS (SELECT 1 FROM room_users WHERE room_users.room_id = rooms.id AND room_users.is_online = ? AND room_users.is_blocked = ?)",
+				true, false,
+			)
+		}
+		return db.Where(
+			"NOT EXISTS (SELECT 1 FROM room_users WHERE room_users.room_id = rooms.id AND room_users.is_online = ? AND room_users.is_blocked = ?)",
+			true, false,
+		)
+	}
+}
+
 func Filters(f RoomFilter) func(*gorm.DB) *gorm.DB {
 	return func(db *gorm.DB) *gorm.DB {
 		return db.Scopes(
@@ -157,6 +184,7 @@ func Filters(f RoomFilter) func(*gorm.DB) *gorm.DB {
 			FilterByCategories(f.CategoryIds),
 			FilterByTags(f.TagIds),
 			FilterByType(f.Type),
+			FilterByIsLive(f.IsLive),
 			FilterByNotBlocked(f.UserID),
 		)
 	}

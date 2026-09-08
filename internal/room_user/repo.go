@@ -115,6 +115,31 @@ func (r *Repo) CountByRoomID(roomID uint, filter RoomUserFilter) (int64, error) 
 	return count, err
 }
 
+func (r *Repo) CountByRoomIDs(roomIDs []uint, filter RoomUserFilter) (map[uint]int64, error) {
+	if len(roomIDs) == 0 {
+		return map[uint]int64{}, nil
+	}
+	var rows []struct {
+		RoomID uint
+		Count  int64
+	}
+	err := r.db.
+		Table("room_users").
+		Select("room_users.room_id as room_id, count(*) as count").
+		Where("room_users.room_id IN ? AND room_users.is_blocked = ?", roomIDs, false).
+		Scopes(Filters(filter)).
+		Group("room_users.room_id").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[uint]int64, len(roomIDs))
+	for _, row := range rows {
+		out[row.RoomID] = row.Count
+	}
+	return out, nil
+}
+
 func (r *Repo) UpdateRole(roomID uint, userID uint, roleID uint) error {
 	return r.db.
 		Table("room_users").

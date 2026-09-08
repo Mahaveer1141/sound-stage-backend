@@ -16,7 +16,8 @@ const (
 	EventWebRTCAddTrack  EventName = "webrtc_add_track"
 	EventWebRTCAnswer    EventName = "webrtc_answer"
 
-	EventUserRoleUpdated EventName = "user_role_updated"
+	EventUserRoleUpdated    EventName = "user_role_updated"
+	EventChatEnabledUpdated EventName = "chat_enabled_updated"
 
 	EventSetMuted      EventName = "set_muted"
 	EventSetHandRaised EventName = "set_hand_raised"

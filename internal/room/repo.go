@@ -22,11 +22,12 @@ func NewRepo(db *gorm.DB) *Repo {
 
 func (r *Repo) Create(tx *gorm.DB, input *CreateRoomParams) (*Room, error) {
 	room := Room{
-		Name:        input.Name,
-		Description: input.Description,
-		CreatorID:   input.CreatorID,
-		Type:        input.Type,
-		PrivateCode: input.privateCode,
+		Name:          input.Name,
+		Description:   input.Description,
+		CreatorID:     input.CreatorID,
+		Type:          input.Type,
+		PrivateCode:   input.privateCode,
+		IsChatEnabled: input.IsChatEnabled,
 	}
 	if err := tx.Create(&room).Error; err != nil {
 		return nil, err
@@ -43,6 +44,8 @@ func (r *Repo) Create(tx *gorm.DB, input *CreateRoomParams) (*Room, error) {
 func (r *Repo) List(filter RoomFilter, sort listopts.Sort, p listopts.Pagination) ([]Room, error) {
 	var rooms []Room
 	err := r.db.Preload("Creator").Preload("Categories").
+		Preload("CoverImage", "context = ?", fileattachment.ContextRoomCover).
+		Preload("LogoImage", "context = ?", fileattachment.ContextRoomLogo).
 		Scopes(Filters(filter), Sort(sort), p.Scope()).
 		Find(&rooms).Error
 	return rooms, err
@@ -78,6 +81,7 @@ func (r *Repo) Update(id uint, input *UpdateRoomParams) (*Room, error) {
 		room.Description = input.Description
 		room.Type = input.Type
 		room.PrivateCode = input.privateCode
+		room.IsChatEnabled = input.IsChatEnabled
 		if err := tx.Save(&room).Error; err != nil {
 			return err
 		}

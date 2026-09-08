@@ -1,8 +1,10 @@
 package room
 
 import (
+	"context"
 	"crypto/rand"
 	"math/big"
+	fileattachment "sound-stage-backend/internal/file_attachment"
 	"sound-stage-backend/internal/pkg/httpx"
 	"sound-stage-backend/internal/pkg/listopts"
 	"sound-stage-backend/internal/role"
@@ -17,6 +19,7 @@ type roomUserService interface {
 	Rejoin(ru *roomuser.RoomUser) error
 	FindBy(userID uint, roomID uint) (*roomuser.RoomUser, error)
 	MapByUserAndRoomIDs(userID uint, roomIDs []uint) (map[uint]*roomuser.RoomUser, error)
+	CountByRoomIDs(roomIDs []uint, filter roomuser.RoomUserFilter) (map[uint]int64, error)
 }
 
 type roomUserFavouriteService interface {
@@ -39,21 +42,28 @@ type authorizer interface {
 	CanAddRoomUser(roomID, userID uint) error
 }
 
+type fileAttachmentService interface {
+	UploadOrReplaceFile(ctx context.Context, existing *fileattachment.FileAttachment,
+		in fileattachment.UploadFileParams) (*fileattachment.FileAttachment, error)
+}
+
 type Service struct {
 	repo             repository
 	roomUserService  roomUserService
 	favouriteService roomUserFavouriteService
 	authz            authorizer
+	file             fileAttachmentService
 	db               *gorm.DB
 }
 
 func NewService(r repository, roomUserSvc roomUserService,
-	favouriteSvc roomUserFavouriteService, db *gorm.DB, authz authorizer) *Service {
+	favouriteSvc roomUserFavouriteService, db *gorm.DB, authz authorizer, file fileAttachmentService) *Service {
 	return &Service{
 		repo:             r,
 		roomUserService:  roomUserSvc,
 		favouriteService: favouriteSvc,
 		authz:            authz,
+		file:             file,
 		db:               db,
 	}
 }
@@ -73,7 +83,50 @@ func (s *Service) FindByID(id, userID uint) (*Room, error) {
 		return nil, err
 	}
 	room.Tags = tagToRooms[id]
+
+	if err := s.loadRoomCounts(room); err != nil {
+		return nil, err
+	}
 	return room, nil
+}
+
+func (s *Service) loadRoomCounts(room *Room) error {
+	totals, err := s.roomUserService.CountByRoomIDs([]uint{room.ID}, roomuser.RoomUserFilter{})
+	if err != nil {
+		return err
+	}
+	onlineOnly := true
+	online, err := s.roomUserService.CountByRoomIDs([]uint{room.ID}, roomuser.RoomUserFilter{IsOnline: &onlineOnly})
+	if err != nil {
+		return err
+	}
+	room.TotalUsers = totals[room.ID]
+	room.LiveUsers = online[room.ID]
+	return nil
+}
+
+func (s *Service) loadRoomCountsForRooms(rooms []Room) error {
+	if len(rooms) == 0 {
+		return nil
+	}
+	roomIDs := make([]uint, len(rooms))
+	for i := range rooms {
+		roomIDs[i] = rooms[i].ID
+	}
+	totals, err := s.roomUserService.CountByRoomIDs(roomIDs, roomuser.RoomUserFilter{})
+	if err != nil {
+		return err
+	}
+	onlineOnly := true
+	online, err := s.roomUserService.CountByRoomIDs(roomIDs, roomuser.RoomUserFilter{IsOnline: &onlineOnly})
+	if err != nil {
+		return err
+	}
+	for i := range rooms {
+		rooms[i].TotalUsers = totals[rooms[i].ID]
+		rooms[i].LiveUsers = online[rooms[i].ID]
+	}
+	return nil
 }
 
 func (s *Service) Create(input *CreateRoomParams) (*Room, error) {
@@ -95,6 +148,35 @@ func (s *Service) Create(input *CreateRoomParams) (*Room, error) {
 		return err
 	})
 	if err != nil {
+		return nil, err
+	}
+
+	if input.LogoImage != nil {
+		att, err := s.file.UploadOrReplaceFile(context.Background(), nil, fileattachment.UploadFileParams{
+			OwnerType: room.TableName(),
+			OwnerID:   room.ID,
+			Context:   fileattachment.ContextRoomLogo,
+			File:      input.LogoImage,
+		})
+		if err != nil {
+			return nil, err
+		}
+		room.LogoImage = att
+	}
+	if input.CoverImage != nil {
+		att, err := s.file.UploadOrReplaceFile(context.Background(), nil, fileattachment.UploadFileParams{
+			OwnerType: room.TableName(),
+			OwnerID:   room.ID,
+			Context:   fileattachment.ContextRoomCover,
+			File:      input.CoverImage,
+		})
+		if err != nil {
+			return nil, err
+		}
+		room.CoverImage = att
+	}
+
+	if err := s.loadRoomCounts(room); err != nil {
 		return nil, err
 	}
 	return room, nil
@@ -123,7 +205,40 @@ func (s *Service) Update(id, userID uint, input *UpdateRoomParams) (*Room, error
 		}
 		input.privateCode = &code
 	}
-	return s.repo.Update(id, input)
+	room, err = s.repo.Update(id, input)
+	if err != nil {
+		return nil, err
+	}
+
+	if input.LogoImage != nil {
+		att, err := s.file.UploadOrReplaceFile(context.Background(), nil, fileattachment.UploadFileParams{
+			OwnerType: room.TableName(),
+			OwnerID:   room.ID,
+			Context:   fileattachment.ContextRoomLogo,
+			File:      input.LogoImage,
+		})
+		if err != nil {
+			return nil, err
+		}
+		room.LogoImage = att
+	}
+	if input.CoverImage != nil {
+		att, err := s.file.UploadOrReplaceFile(context.Background(), nil, fileattachment.UploadFileParams{
+			OwnerType: room.TableName(),
+			OwnerID:   room.ID,
+			Context:   fileattachment.ContextRoomCover,
+			File:      input.CoverImage,
+		})
+		if err != nil {
+			return nil, err
+		}
+		room.CoverImage = att
+	}
+
+	if err := s.loadRoomCounts(room); err != nil {
+		return nil, err
+	}
+	return room, nil
 }
 
 func (s *Service) List(filter RoomFilter, sort listopts.Sort, p listopts.Pagination) ([]Room, int64, error) {
@@ -148,6 +263,11 @@ func (s *Service) List(filter RoomFilter, sort listopts.Sort, p listopts.Paginat
 	if err != nil {
 		return nil, 0, err
 	}
+
+	if err := s.loadRoomCountsForRooms(rooms); err != nil {
+		return nil, 0, err
+	}
+
 	return rooms, count, nil
 }
 
