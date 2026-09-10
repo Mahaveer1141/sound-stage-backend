@@ -48,7 +48,8 @@ type CreateUserParams struct {
 }
 
 type UpdateUserParams struct {
-	FirstName      string                `form:"firstName" json:"firstName" validate:"required"`
-	LastName       string                `form:"lastName" json:"lastName"`
-	ProfilePicture *multipart.FileHeader `form:"profilePicture" json:"-" validate:"omitempty,max_size=10485760"`
+	FirstName            string                `form:"firstName" json:"firstName" validate:"required"`
+	LastName             string                `form:"lastName" json:"lastName"`
+	ProfilePicture       *multipart.FileHeader `form:"profilePicture" json:"-" validate:"omitempty,max_size=10485760"`
+	RemoveProfilePicture bool                  `form:"removeProfilePicture" json:"removeProfilePicture,omitempty"`
 }

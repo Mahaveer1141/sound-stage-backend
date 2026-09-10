@@ -1,7 +1,10 @@
 package user
 
 import (
+	"bytes"
+	"mime/multipart"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -111,5 +114,29 @@ func TestHandler_UpdateProfile(t *testing.T) {
 
 		assert.Equal(t, http.StatusInternalServerError, w.Code)
 		h.svc.AssertExpectations(t)
+	})
+
+	t.Run("failure: oversized profile picture returns 422", func(t *testing.T) {
+		h := newHandlerHarness(t)
+
+		var body bytes.Buffer
+		writer := multipart.NewWriter(&body)
+		_ = writer.WriteField("firstName", "Grace")
+
+		part, _ := writer.CreateFormFile("profilePicture", "huge.png")
+		part.Write(make([]byte, 11<<20))
+		writer.Close()
+
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		req := httptest.NewRequest(http.MethodPatch, "/users/me", &body)
+		req.Header.Set("Content-Type", writer.FormDataContentType())
+		c.Request = req
+		c.Set("userId", uint(42))
+
+		h.h.UpdateProfile(c)
+
+		assert.Equal(t, http.StatusUnprocessableEntity, w.Code)
+		h.svc.AssertNotCalled(t, "UpdateProfile", mock.Anything, mock.Anything)
 	})
 }

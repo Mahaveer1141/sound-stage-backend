@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/gin-gonic/gin/binding"
 	"github.com/go-playground/validator/v10"
 )
 
@@ -140,7 +141,7 @@ func (h *Handler) Logout(c *gin.Context) {
 func (h *Handler) SignUp(c *gin.Context) {
 	var input SignUpParams
 
-	if err := c.ShouldBind(&input); err != nil {
+	if err := bindSignUpRequest(c, &input); err != nil {
 		httpx.ErrorResponse(c, http.StatusBadRequest, "Invalid request body")
 		return
 	}
@@ -157,4 +158,11 @@ func (h *Handler) SignUp(c *gin.Context) {
 	}
 
 	httpx.SuccessResponse(c, http.StatusOK, "User Signed Up successfully", apitoken.ToTokenResponse(result))
+}
+
+func bindSignUpRequest(c *gin.Context, obj any) error {
+	if strings.HasPrefix(c.ContentType(), binding.MIMEMultipartPOSTForm) {
+		return c.ShouldBindWith(obj, binding.FormMultipart)
+	}
+	return c.ShouldBind(obj)
 }

@@ -4,8 +4,10 @@ import (
 	"net/http"
 	"sound-stage-backend/internal/pkg/current"
 	"sound-stage-backend/internal/pkg/httpx"
+	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/gin-gonic/gin/binding"
 	"github.com/go-playground/validator/v10"
 )
 
@@ -38,7 +40,7 @@ func (h *Handler) UpdateProfile(c *gin.Context) {
 	userId, _ := current.UserID(c)
 
 	var input UpdateUserParams
-	if err := c.ShouldBind(&input); err != nil {
+	if err := bindRequest(c, &input); err != nil {
 		httpx.ErrorResponse(c, http.StatusBadRequest, "Invalid request payload")
 		return
 	}
@@ -54,4 +56,11 @@ func (h *Handler) UpdateProfile(c *gin.Context) {
 	}
 
 	httpx.SuccessResponse(c, http.StatusOK, "Profile updated successfully", BuildUserResponse(u, true))
+}
+
+func bindRequest(c *gin.Context, obj any) error {
+	if strings.HasPrefix(c.ContentType(), binding.MIMEMultipartPOSTForm) {
+		return c.ShouldBindWith(obj, binding.FormMultipart)
+	}
+	return c.ShouldBind(obj)
 }

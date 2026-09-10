@@ -14,8 +14,16 @@ func NewValidator() *validator.Validate {
 }
 
 func maxFileSizeValidator(fl validator.FieldLevel) bool {
-	fh, ok := fl.Field().Interface().(*multipart.FileHeader)
-	if !ok || fh == nil {
+	var size int64
+	switch v := fl.Field().Interface().(type) {
+	case *multipart.FileHeader:
+		if v == nil {
+			return true
+		}
+		size = v.Size
+	case multipart.FileHeader:
+		size = v.Size
+	default:
 		return true
 	}
 	param := fl.Param()
@@ -26,5 +34,5 @@ func maxFileSizeValidator(fl validator.FieldLevel) bool {
 	if err != nil {
 		return false
 	}
-	return fh.Size <= maxBytes
+	return size <= maxBytes
 }

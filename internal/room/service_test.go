@@ -120,6 +120,11 @@ func (m *mockFileAttachmentService) UploadOrReplaceFile(ctx context.Context, exi
 	return att, args.Error(1)
 }
 
+func (m *mockFileAttachmentService) DeleteFile(ctx context.Context, attachmentID uint) error {
+	args := m.Called(ctx, attachmentID)
+	return args.Error(0)
+}
+
 type harness struct {
 	repo      *mockRepository
 	roomUser  *mockRoomUserService

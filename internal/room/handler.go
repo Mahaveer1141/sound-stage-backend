@@ -8,8 +8,10 @@ import (
 	"sound-stage-backend/internal/pkg/listopts"
 	"sound-stage-backend/internal/ws"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/gin-gonic/gin/binding"
 	"github.com/go-playground/validator/v10"
 )
 
@@ -40,7 +42,7 @@ func NewHandler(service roomService, hub webSocketBroadcaster) *Handler {
 func (h *Handler) Create(c *gin.Context) {
 	userId, _ := current.UserID(c)
 	var input CreateRoomParams
-	if err := c.ShouldBind(&input); err != nil {
+	if err := bindRoomRequest(c, &input); err != nil {
 		httpx.ErrorResponse(c, http.StatusBadRequest, "Invalid request payload")
 		return
 	}
@@ -70,7 +72,7 @@ func (h *Handler) Update(c *gin.Context) {
 	userId, _ := current.UserID(c)
 
 	var input UpdateRoomParams
-	if err := c.ShouldBind(&input); err != nil {
+	if err := bindRoomRequest(c, &input); err != nil {
 		httpx.ErrorResponse(c, http.StatusBadRequest, "Invalid request payload")
 		return
 	}
@@ -181,4 +183,11 @@ func (h *Handler) UpdatePrivateCode(c *gin.Context) {
 	}
 
 	httpx.SuccessResponse(c, http.StatusOK, "Private code updated successfully", nil)
+}
+
+func bindRoomRequest(c *gin.Context, obj any) error {
+	if strings.HasPrefix(c.ContentType(), binding.MIMEMultipartPOSTForm) {
+		return c.ShouldBindWith(obj, binding.FormMultipart)
+	}
+	return c.ShouldBind(obj)
 }

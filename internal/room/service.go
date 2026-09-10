@@ -45,6 +45,7 @@ type authorizer interface {
 type fileAttachmentService interface {
 	UploadOrReplaceFile(ctx context.Context, existing *fileattachment.FileAttachment,
 		in fileattachment.UploadFileParams) (*fileattachment.FileAttachment, error)
+	DeleteFile(ctx context.Context, attachmentID uint) error
 }
 
 type Service struct {
@@ -191,6 +192,7 @@ func (s *Service) Update(id, userID uint, input *UpdateRoomParams) (*Room, error
 	if err != nil {
 		return nil, err
 	}
+	existing := room
 	if input.Type == RoomTypePublic {
 		input.privateCode = nil
 	} else {
@@ -211,7 +213,7 @@ func (s *Service) Update(id, userID uint, input *UpdateRoomParams) (*Room, error
 	}
 
 	if input.LogoImage != nil {
-		att, err := s.file.UploadOrReplaceFile(context.Background(), nil, fileattachment.UploadFileParams{
+		att, err := s.file.UploadOrReplaceFile(context.Background(), existing.LogoImage, fileattachment.UploadFileParams{
 			OwnerType: room.TableName(),
 			OwnerID:   room.ID,
 			Context:   fileattachment.ContextRoomLogo,
@@ -221,9 +223,15 @@ func (s *Service) Update(id, userID uint, input *UpdateRoomParams) (*Room, error
 			return nil, err
 		}
 		room.LogoImage = att
+	} else if input.RemoveLogoImage && existing.LogoImage != nil {
+		if err := s.file.DeleteFile(context.Background(), existing.LogoImage.ID); err != nil {
+			return nil, err
+		}
+		room.LogoImage = nil
 	}
+
 	if input.CoverImage != nil {
-		att, err := s.file.UploadOrReplaceFile(context.Background(), nil, fileattachment.UploadFileParams{
+		att, err := s.file.UploadOrReplaceFile(context.Background(), existing.CoverImage, fileattachment.UploadFileParams{
 			OwnerType: room.TableName(),
 			OwnerID:   room.ID,
 			Context:   fileattachment.ContextRoomCover,
@@ -233,6 +241,11 @@ func (s *Service) Update(id, userID uint, input *UpdateRoomParams) (*Room, error
 			return nil, err
 		}
 		room.CoverImage = att
+	} else if input.RemoveCoverImage && existing.CoverImage != nil {
+		if err := s.file.DeleteFile(context.Background(), existing.CoverImage.ID); err != nil {
+			return nil, err
+		}
+		room.CoverImage = nil
 	}
 
 	if err := s.loadRoomCounts(room); err != nil {

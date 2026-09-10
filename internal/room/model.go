@@ -59,15 +59,17 @@ type CreateRoomParams struct {
 }
 
 type UpdateRoomParams struct {
-	Name          string                `json:"name" form:"name" validate:"required"`
-	Description   string                `json:"description" form:"description" validate:"omitempty"`
-	CoverImage    *multipart.FileHeader `json:"-" form:"coverImage" validate:"omitempty,max_size=10485760"`
-	LogoImage     *multipart.FileHeader `json:"-" form:"logoImage" validate:"omitempty,max_size=10485760"`
-	CategoryIds   []uint                `json:"categoryIds" form:"categoryIds" validate:"lte=3"`
-	TagIds        []uint                `json:"tagIds" form:"tagIds" validate:"lte=5"`
-	Type          RoomType              `json:"type" form:"type" validate:"required"`
-	IsChatEnabled bool                  `json:"isChatEnabled" form:"isChatEnabled" validate:"boolean"`
-	privateCode   *string
+	Name             string                `json:"name" form:"name" validate:"required"`
+	Description      string                `json:"description" form:"description" validate:"omitempty"`
+	CoverImage       *multipart.FileHeader `json:"-" form:"coverImage" validate:"omitempty,max_size=10485760"`
+	LogoImage        *multipart.FileHeader `json:"-" form:"logoImage" validate:"omitempty,max_size=10485760"`
+	RemoveCoverImage bool                  `json:"removeCoverImage" form:"removeCoverImage"`
+	RemoveLogoImage  bool                  `json:"removeLogoImage" form:"removeLogoImage"`
+	CategoryIds      []uint                `json:"categoryIds" form:"categoryIds" validate:"lte=3"`
+	TagIds           []uint                `json:"tagIds" form:"tagIds" validate:"lte=5"`
+	Type             RoomType              `json:"type" form:"type" validate:"required"`
+	IsChatEnabled    bool                  `json:"isChatEnabled" form:"isChatEnabled" validate:"boolean"`
+	privateCode      *string
 }
 
 type RoomResponse struct {

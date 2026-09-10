@@ -18,6 +18,7 @@ type repository interface {
 type fileAttachmentService interface {
 	UploadOrReplaceFile(ctx context.Context, existing *fileattachment.FileAttachment,
 		in fileattachment.UploadFileParams) (*fileattachment.FileAttachment, error)
+	DeleteFile(ctx context.Context, attachmentID uint) error
 }
 
 type Service struct {
@@ -86,6 +87,11 @@ func (s *Service) UpdateProfile(id uint, input *UpdateUserParams) (*User, error)
 			return nil, err
 		}
 		user.ProfilePicture = att
+	} else if input.RemoveProfilePicture && user.ProfilePicture != nil {
+		if err := s.file.DeleteFile(context.Background(), user.ProfilePicture.ID); err != nil {
+			return nil, err
+		}
+		user.ProfilePicture = nil
 	}
 
 	if err := s.repo.Save(user); err != nil {

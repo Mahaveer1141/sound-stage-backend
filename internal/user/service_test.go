@@ -49,6 +49,11 @@ func (m *mockFileAttachmentService) UploadOrReplaceFile(ctx context.Context, exi
 	return att, args.Error(1)
 }
 
+func (m *mockFileAttachmentService) DeleteFile(ctx context.Context, attachmentID uint) error {
+	args := m.Called(ctx, attachmentID)
+	return args.Error(0)
+}
+
 func TestService_FindByID(t *testing.T) {
 	t.Run("success: returns the exact record from repo", func(t *testing.T) {
 		repo := new(mockRepository)
