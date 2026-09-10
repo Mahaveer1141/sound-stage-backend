@@ -16,12 +16,17 @@ func (m *mockRepository) FindByEmail(email string) (*OTPRequest, error) {
 	o, _ := args.Get(0).(*OTPRequest)
 	return o, args.Error(1)
 }
+func (m *mockRepository) FindVerifiedByEmail(email string) (*OTPRequest, error) {
+	args := m.Called(email)
+	o, _ := args.Get(0).(*OTPRequest)
+	return o, args.Error(1)
+}
 func (m *mockRepository) Create(input CreateOTPRequestInput) (*OTPRequest, error) {
 	args := m.Called(input)
 	o, _ := args.Get(0).(*OTPRequest)
 	return o, args.Error(1)
 }
-func (m *mockRepository) Deactivate(id uint) error {
+func (m *mockRepository) MarkAsVerified(id uint) error {
 	args := m.Called(id)
 	return args.Error(0)
 }
@@ -84,13 +89,41 @@ func TestService_Create(t *testing.T) {
 	})
 }
 
-func TestService_Deactivate(t *testing.T) {
-	t.Run("success: delegates to repo", func(t *testing.T) {
+func TestService_FindVerifiedByEmail(t *testing.T) {
+	t.Run("success: returns the record from repo", func(t *testing.T) {
 		repo := new(mockRepository)
-		repo.On("Deactivate", uint(9)).Return(nil)
+		want := &OTPRequest{OTP: "123456"}
+		repo.On("FindVerifiedByEmail", "a@example.com").Return(want, nil)
 
 		svc := NewService(repo)
-		err := svc.Deactivate(9)
+		got, err := svc.FindVerifiedByEmail("a@example.com")
+
+		require.NoError(t, err)
+		assert.Same(t, want, got)
+		repo.AssertExpectations(t)
+	})
+
+	t.Run("failure: repo error is propagated unchanged", func(t *testing.T) {
+		repo := new(mockRepository)
+		repoErr := errors.New("not found")
+		repo.On("FindVerifiedByEmail", "missing@example.com").Return(nil, repoErr)
+
+		svc := NewService(repo)
+		got, err := svc.FindVerifiedByEmail("missing@example.com")
+
+		require.Nil(t, got)
+		require.ErrorIs(t, err, repoErr)
+		repo.AssertExpectations(t)
+	})
+}
+
+func TestService_MarkAsVerified(t *testing.T) {
+	t.Run("success: delegates to repo", func(t *testing.T) {
+		repo := new(mockRepository)
+		repo.On("MarkAsVerified", uint(9)).Return(nil)
+
+		svc := NewService(repo)
+		err := svc.MarkAsVerified(9)
 
 		require.NoError(t, err)
 		repo.AssertExpectations(t)
@@ -99,10 +132,10 @@ func TestService_Deactivate(t *testing.T) {
 	t.Run("failure: repo error is propagated unchanged", func(t *testing.T) {
 		repo := new(mockRepository)
 		repoErr := errors.New("update failed")
-		repo.On("Deactivate", uint(9)).Return(repoErr)
+		repo.On("MarkAsVerified", uint(9)).Return(repoErr)
 
 		svc := NewService(repo)
-		err := svc.Deactivate(9)
+		err := svc.MarkAsVerified(9)
 
 		require.ErrorIs(t, err, repoErr)
 		repo.AssertExpectations(t)

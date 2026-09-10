@@ -191,24 +191,58 @@ func TestRepo_Create_Integration(t *testing.T) {
 	})
 }
 
-func TestRepo_Deactivate_Integration(t *testing.T) {
-	t.Run("deactivates the given request only", func(t *testing.T) {
+func TestRepo_MarkAsVerified_Integration(t *testing.T) {
+	t.Run("marks request as verified and inactive", func(t *testing.T) {
 		db := testutil.NewIntegrationDB(t, &OTPRequest{}, &user.User{})
 		repo := NewRepo(db)
 
 		target, err := repo.Create(CreateOTPRequestInput{Email: strPtr("a@example.com"), OTP: "111111"})
 		require.NoError(t, err)
-		untouched, err := repo.Create(CreateOTPRequestInput{Email: strPtr("b@example.com"), OTP: "222222"})
+
+		require.NoError(t, repo.MarkAsVerified(target.ID))
+
+		var reloaded OTPRequest
+		require.NoError(t, db.First(&reloaded, target.ID).Error)
+		require.False(t, reloaded.IsActive)
+		require.True(t, reloaded.IsVerified)
+	})
+}
+
+func TestRepo_FindVerifiedByEmail_Integration(t *testing.T) {
+	t.Run("returns the most recent verified request for the email", func(t *testing.T) {
+		db := testutil.NewIntegrationDB(t, &OTPRequest{}, &user.User{})
+		repo := NewRepo(db)
+
+		older := OTPRequest{
+			BaseModel: model.BaseModel{CreatedAt: time.Now().Add(-2 * time.Minute)},
+			Email:     strPtr("user@example.com"),
+			OTP:       "111111",
+			ExpiresAt: time.Now().Add(time.Hour),
+			IsActive:  true,
+		}
+		require.NoError(t, db.Create(&older).Error)
+		require.NoError(t, repo.MarkAsVerified(older.ID))
+
+		verified, err := repo.Create(CreateOTPRequestInput{Email: strPtr("user@example.com"), OTP: "222222"})
+		require.NoError(t, err)
+		require.NoError(t, repo.MarkAsVerified(verified.ID))
+
+		got, err := repo.FindVerifiedByEmail("USER@example.com")
+		require.NoError(t, err)
+		require.NotNil(t, got)
+		require.Equal(t, "222222", got.OTP)
+	})
+
+	t.Run("does not return unverified requests", func(t *testing.T) {
+		db := testutil.NewIntegrationDB(t, &OTPRequest{}, &user.User{})
+		repo := NewRepo(db)
+
+		_, err := repo.Create(CreateOTPRequestInput{Email: strPtr("user@example.com"), OTP: "111111"})
 		require.NoError(t, err)
 
-		require.NoError(t, repo.Deactivate(target.ID))
-
-		var reloadedTarget OTPRequest
-		require.NoError(t, db.First(&reloadedTarget, target.ID).Error)
-		require.False(t, reloadedTarget.IsActive)
-
-		var reloadedUntouched OTPRequest
-		require.NoError(t, db.First(&reloadedUntouched, untouched.ID).Error)
-		require.True(t, reloadedUntouched.IsActive)
+		got, err := repo.FindVerifiedByEmail("user@example.com")
+		require.Error(t, err)
+		require.Nil(t, got)
+		require.ErrorIs(t, err, gorm.ErrRecordNotFound)
 	})
 }

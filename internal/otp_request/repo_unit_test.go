@@ -229,7 +229,7 @@ func TestRepo_Create_Unit(t *testing.T) {
 			WithArgs(sqlmock.AnyArg(), driver.Value("user@example.com")).
 			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
 		mock.ExpectQuery(regexp.QuoteMeta(
-			`INSERT INTO "otp_requests" ("created_at","updated_at","email","otp","user_id","expires_at","is_active") VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING "id"`)).
+			`INSERT INTO "otp_requests" ("created_at","updated_at","email","otp","user_id","expires_at","is_active","is_verified") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "id"`)).
 			WithArgs(
 				sqlmock.AnyArg(),
 				sqlmock.AnyArg(),
@@ -238,6 +238,7 @@ func TestRepo_Create_Unit(t *testing.T) {
 				nil,
 				sqlmock.AnyArg(),
 				driver.Value(true),
+				driver.Value(false),
 			).
 			WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(2))
 		mock.ExpectCommit()
@@ -269,7 +270,7 @@ func TestRepo_Create_Unit(t *testing.T) {
 			WithArgs(sqlmock.AnyArg(), driver.Value(uint(10))).
 			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
 		mock.ExpectQuery(regexp.QuoteMeta(
-			`INSERT INTO "otp_requests" ("created_at","updated_at","email","otp","user_id","expires_at","is_active") VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING "id"`)).
+			`INSERT INTO "otp_requests" ("created_at","updated_at","email","otp","user_id","expires_at","is_active","is_verified") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "id"`)).
 			WithArgs(
 				sqlmock.AnyArg(),
 				sqlmock.AnyArg(),
@@ -278,6 +279,7 @@ func TestRepo_Create_Unit(t *testing.T) {
 				driver.Value(uint(10)),
 				sqlmock.AnyArg(),
 				driver.Value(true),
+				driver.Value(false),
 			).
 			WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(3))
 		mock.ExpectCommit()
@@ -358,7 +360,7 @@ func TestRepo_Create_Unit(t *testing.T) {
 			WithArgs(sqlmock.AnyArg(), driver.Value(uint(7))).
 			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
 		mock.ExpectQuery(regexp.QuoteMeta(
-			`INSERT INTO "otp_requests" ("created_at","updated_at","email","otp","user_id","expires_at","is_active") VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING "id"`)).
+			`INSERT INTO "otp_requests" ("created_at","updated_at","email","otp","user_id","expires_at","is_active","is_verified") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "id"`)).
 			WithArgs(
 				sqlmock.AnyArg(),
 				sqlmock.AnyArg(),
@@ -367,6 +369,7 @@ func TestRepo_Create_Unit(t *testing.T) {
 				driver.Value(uint(7)),
 				sqlmock.AnyArg(),
 				driver.Value(true),
+				driver.Value(false),
 			).
 			WillReturnError(assert.AnError)
 		mock.ExpectRollback()
@@ -382,19 +385,19 @@ func TestRepo_Create_Unit(t *testing.T) {
 	})
 }
 
-func TestRepo_Deactivate_Unit(t *testing.T) {
-	t.Run("deactivates the given request", func(t *testing.T) {
+func TestRepo_MarkAsVerified_Unit(t *testing.T) {
+	t.Run("sets is_verified and deactivates the request", func(t *testing.T) {
 		gdb, mock := testutil.NewMockDB(t)
 		repo := NewRepo(gdb)
 
 		mock.ExpectBegin()
 		mock.ExpectExec(regexp.QuoteMeta(
-			`UPDATE "otp_requests" SET "is_active"=$1,"updated_at"=$2 WHERE id = $3`)).
-			WithArgs(driver.Value(false), sqlmock.AnyArg(), driver.Value(uint(3))).
+			`UPDATE "otp_requests" SET "updated_at"=$1,"is_active"=$2,"is_verified"=$3 WHERE id = $4`)).
+			WithArgs(sqlmock.AnyArg(), driver.Value(false), driver.Value(true), driver.Value(uint(3))).
 			WillReturnResult(sqlmock.NewResult(0, 1))
 		mock.ExpectCommit()
 
-		err := repo.Deactivate(3)
+		err := repo.MarkAsVerified(3)
 
 		require.NoError(t, err)
 		assert.NoError(t, mock.ExpectationsWereMet())
@@ -406,14 +409,54 @@ func TestRepo_Deactivate_Unit(t *testing.T) {
 
 		mock.ExpectBegin()
 		mock.ExpectExec(regexp.QuoteMeta(
-			`UPDATE "otp_requests" SET "is_active"=$1,"updated_at"=$2 WHERE id = $3`)).
-			WithArgs(driver.Value(false), sqlmock.AnyArg(), driver.Value(uint(3))).
+			`UPDATE "otp_requests" SET "updated_at"=$1,"is_active"=$2,"is_verified"=$3 WHERE id = $4`)).
+			WithArgs(sqlmock.AnyArg(), driver.Value(false), driver.Value(true), driver.Value(uint(3))).
 			WillReturnError(assert.AnError)
 		mock.ExpectRollback()
 
-		err := repo.Deactivate(3)
+		err := repo.MarkAsVerified(3)
 
 		require.Error(t, err)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+}
+
+func TestRepo_FindVerifiedByEmail_Unit(t *testing.T) {
+	t.Run("returns verified request when found", func(t *testing.T) {
+		gdb, mock := testutil.NewMockDB(t)
+		repo := NewRepo(gdb)
+
+		cols := []string{"id", "email", "otp", "user_id", "expires_at", "is_active", "is_verified"}
+		mock.ExpectQuery(`(?s)SELECT .* FROM "otp_requests" WHERE .* is_verified = .* is_active = .* ORDER BY created_at DESC.* LIMIT \$4`).
+			WithArgs("user@example.com", true, false, 1).
+			WillReturnRows(
+				sqlmock.NewRows(cols).
+					AddRow(1, "user@example.com", "123456", nil, time.Now().Add(time.Hour), false, true),
+			)
+
+		got, err := repo.FindVerifiedByEmail("USER@example.com")
+
+		require.NoError(t, err)
+		require.NotNil(t, got)
+		assert.Equal(t, uint(1), got.ID)
+		assert.True(t, got.IsVerified)
+		assert.False(t, got.IsActive)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("returns error when not found", func(t *testing.T) {
+		gdb, mock := testutil.NewMockDB(t)
+		repo := NewRepo(gdb)
+
+		mock.ExpectQuery(`(?s)SELECT .* FROM "otp_requests" WHERE .* is_verified = .* is_active = .* ORDER BY created_at DESC.* LIMIT \$4`).
+			WithArgs("missing@example.com", true, false, 1).
+			WillReturnError(gorm.ErrRecordNotFound)
+
+		got, err := repo.FindVerifiedByEmail("missing@example.com")
+
+		require.Error(t, err)
+		require.Nil(t, got)
+		assert.ErrorIs(t, err, gorm.ErrRecordNotFound)
 		assert.NoError(t, mock.ExpectationsWereMet())
 	})
 }

@@ -19,8 +19,9 @@ type userService interface {
 
 type otpService interface {
 	FindByEmail(email string) (*otprequest.OTPRequest, error)
+	FindVerifiedByEmail(email string) (*otprequest.OTPRequest, error)
 	Create(input otprequest.CreateOTPRequestInput) (*otprequest.OTPRequest, error)
-	Deactivate(id uint) error
+	MarkAsVerified(id uint) error
 }
 
 type tokenManager interface {
@@ -87,7 +88,7 @@ func (s *Service) VerifyOTP(params VerifyOTPParams) (*apitoken.TokenResult, erro
 		return nil, httpx.ErrInvalidOTP
 	}
 
-	err = s.otpRequestService.Deactivate(otpRequest.ID)
+	err = s.otpRequestService.MarkAsVerified(otpRequest.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -118,6 +119,11 @@ func (s *Service) VerifyOTP(params VerifyOTPParams) (*apitoken.TokenResult, erro
 }
 
 func (s *Service) SignUp(input *SignUpParams) (*apitoken.TokenResult, error) {
+	otpRequest, err := s.otpRequestService.FindVerifiedByEmail(input.Email)
+	if err != nil || otpRequest.IsExpired() {
+		return nil, httpx.ErrOTPNotVerified
+	}
+
 	user, err := s.userService.Create(&user.CreateUserParams{
 		Email:          input.Email,
 		FirstName:      input.FirstName,

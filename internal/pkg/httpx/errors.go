@@ -22,6 +22,7 @@ var (
 	ErrInvalidOTP            = errors.New("Invalid OTP")
 	ErrUserOrEmailRequired   = errors.New("either user_id or email must be provided")
 	ErrOTPRequestAlreadyMade = errors.New("OTP request already made within the last minute, please wait")
+	ErrOTPNotVerified        = errors.New("OTP not verified for this email")
 )
 
 // Database/Record errors

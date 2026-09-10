@@ -40,12 +40,17 @@ func (m *mockOTPService) FindByEmail(email string) (*otprequest.OTPRequest, erro
 	o, _ := args.Get(0).(*otprequest.OTPRequest)
 	return o, args.Error(1)
 }
+func (m *mockOTPService) FindVerifiedByEmail(email string) (*otprequest.OTPRequest, error) {
+	args := m.Called(email)
+	o, _ := args.Get(0).(*otprequest.OTPRequest)
+	return o, args.Error(1)
+}
 func (m *mockOTPService) Create(input otprequest.CreateOTPRequestInput) (*otprequest.OTPRequest, error) {
 	args := m.Called(input)
 	o, _ := args.Get(0).(*otprequest.OTPRequest)
 	return o, args.Error(1)
 }
-func (m *mockOTPService) Deactivate(id uint) error {
+func (m *mockOTPService) MarkAsVerified(id uint) error {
 	args := m.Called(id)
 	return args.Error(0)
 }
@@ -122,7 +127,7 @@ func TestService_RequestOTP(t *testing.T) {
 		h.users.On("FindByEmail", "a@example.com").Return(existing, nil)
 		h.otps.On("Create", mock.MatchedBy(func(in otprequest.CreateOTPRequestInput) bool {
 			return in.UserID != nil && *in.UserID == 42 && in.Email == nil && len(in.OTP) == 6
-		})).Return(&otprequest.OTPRequest{}, nil)
+		})).Return(&otprequest.OTPRequest{ExpiresAt: futureTime()}, nil)
 		h.mail.On("SendOTPEmail", mock.Anything, "a@example.com", mock.Anything).Return()
 
 		got, err := h.svc.RequestOTP("a@example.com")
@@ -138,7 +143,7 @@ func TestService_RequestOTP(t *testing.T) {
 		h.users.On("FindByEmail", "new@example.com").Return(nil, nil)
 		h.otps.On("Create", mock.MatchedBy(func(in otprequest.CreateOTPRequestInput) bool {
 			return in.UserID == nil && in.Email != nil && *in.Email == "new@example.com"
-		})).Return(&otprequest.OTPRequest{}, nil)
+		})).Return(&otprequest.OTPRequest{ExpiresAt: futureTime()}, nil)
 		h.mail.On("SendOTPEmail", mock.Anything, "new@example.com", mock.Anything).Return()
 
 		got, err := h.svc.RequestOTP("new@example.com")
@@ -156,7 +161,7 @@ func TestService_RequestOTP(t *testing.T) {
 		h.otps.On("Create", mock.MatchedBy(func(in otprequest.CreateOTPRequestInput) bool {
 			captured = in.OTP
 			return true
-		})).Return(&otprequest.OTPRequest{}, nil)
+		})).Return(&otprequest.OTPRequest{ExpiresAt: futureTime()}, nil)
 		h.mail.On("SendOTPEmail", mock.Anything, mock.Anything, mock.Anything).Return()
 
 		_, err := h.svc.RequestOTP("a@example.com")
@@ -204,7 +209,7 @@ func TestService_VerifyOTP(t *testing.T) {
 		otpReq := otprequest.OTPRequest{UserID: &uid, OTP: "123456", IsActive: true, ExpiresAt: futureTime()}
 		otpReq.ID = 100
 		h.otps.On("FindByEmail", "a@example.com").Return(&otpReq, nil)
-		h.otps.On("Deactivate", uint(100)).Return(nil)
+		h.otps.On("MarkAsVerified", uint(100)).Return(nil)
 		access := newAPIToken(201, "access")
 		refresh := newAPIToken(202, "refresh")
 		h.tokens.On("CreateToken", uid, apitoken.AccessToken).Return(access, nil)
@@ -225,7 +230,7 @@ func TestService_VerifyOTP(t *testing.T) {
 		otpReq := otprequest.OTPRequest{UserID: nil, OTP: "654321", IsActive: true, ExpiresAt: futureTime()}
 		otpReq.ID = 101
 		h.otps.On("FindByEmail", "new@example.com").Return(&otpReq, nil)
-		h.otps.On("Deactivate", uint(101)).Return(nil)
+		h.otps.On("MarkAsVerified", uint(101)).Return(nil)
 
 		got, err := h.svc.VerifyOTP(VerifyOTPParams{Email: "new@example.com", OTP: "654321"})
 
@@ -247,7 +252,7 @@ func TestService_VerifyOTP(t *testing.T) {
 
 		require.Nil(t, got)
 		require.ErrorIs(t, err, httpx.ErrInvalidOTP)
-		h.otps.AssertNotCalled(t, "Deactivate", mock.Anything)
+		h.otps.AssertNotCalled(t, "MarkAsVerified", mock.Anything)
 		h.tokens.AssertNotCalled(t, "CreateToken", mock.Anything, mock.Anything)
 		h.assertAllExpectations(t)
 	})
@@ -263,7 +268,7 @@ func TestService_VerifyOTP(t *testing.T) {
 
 		require.Nil(t, got)
 		require.ErrorIs(t, err, httpx.ErrInvalidOTP)
-		h.otps.AssertNotCalled(t, "Deactivate", mock.Anything)
+		h.otps.AssertNotCalled(t, "MarkAsVerified", mock.Anything)
 		h.assertAllExpectations(t)
 	})
 
@@ -300,7 +305,7 @@ func TestService_VerifyOTP(t *testing.T) {
 		otpReq.ID = 100
 		h.otps.On("FindByEmail", "a@example.com").Return(&otpReq, nil)
 		deactivateErr := errors.New("deactivate failed")
-		h.otps.On("Deactivate", uint(100)).Return(deactivateErr)
+		h.otps.On("MarkAsVerified", uint(100)).Return(deactivateErr)
 
 		got, err := h.svc.VerifyOTP(VerifyOTPParams{Email: "a@example.com", OTP: "123456"})
 
@@ -316,7 +321,7 @@ func TestService_VerifyOTP(t *testing.T) {
 		otpReq := otprequest.OTPRequest{UserID: &uid, OTP: "123456", IsActive: true, ExpiresAt: futureTime()}
 		otpReq.ID = 100
 		h.otps.On("FindByEmail", "a@example.com").Return(&otpReq, nil)
-		h.otps.On("Deactivate", uint(100)).Return(nil)
+		h.otps.On("MarkAsVerified", uint(100)).Return(nil)
 		tokenErr := errors.New("token creation failed")
 		h.tokens.On("CreateToken", uid, apitoken.AccessToken).Return(nil, tokenErr)
 
@@ -335,7 +340,7 @@ func TestService_VerifyOTP(t *testing.T) {
 		otpReq := otprequest.OTPRequest{UserID: &uid, OTP: "123456", IsActive: true, ExpiresAt: futureTime()}
 		otpReq.ID = 100
 		h.otps.On("FindByEmail", "a@example.com").Return(&otpReq, nil)
-		h.otps.On("Deactivate", uint(100)).Return(nil)
+		h.otps.On("MarkAsVerified", uint(100)).Return(nil)
 		h.tokens.On("CreateToken", uid, apitoken.AccessToken).Return(newAPIToken(1, "access"), nil)
 		tokenErr := errors.New("refresh token creation failed")
 		h.tokens.On("CreateToken", uid, apitoken.RefreshToken).Return(nil, tokenErr)
@@ -354,7 +359,7 @@ func TestService_VerifyOTP(t *testing.T) {
 		otpReq := otprequest.OTPRequest{UserID: &uid, OTP: "123456", IsActive: true, ExpiresAt: futureTime()}
 		otpReq.ID = 100
 		h.otps.On("FindByEmail", "a@example.com").Return(&otpReq, nil)
-		h.otps.On("Deactivate", uint(100)).Return(nil)
+		h.otps.On("MarkAsVerified", uint(100)).Return(nil)
 		h.tokens.On("CreateToken", uid, apitoken.AccessToken).Return(newAPIToken(1, "access"), nil)
 		h.tokens.On("CreateToken", uid, apitoken.RefreshToken).Return(newAPIToken(2, "refresh"), nil)
 		loginErr := errors.New("update failed")
@@ -371,6 +376,7 @@ func TestService_VerifyOTP(t *testing.T) {
 func TestService_SignUp(t *testing.T) {
 	t.Run("creates user and issues both tokens", func(t *testing.T) {
 		h := newHarness()
+		h.otps.On("FindVerifiedByEmail", "new@example.com").Return(&otprequest.OTPRequest{ExpiresAt: futureTime()}, nil)
 		created := newUser(55)
 		h.users.On("Create", mock.MatchedBy(func(p *user.CreateUserParams) bool {
 			return p.Email == "new@example.com" && p.FirstName == "Ada" && p.LastName == "Lovelace"
@@ -388,8 +394,35 @@ func TestService_SignUp(t *testing.T) {
 		h.assertAllExpectations(t)
 	})
 
+	t.Run("requires a verified OTP for the email", func(t *testing.T) {
+		h := newHarness()
+		h.otps.On("FindVerifiedByEmail", "new@example.com").Return(nil, errors.New("not found"))
+
+		got, err := h.svc.SignUp(&SignUpParams{Email: "new@example.com", FirstName: "Ada"})
+
+		require.Nil(t, got)
+		require.ErrorIs(t, err, httpx.ErrOTPNotVerified)
+		h.users.AssertNotCalled(t, "Create", mock.Anything)
+		h.tokens.AssertNotCalled(t, "CreateToken", mock.Anything, mock.Anything)
+		h.assertAllExpectations(t)
+	})
+
+	t.Run("rejects a verified but expired OTP", func(t *testing.T) {
+		h := newHarness()
+		h.otps.On("FindVerifiedByEmail", "new@example.com").Return(&otprequest.OTPRequest{ExpiresAt: pastTime()}, nil)
+
+		got, err := h.svc.SignUp(&SignUpParams{Email: "new@example.com", FirstName: "Ada"})
+
+		require.Nil(t, got)
+		require.ErrorIs(t, err, httpx.ErrOTPNotVerified)
+		h.users.AssertNotCalled(t, "Create", mock.Anything)
+		h.tokens.AssertNotCalled(t, "CreateToken", mock.Anything, mock.Anything)
+		h.assertAllExpectations(t)
+	})
+
 	t.Run("user creation failure is wrapped, not passed through raw", func(t *testing.T) {
 		h := newHarness()
+		h.otps.On("FindVerifiedByEmail", "dup@example.com").Return(&otprequest.OTPRequest{ExpiresAt: futureTime()}, nil)
 		createErr := errors.New("email already exists")
 		h.users.On("Create", mock.Anything).Return(nil, createErr)
 
@@ -405,6 +438,7 @@ func TestService_SignUp(t *testing.T) {
 
 	t.Run("access token failure aborts before refresh token creation", func(t *testing.T) {
 		h := newHarness()
+		h.otps.On("FindVerifiedByEmail", "new@example.com").Return(&otprequest.OTPRequest{ExpiresAt: futureTime()}, nil)
 		created := newUser(55)
 		h.users.On("Create", mock.Anything).Return(created, nil)
 		tokenErr := errors.New("token svc down")
@@ -420,6 +454,7 @@ func TestService_SignUp(t *testing.T) {
 
 	t.Run("refresh token failure is returned", func(t *testing.T) {
 		h := newHarness()
+		h.otps.On("FindVerifiedByEmail", "new@example.com").Return(&otprequest.OTPRequest{ExpiresAt: futureTime()}, nil)
 		created := newUser(55)
 		h.users.On("Create", mock.Anything).Return(created, nil)
 		h.tokens.On("CreateToken", uint(55), apitoken.AccessToken).Return(newAPIToken(1, "access"), nil)

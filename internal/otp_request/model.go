@@ -11,12 +11,13 @@ import (
 
 type OTPRequest struct {
 	model.BaseModel
-	Email     *string `validate:"email"`
-	OTP       string  `gorm:"not null" validate:"required"`
-	UserID    *uint
-	ExpiresAt time.Time  `gorm:"not null" validate:"required"`
-	IsActive  bool       `gorm:"not null" validate:"required"`
-	User      *user.User `gorm:"foreignKey:UserID" `
+	Email      *string `validate:"email"`
+	OTP        string  `gorm:"not null" validate:"required"`
+	UserID     *uint
+	ExpiresAt  time.Time  `gorm:"not null" validate:"required"`
+	IsActive   bool       `gorm:"not null" validate:"required"`
+	IsVerified bool       `gorm:"not null" validate:"required"`
+	User       *user.User `gorm:"foreignKey:UserID" `
 }
 
 func (OTPRequest) TableName() string {

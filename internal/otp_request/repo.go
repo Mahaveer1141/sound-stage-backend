@@ -38,6 +38,20 @@ func (r *Repo) FindByEmail(email string) (*OTPRequest, error) {
 	return &otpRequest, nil
 }
 
+func (r *Repo) FindVerifiedByEmail(email string) (*OTPRequest, error) {
+	var otpRequest OTPRequest
+	result := r.db.Where("LOWER(email) = ? AND is_verified = ? AND is_active = ?",
+		strings.ToLower(email), true, false).
+		Order("created_at DESC").
+		First(&otpRequest)
+
+	if result.Error != nil {
+		return nil, result.Error
+	}
+
+	return &otpRequest, nil
+}
+
 func (r *Repo) Create(otpInput CreateOTPRequestInput) (*OTPRequest, error) {
 	var otpRequest OTPRequest
 
@@ -75,6 +89,8 @@ func (r *Repo) Create(otpInput CreateOTPRequestInput) (*OTPRequest, error) {
 	return &otpRequest, nil
 }
 
-func (r *Repo) Deactivate(id uint) error {
-	return r.db.Model(&OTPRequest{}).Where("id = ?", id).Update("is_active", false).Error
+func (r *Repo) MarkAsVerified(id uint) error {
+	return r.db.Model(&OTPRequest{}).Where("id = ?", id).
+		Select("is_active", "is_verified").
+		Updates(&OTPRequest{IsActive: false, IsVerified: true}).Error
 }
