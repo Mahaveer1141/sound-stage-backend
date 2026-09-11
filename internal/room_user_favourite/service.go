@@ -1,15 +1,9 @@
 package roomuserfavourite
 
-import (
-	"sound-stage-backend/internal/pkg/listopts"
-)
-
 type repo interface {
 	Add(userID, roomID uint) error
 	Remove(userID, roomID uint) error
 	FindRoomIDsByUserID(userID uint, roomIDs []uint) ([]uint, error)
-	ListUserFavourites(userID uint, p listopts.Pagination) ([]RoomUserFavourite, error)
-	CountByUserID(userID uint) (int64, error)
 }
 
 type authorizer interface {
@@ -46,18 +40,4 @@ func (s *Service) FavouritedRoomIDs(userID uint, roomIDs []uint) (map[uint]bool,
 		out[id] = true
 	}
 	return out, nil
-}
-
-func (s *Service) ListUserFavourites(userID uint, p listopts.Pagination) ([]RoomUserFavourite, int64, error) {
-	favourites, err := s.repo.ListUserFavourites(userID, p)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	count, err := s.repo.CountByUserID(userID)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	return favourites, count, nil
 }

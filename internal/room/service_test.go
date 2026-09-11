@@ -76,6 +76,11 @@ func (m *mockRoomUserService) FindBy(userID, roomID uint) (*roomuser.RoomUser, e
 	ru, _ := args.Get(0).(*roomuser.RoomUser)
 	return ru, args.Error(1)
 }
+func (m *mockRoomUserService) FindAnyBy(userID, roomID uint) (*roomuser.RoomUser, error) {
+	args := m.Called(userID, roomID)
+	ru, _ := args.Get(0).(*roomuser.RoomUser)
+	return ru, args.Error(1)
+}
 func (m *mockRoomUserService) HasRoles(userID, roomID uint, permissions []role.RoleName) (bool, error) {
 	args := m.Called(userID, roomID, permissions)
 	return args.Bool(0), args.Error(1)
@@ -155,7 +160,7 @@ func TestService_FindByID(t *testing.T) {
 		want := &Room{Name: "Main Stage"}
 		tags := map[uint][]tag.Tag{1: {{Name: "jazz"}}}
 		h.repo.On("FindByID", uint(1)).Return(want, nil)
-		h.roomUser.On("FindBy", uint(7), uint(1)).Return(&roomuser.RoomUser{}, nil)
+		h.roomUser.On("FindAnyBy", uint(7), uint(1)).Return(&roomuser.RoomUser{}, nil)
 		h.repo.On("LoadTagsForRooms", []uint{1}).Return(tags, nil)
 		h.roomUser.On("CountByRoomIDs", []uint{0}, mock.Anything).Return(map[uint]int64{}, nil).Times(2)
 
@@ -168,10 +173,10 @@ func TestService_FindByID(t *testing.T) {
 		h.roomUser.AssertExpectations(t)
 	})
 
-	t.Run("failure: non-member gets ErrForbidden", func(t *testing.T) {
+	t.Run("failure: blocked member gets ErrForbidden", func(t *testing.T) {
 		h := newHarness(t)
 		h.repo.On("FindByID", uint(1)).Return(&Room{Name: "Main Stage"}, nil)
-		h.roomUser.On("FindBy", uint(7), uint(1)).Return(nil, nil)
+		h.roomUser.On("FindAnyBy", uint(7), uint(1)).Return(&roomuser.RoomUser{IsBlocked: true}, nil)
 
 		got, err := h.svc.FindByID(1, 7)
 
@@ -185,7 +190,7 @@ func TestService_FindByID(t *testing.T) {
 		h := newHarness(t)
 		findErr := errors.New("db down")
 		h.repo.On("FindByID", uint(1)).Return(&Room{Name: "Main Stage"}, nil)
-		h.roomUser.On("FindBy", uint(7), uint(1)).Return(nil, findErr)
+		h.roomUser.On("FindAnyBy", uint(7), uint(1)).Return(nil, findErr)
 
 		got, err := h.svc.FindByID(1, 7)
 
@@ -199,7 +204,7 @@ func TestService_FindByID(t *testing.T) {
 		h := newHarness(t)
 		tagsErr := errors.New("tags failed")
 		h.repo.On("FindByID", uint(99)).Return(&Room{Name: "Main Stage"}, nil)
-		h.roomUser.On("FindBy", uint(7), uint(99)).Return(&roomuser.RoomUser{}, nil)
+		h.roomUser.On("FindAnyBy", uint(7), uint(99)).Return(&roomuser.RoomUser{}, nil)
 		h.repo.On("LoadTagsForRooms", []uint{99}).Return(nil, tagsErr)
 
 		got, err := h.svc.FindByID(99, 7)

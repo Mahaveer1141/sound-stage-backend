@@ -8,10 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 
-	model "sound-stage-backend/internal/model"
 	"sound-stage-backend/internal/pkg/listopts"
 	"sound-stage-backend/internal/pkg/testutil"
-	"sound-stage-backend/internal/room"
 )
 
 func init() {
@@ -139,61 +137,6 @@ func TestHandler_Remove(t *testing.T) {
 		c.Set("userId", uint(20))
 
 		h.handler.Remove(c)
-
-		assert.Equal(t, http.StatusUnprocessableEntity, w.Code)
-		h.svc.AssertExpectations(t)
-	})
-}
-
-func TestHandler_ListUserFavourites(t *testing.T) {
-	t.Run("success: returns paginated favourite rooms", func(t *testing.T) {
-		h := newHandlerHarness(t)
-		favourites := []RoomUserFavourite{
-			{
-				BaseModel: model.BaseModel{ID: 1},
-				UserID:    20,
-				RoomID:    10,
-				Room: room.Room{
-					BaseModel:   model.BaseModel{ID: 10},
-					Name:        "Favourite Room",
-					Description: "A room",
-					Type:        room.RoomTypePublic,
-				},
-			},
-		}
-		p := listopts.Pagination{Page: 1, PageSize: 10}
-		h.svc.On("ListUserFavourites", uint(20), p).Return(favourites, int64(1), nil)
-
-		w, c := testutil.NewTestContext(http.MethodGet, "/users/current/favorites?page=1&pageSize=10", nil)
-		c.Set("userId", uint(20))
-
-		h.handler.ListUserFavourites(c)
-
-		assert.Equal(t, http.StatusOK, w.Code)
-		h.svc.AssertExpectations(t)
-	})
-
-	t.Run("failure: invalid pagination params returns 400", func(t *testing.T) {
-		h := newHandlerHarness(t)
-
-		w, c := testutil.NewTestContext(http.MethodGet, "/users/current/favorites?page=0&pageSize=10", nil)
-		c.Set("userId", uint(20))
-
-		h.handler.ListUserFavourites(c)
-
-		assert.Equal(t, http.StatusBadRequest, w.Code)
-		h.svc.AssertNotCalled(t, "ListUserFavourites", mock.Anything, mock.Anything)
-	})
-
-	t.Run("failure: service error returns 422", func(t *testing.T) {
-		h := newHandlerHarness(t)
-		p := listopts.Pagination{Page: 1, PageSize: 10}
-		h.svc.On("ListUserFavourites", uint(20), p).Return(nil, int64(0), assert.AnError)
-
-		w, c := testutil.NewTestContext(http.MethodGet, "/users/current/favorites?page=1&pageSize=10", nil)
-		c.Set("userId", uint(20))
-
-		h.handler.ListUserFavourites(c)
 
 		assert.Equal(t, http.StatusUnprocessableEntity, w.Code)
 		h.svc.AssertExpectations(t)

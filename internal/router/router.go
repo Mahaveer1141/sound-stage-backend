@@ -66,7 +66,6 @@ func Setup(cfg *config.Config, handlers *Handlers, tokenValidator middleware.Tok
 	{
 		users.GET("/current", handlers.User.CurrentUser)
 		users.PUT("/profile", handlers.User.UpdateProfile)
-		users.GET("/current/favorites", handlers.RoomUserFavourite.ListUserFavourites)
 		users.POST("/current/favorites", handlers.RoomUserFavourite.Add)
 		users.DELETE("/current/favorites/:roomId", handlers.RoomUserFavourite.Remove)
 	}
@@ -90,7 +89,7 @@ func Setup(cfg *config.Config, handlers *Handlers, tokenValidator middleware.Tok
 		rooms.PUT("/:id/users/:userId/role", handlers.RoomUser.UpdateUserRole)
 		rooms.PUT("/:id/users/:userId/mute", handlers.RoomUser.SetUserMuted)
 		rooms.DELETE("/:id/users/:userId", handlers.RoomUser.DeleteUser)
-		rooms.PUT("/:id/private-code", handlers.Room.UpdatePrivateCode)
+		rooms.PATCH("/:id/private-code", handlers.Room.UpdatePrivateCode)
 		rooms.GET("/:id/blocks", handlers.RoomUser.ListBlockedUsers)
 		rooms.POST("/:id/blocks", handlers.RoomUser.BlockUser)
 		rooms.DELETE("/:id/blocks/:userId", handlers.RoomUser.UnblockUser)

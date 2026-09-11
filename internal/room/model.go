@@ -99,7 +99,10 @@ type RoomFilter struct {
 	CategoryIds []uint    `form:"categoryIds"`
 	TagIds      []uint    `form:"tagIds"`
 	Type        *RoomType `form:"type"`
-	IsLive      *bool     `form:"isLive"`
+	Favourited  *bool     `form:"favourited"`
+	Mine        *bool     `form:"mine"`
+	Joined      *bool     `form:"joined"`
+	Live        *bool     `form:"live"`
 	UserID      uint      `form:"-"`
 }
 
@@ -161,12 +164,60 @@ func FilterByNotBlocked(userID uint) func(*gorm.DB) *gorm.DB {
 	}
 }
 
-func FilterByIsLive(isLive *bool) func(*gorm.DB) *gorm.DB {
+func FilterByFavourited(favourited *bool, userID uint) func(*gorm.DB) *gorm.DB {
 	return func(db *gorm.DB) *gorm.DB {
-		if isLive == nil {
+		if favourited == nil {
 			return db
 		}
-		if *isLive {
+		if *favourited {
+			return db.Where(
+				"EXISTS (SELECT 1 FROM room_user_favourites WHERE room_user_favourites.room_id = rooms.id AND room_user_favourites.user_id = ?)",
+				userID,
+			)
+		}
+		return db.Where(
+			"NOT EXISTS (SELECT 1 FROM room_user_favourites WHERE room_user_favourites.room_id = rooms.id AND room_user_favourites.user_id = ?)",
+			userID,
+		)
+	}
+}
+
+func FilterByMine(mine *bool, userID uint) func(*gorm.DB) *gorm.DB {
+	return func(db *gorm.DB) *gorm.DB {
+		if mine == nil {
+			return db
+		}
+		if *mine {
+			return db.Where("creator_id = ?", userID)
+		}
+		return db.Not("creator_id = ?", userID)
+	}
+}
+
+func FilterByJoined(joined *bool, userID uint) func(*gorm.DB) *gorm.DB {
+	return func(db *gorm.DB) *gorm.DB {
+		if joined == nil {
+			return db
+		}
+		if *joined {
+			return db.Where(
+				"EXISTS (SELECT 1 FROM room_users WHERE room_users.room_id = rooms.id AND room_users.user_id = ? AND room_users.is_blocked = ?)",
+				userID, false,
+			)
+		}
+		return db.Where(
+			"NOT EXISTS (SELECT 1 FROM room_users WHERE room_users.room_id = rooms.id AND room_users.user_id = ? AND room_users.is_blocked = ?)",
+			userID, false,
+		)
+	}
+}
+
+func FilterByLive(live *bool) func(*gorm.DB) *gorm.DB {
+	return func(db *gorm.DB) *gorm.DB {
+		if live == nil {
+			return db
+		}
+		if *live {
 			return db.Where(
 				"EXISTS (SELECT 1 FROM room_users WHERE room_users.room_id = rooms.id AND room_users.is_online = ? AND room_users.is_blocked = ?)",
 				true, false,
@@ -186,8 +237,11 @@ func Filters(f RoomFilter) func(*gorm.DB) *gorm.DB {
 			FilterByCategories(f.CategoryIds),
 			FilterByTags(f.TagIds),
 			FilterByType(f.Type),
-			FilterByIsLive(f.IsLive),
+			FilterByFavourited(f.Favourited, f.UserID),
 			FilterByNotBlocked(f.UserID),
+			FilterByMine(f.Mine, f.UserID),
+			FilterByJoined(f.Joined, f.UserID),
+			FilterByLive(f.Live),
 		)
 	}
 }

@@ -8,6 +8,7 @@ import (
 
 type roomUserAuthzDeps interface {
 	FindBy(userID, roomID uint) (*roomuser.RoomUser, error)
+	FindAnyBy(userID, roomID uint) (*roomuser.RoomUser, error)
 	HasRoles(userID, roomID uint, permissions []role.RoleName) (bool, error)
 	IsBlocked(roomID, userID uint) (bool, error)
 }
@@ -21,11 +22,11 @@ func NewAuthz(roomUsers roomUserAuthzDeps) *Authz {
 }
 
 func (a *Authz) CanView(roomID, userID uint) error {
-	ru, err := a.roomUsers.FindBy(userID, roomID)
+	ru, err := a.roomUsers.FindAnyBy(userID, roomID)
 	if err != nil {
 		return err
 	}
-	if ru == nil {
+	if ru != nil && ru.IsBlocked {
 		return httpx.ErrForbidden
 	}
 	return nil
