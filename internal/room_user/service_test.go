@@ -78,21 +78,21 @@ func (m *mockRepo) IsBlocked(roomID, userID uint) (bool, error) {
 	args := m.Called(roomID, userID)
 	return args.Bool(0), args.Error(1)
 }
-func (m *mockRepo) Block(roomID, userID, blockedByID uint) error {
-	args := m.Called(roomID, userID, blockedByID)
+func (m *mockRepo) Block(roomID, userID, blockedByID, listenerRoleID uint) error {
+	args := m.Called(roomID, userID, blockedByID, listenerRoleID)
 	return args.Error(0)
 }
 func (m *mockRepo) Unblock(roomID, userID uint) error {
 	args := m.Called(roomID, userID)
 	return args.Error(0)
 }
-func (m *mockRepo) ListBlockedByRoomID(roomID uint, p listopts.Pagination) ([]RoomUser, error) {
-	args := m.Called(roomID, p)
+func (m *mockRepo) ListBlockedByRoomID(roomID uint, filter RoomUserFilter, p listopts.Pagination) ([]RoomUser, error) {
+	args := m.Called(roomID, filter, p)
 	rus, _ := args.Get(0).([]RoomUser)
 	return rus, args.Error(1)
 }
-func (m *mockRepo) CountBlockedByRoomID(roomID uint) (int64, error) {
-	args := m.Called(roomID)
+func (m *mockRepo) CountBlockedByRoomID(roomID uint, filter RoomUserFilter) (int64, error) {
+	args := m.Called(roomID, filter)
 	return args.Get(0).(int64), args.Error(1)
 }
 
@@ -1021,6 +1021,223 @@ func TestService_ListRaisedHands(t *testing.T) {
 		require.Nil(t, got)
 		require.Zero(t, count)
 		require.ErrorIs(t, err, repoErr)
+		h.assertAllExpectations(t)
+	})
+}
+
+func TestService_Block(t *testing.T) {
+	t.Run("success: blocks user, demotes to listener role and revokes publishing", func(t *testing.T) {
+		h := newHarness()
+		h.repo.On("FindBy", uint(1), uint(2)).Return(&RoomUser{Role: role.Role{Name: role.RoleAdmin}}, nil)
+		h.repo.On("FindAnyBy", uint(3), uint(2)).Return(&RoomUser{Role: role.Role{Name: role.RoleSpeaker}}, nil)
+		h.roles.On("FindByName", role.RoleListener).Return(&role.Role{BaseModel: model.BaseModel{ID: 4}, Name: role.RoleListener}, nil)
+		h.repo.On("Block", uint(2), uint(3), uint(1), uint(4)).Return(nil)
+		h.revoker.On("RevokePublishing", uint(2), uint(3)).Return()
+
+		err := h.svc.Block(2, 3, 1)
+
+		require.NoError(t, err)
+		h.assertAllExpectations(t)
+	})
+
+	t.Run("failure: actor cannot block themselves", func(t *testing.T) {
+		h := newHarness()
+
+		err := h.svc.Block(2, 1, 1)
+
+		require.ErrorIs(t, err, httpx.ErrForbidden)
+		h.repo.AssertNotCalled(t, "FindBy", mock.Anything, mock.Anything)
+		h.repo.AssertNotCalled(t, "Block", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+		h.assertAllExpectations(t)
+	})
+
+	t.Run("failure: actor without moderation rights gets ErrForbidden", func(t *testing.T) {
+		h := newHarness()
+		h.repo.On("FindBy", uint(1), uint(2)).Return(&RoomUser{Role: role.Role{Name: role.RoleModerator}}, nil)
+		h.repo.On("FindAnyBy", uint(3), uint(2)).Return(&RoomUser{Role: role.Role{Name: role.RoleAdmin}}, nil)
+
+		err := h.svc.Block(2, 3, 1)
+
+		require.ErrorIs(t, err, httpx.ErrForbidden)
+		h.roles.AssertNotCalled(t, "FindByName", mock.Anything)
+		h.repo.AssertNotCalled(t, "Block", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+		h.assertAllExpectations(t)
+	})
+
+	t.Run("failure: target not in room returns ErrRecordNotFound", func(t *testing.T) {
+		h := newHarness()
+		h.repo.On("FindBy", uint(1), uint(2)).Return(&RoomUser{Role: role.Role{Name: role.RoleAdmin}}, nil)
+		h.repo.On("FindAnyBy", uint(3), uint(2)).Return(nil, nil)
+
+		err := h.svc.Block(2, 3, 1)
+
+		require.ErrorIs(t, err, httpx.ErrRecordNotFound)
+		h.repo.AssertNotCalled(t, "Block", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+		h.assertAllExpectations(t)
+	})
+
+	t.Run("failure: listener role lookup error is propagated, Block never called", func(t *testing.T) {
+		h := newHarness()
+		h.repo.On("FindBy", uint(1), uint(2)).Return(&RoomUser{Role: role.Role{Name: role.RoleAdmin}}, nil)
+		h.repo.On("FindAnyBy", uint(3), uint(2)).Return(&RoomUser{Role: role.Role{Name: role.RoleSpeaker}}, nil)
+		roleErr := errors.New("role not found")
+		h.roles.On("FindByName", role.RoleListener).Return(nil, roleErr)
+
+		err := h.svc.Block(2, 3, 1)
+
+		require.ErrorIs(t, err, roleErr)
+		h.repo.AssertNotCalled(t, "Block", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+		h.revoker.AssertNotCalled(t, "RevokePublishing", mock.Anything, mock.Anything)
+		h.assertAllExpectations(t)
+	})
+
+	t.Run("failure: Block error is propagated, publishing not revoked", func(t *testing.T) {
+		h := newHarness()
+		h.repo.On("FindBy", uint(1), uint(2)).Return(&RoomUser{Role: role.Role{Name: role.RoleAdmin}}, nil)
+		h.repo.On("FindAnyBy", uint(3), uint(2)).Return(&RoomUser{Role: role.Role{Name: role.RoleSpeaker}}, nil)
+		h.roles.On("FindByName", role.RoleListener).Return(&role.Role{BaseModel: model.BaseModel{ID: 4}, Name: role.RoleListener}, nil)
+		blockErr := errors.New("update failed")
+		h.repo.On("Block", uint(2), uint(3), uint(1), uint(4)).Return(blockErr)
+
+		err := h.svc.Block(2, 3, 1)
+
+		require.ErrorIs(t, err, blockErr)
+		h.revoker.AssertNotCalled(t, "RevokePublishing", mock.Anything, mock.Anything)
+		h.assertAllExpectations(t)
+	})
+}
+
+func TestService_Unblock(t *testing.T) {
+	t.Run("success: admin unblocks a blocked user", func(t *testing.T) {
+		h := newHarness()
+		h.repo.On("FindBy", uint(1), uint(2)).Return(&RoomUser{Role: role.Role{Name: role.RoleAdmin}}, nil)
+		h.repo.On("FindAnyBy", uint(3), uint(2)).Return(&RoomUser{Role: role.Role{Name: role.RoleListener}, IsBlocked: true}, nil)
+		h.repo.On("Unblock", uint(2), uint(3)).Return(nil)
+
+		err := h.svc.Unblock(2, 3, 1)
+
+		require.NoError(t, err)
+		h.assertAllExpectations(t)
+	})
+
+	t.Run("failure: target not blocked returns ErrRecordNotFound", func(t *testing.T) {
+		h := newHarness()
+		h.repo.On("FindBy", uint(1), uint(2)).Return(&RoomUser{Role: role.Role{Name: role.RoleAdmin}}, nil)
+		h.repo.On("FindAnyBy", uint(3), uint(2)).Return(&RoomUser{Role: role.Role{Name: role.RoleListener}, IsBlocked: false}, nil)
+
+		err := h.svc.Unblock(2, 3, 1)
+
+		require.ErrorIs(t, err, httpx.ErrRecordNotFound)
+		h.repo.AssertNotCalled(t, "Unblock", mock.Anything, mock.Anything)
+		h.assertAllExpectations(t)
+	})
+
+	t.Run("failure: actor not in room is forbidden", func(t *testing.T) {
+		h := newHarness()
+		h.repo.On("FindBy", uint(1), uint(2)).Return(nil, nil)
+
+		err := h.svc.Unblock(2, 3, 1)
+
+		require.ErrorIs(t, err, httpx.ErrForbidden)
+		h.repo.AssertNotCalled(t, "Unblock", mock.Anything, mock.Anything)
+		h.assertAllExpectations(t)
+	})
+
+	t.Run("failure: Unblock error is propagated", func(t *testing.T) {
+		h := newHarness()
+		h.repo.On("FindBy", uint(1), uint(2)).Return(&RoomUser{Role: role.Role{Name: role.RoleAdmin}}, nil)
+		h.repo.On("FindAnyBy", uint(3), uint(2)).Return(&RoomUser{Role: role.Role{Name: role.RoleListener}, IsBlocked: true}, nil)
+		unblockErr := errors.New("update failed")
+		h.repo.On("Unblock", uint(2), uint(3)).Return(unblockErr)
+
+		err := h.svc.Unblock(2, 3, 1)
+
+		require.ErrorIs(t, err, unblockErr)
+		h.assertAllExpectations(t)
+	})
+}
+
+func TestService_ListBlockedByRoomID(t *testing.T) {
+	t.Run("success: returns blocked users and filtered count", func(t *testing.T) {
+		h := newHarness()
+		filter := RoomUserFilter{Query: "alice"}
+		p := listopts.Pagination{Page: 1, PageSize: 10}
+		users := []RoomUser{{UserID: 7, IsBlocked: true}}
+
+		h.repo.On("FindBy", uint(1), uint(4)).Return(&RoomUser{Role: role.Role{Name: role.RoleModerator}}, nil)
+		h.repo.On("ListBlockedByRoomID", uint(4), filter, p).Return(users, nil)
+		h.repo.On("CountBlockedByRoomID", uint(4), filter).Return(int64(1), nil)
+
+		got, count, err := h.svc.ListBlockedByRoomID(4, 1, filter, p)
+
+		require.NoError(t, err)
+		assert.Equal(t, users, got)
+		assert.Equal(t, int64(1), count)
+		h.assertAllExpectations(t)
+	})
+
+	t.Run("failure: actor without manage rights gets ErrForbidden", func(t *testing.T) {
+		h := newHarness()
+		filter := RoomUserFilter{}
+		p := listopts.Pagination{Page: 1, PageSize: 10}
+		h.repo.On("FindBy", uint(1), uint(4)).Return(&RoomUser{Role: role.Role{Name: role.RoleListener}}, nil)
+
+		got, count, err := h.svc.ListBlockedByRoomID(4, 1, filter, p)
+
+		require.Nil(t, got)
+		require.Zero(t, count)
+		require.ErrorIs(t, err, httpx.ErrForbidden)
+		h.repo.AssertNotCalled(t, "ListBlockedByRoomID", mock.Anything, mock.Anything, mock.Anything)
+		h.assertAllExpectations(t)
+	})
+
+	t.Run("failure: non-member gets ErrForbidden before repo is called", func(t *testing.T) {
+		h := newHarness()
+		filter := RoomUserFilter{}
+		p := listopts.Pagination{Page: 1, PageSize: 10}
+		h.repo.On("FindBy", uint(1), uint(4)).Return(nil, nil)
+
+		got, count, err := h.svc.ListBlockedByRoomID(4, 1, filter, p)
+
+		require.Nil(t, got)
+		require.Zero(t, count)
+		require.ErrorIs(t, err, httpx.ErrForbidden)
+		h.repo.AssertNotCalled(t, "ListBlockedByRoomID", mock.Anything, mock.Anything, mock.Anything)
+		h.assertAllExpectations(t)
+	})
+
+	t.Run("failure: List error short-circuits before Count", func(t *testing.T) {
+		h := newHarness()
+		filter := RoomUserFilter{}
+		p := listopts.Pagination{Page: 1, PageSize: 10}
+		listErr := errors.New("query failed")
+		h.repo.On("FindBy", uint(1), uint(4)).Return(&RoomUser{Role: role.Role{Name: role.RoleModerator}}, nil)
+		h.repo.On("ListBlockedByRoomID", uint(4), filter, p).Return(nil, listErr)
+
+		got, count, err := h.svc.ListBlockedByRoomID(4, 1, filter, p)
+
+		require.Nil(t, got)
+		require.Zero(t, count)
+		require.ErrorIs(t, err, listErr)
+		h.repo.AssertNotCalled(t, "CountBlockedByRoomID", mock.Anything, mock.Anything)
+		h.assertAllExpectations(t)
+	})
+
+	t.Run("failure: Count error after successful List still fails the call", func(t *testing.T) {
+		h := newHarness()
+		filter := RoomUserFilter{}
+		p := listopts.Pagination{Page: 1, PageSize: 10}
+		users := []RoomUser{{UserID: 7, IsBlocked: true}}
+		countErr := errors.New("count failed")
+		h.repo.On("FindBy", uint(1), uint(4)).Return(&RoomUser{Role: role.Role{Name: role.RoleModerator}}, nil)
+		h.repo.On("ListBlockedByRoomID", uint(4), filter, p).Return(users, nil)
+		h.repo.On("CountBlockedByRoomID", uint(4), filter).Return(int64(0), countErr)
+
+		got, count, err := h.svc.ListBlockedByRoomID(4, 1, filter, p)
+
+		require.Nil(t, got)
+		require.Zero(t, count)
+		require.ErrorIs(t, err, countErr)
 		h.assertAllExpectations(t)
 	})
 }

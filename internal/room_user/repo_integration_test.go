@@ -3,6 +3,7 @@ package roomuser
 import (
 	"testing"
 
+	fileattachment "sound-stage-backend/internal/file_attachment"
 	"sound-stage-backend/internal/pkg/listopts"
 	"sound-stage-backend/internal/pkg/testutil"
 	"sound-stage-backend/internal/role"
@@ -41,7 +42,7 @@ func setupRoomUserTest(t *testing.T, db *gorm.DB) testDeps {
 
 func TestRepo_Create_Integration(t *testing.T) {
 	t.Run("persists a room user", func(t *testing.T) {
-		db := testutil.NewIntegrationDB(t, &RoomUser{}, &user.User{}, &role.Role{})
+		db := testutil.NewIntegrationDB(t, &RoomUser{}, &user.User{}, &role.Role{}, &fileattachment.FileAttachment{})
 		deps := setupRoomUserTest(t, db)
 
 		var listener role.Role
@@ -62,7 +63,7 @@ func TestRepo_Create_Integration(t *testing.T) {
 
 func TestRepo_FindBy_Integration(t *testing.T) {
 	t.Run("finds room user with preloaded user and role", func(t *testing.T) {
-		db := testutil.NewIntegrationDB(t, &RoomUser{}, &user.User{}, &role.Role{})
+		db := testutil.NewIntegrationDB(t, &RoomUser{}, &user.User{}, &role.Role{}, &fileattachment.FileAttachment{})
 		deps := setupRoomUserTest(t, db)
 
 		var listener role.Role
@@ -80,7 +81,7 @@ func TestRepo_FindBy_Integration(t *testing.T) {
 	})
 
 	t.Run("returns nil when not found", func(t *testing.T) {
-		db := testutil.NewIntegrationDB(t, &RoomUser{}, &user.User{}, &role.Role{})
+		db := testutil.NewIntegrationDB(t, &RoomUser{}, &user.User{}, &role.Role{}, &fileattachment.FileAttachment{})
 		deps := setupRoomUserTest(t, db)
 
 		got, err := deps.repo.FindBy(999, deps.roomID)
@@ -91,7 +92,7 @@ func TestRepo_FindBy_Integration(t *testing.T) {
 
 func TestRepo_UpdateActivity_Integration(t *testing.T) {
 	t.Run("updates join and leave timestamps and online status", func(t *testing.T) {
-		db := testutil.NewIntegrationDB(t, &RoomUser{}, &user.User{}, &role.Role{})
+		db := testutil.NewIntegrationDB(t, &RoomUser{}, &user.User{}, &role.Role{}, &fileattachment.FileAttachment{})
 		deps := setupRoomUserTest(t, db)
 
 		var listener role.Role
@@ -114,7 +115,7 @@ func TestRepo_UpdateActivity_Integration(t *testing.T) {
 
 func TestRepo_HasRoles_Integration(t *testing.T) {
 	t.Run("returns true when user has one of the requested roles", func(t *testing.T) {
-		db := testutil.NewIntegrationDB(t, &RoomUser{}, &user.User{}, &role.Role{})
+		db := testutil.NewIntegrationDB(t, &RoomUser{}, &user.User{}, &role.Role{}, &fileattachment.FileAttachment{})
 		deps := setupRoomUserTest(t, db)
 
 		var listener role.Role
@@ -129,7 +130,7 @@ func TestRepo_HasRoles_Integration(t *testing.T) {
 	})
 
 	t.Run("returns false when user has none of the requested roles", func(t *testing.T) {
-		db := testutil.NewIntegrationDB(t, &RoomUser{}, &user.User{}, &role.Role{})
+		db := testutil.NewIntegrationDB(t, &RoomUser{}, &user.User{}, &role.Role{}, &fileattachment.FileAttachment{})
 		deps := setupRoomUserTest(t, db)
 
 		var listener role.Role
@@ -146,7 +147,7 @@ func TestRepo_HasRoles_Integration(t *testing.T) {
 
 func TestRepo_ListByRoomID_Integration(t *testing.T) {
 	t.Run("lists users with sort and pagination", func(t *testing.T) {
-		db := testutil.NewIntegrationDB(t, &RoomUser{}, &user.User{}, &role.Role{})
+		db := testutil.NewIntegrationDB(t, &RoomUser{}, &user.User{}, &role.Role{}, &fileattachment.FileAttachment{})
 		deps := setupRoomUserTest(t, db)
 
 		var listener, speaker role.Role
@@ -181,7 +182,7 @@ func TestRepo_ListByRoomID_Integration(t *testing.T) {
 	})
 
 	t.Run("filters room users by role", func(t *testing.T) {
-		db := testutil.NewIntegrationDB(t, &RoomUser{}, &user.User{}, &role.Role{})
+		db := testutil.NewIntegrationDB(t, &RoomUser{}, &user.User{}, &role.Role{}, &fileattachment.FileAttachment{})
 		deps := setupRoomUserTest(t, db)
 
 		var listener, speaker role.Role
@@ -214,7 +215,7 @@ func TestRepo_ListByRoomID_Integration(t *testing.T) {
 
 func TestRepo_CountByRoomID_Integration(t *testing.T) {
 	t.Run("returns total and filtered counts", func(t *testing.T) {
-		db := testutil.NewIntegrationDB(t, &RoomUser{}, &user.User{}, &role.Role{})
+		db := testutil.NewIntegrationDB(t, &RoomUser{}, &user.User{}, &role.Role{}, &fileattachment.FileAttachment{})
 		deps := setupRoomUserTest(t, db)
 
 		var listener, speaker role.Role
@@ -243,7 +244,7 @@ func TestRepo_CountByRoomID_Integration(t *testing.T) {
 
 func TestRepo_UpdateRole_Integration(t *testing.T) {
 	t.Run("updates role by id", func(t *testing.T) {
-		db := testutil.NewIntegrationDB(t, &RoomUser{}, &user.User{}, &role.Role{})
+		db := testutil.NewIntegrationDB(t, &RoomUser{}, &user.User{}, &role.Role{}, &fileattachment.FileAttachment{})
 		deps := setupRoomUserTest(t, db)
 
 		var listener, admin role.Role
@@ -262,7 +263,7 @@ func TestRepo_UpdateRole_Integration(t *testing.T) {
 
 func TestRepo_Delete_Integration(t *testing.T) {
 	t.Run("removes the room user", func(t *testing.T) {
-		db := testutil.NewIntegrationDB(t, &RoomUser{}, &user.User{}, &role.Role{})
+		db := testutil.NewIntegrationDB(t, &RoomUser{}, &user.User{}, &role.Role{}, &fileattachment.FileAttachment{})
 		deps := setupRoomUserTest(t, db)
 
 		var listener role.Role
@@ -279,7 +280,7 @@ func TestRepo_Delete_Integration(t *testing.T) {
 	})
 
 	t.Run("succeeds when room user does not exist", func(t *testing.T) {
-		db := testutil.NewIntegrationDB(t, &RoomUser{}, &user.User{}, &role.Role{})
+		db := testutil.NewIntegrationDB(t, &RoomUser{}, &user.User{}, &role.Role{}, &fileattachment.FileAttachment{})
 		deps := setupRoomUserTest(t, db)
 
 		require.NoError(t, deps.repo.Delete(deps.roomID, 999))
@@ -287,5 +288,75 @@ func TestRepo_Delete_Integration(t *testing.T) {
 		var count int64
 		require.NoError(t, db.Model(&RoomUser{}).Count(&count).Error)
 		require.Equal(t, int64(0), count)
+	})
+}
+
+func TestRepo_Block_Integration(t *testing.T) {
+	t.Run("blocks the user, marks them offline and demotes to listener", func(t *testing.T) {
+		db := testutil.NewIntegrationDB(t, &RoomUser{}, &user.User{}, &role.Role{}, &fileattachment.FileAttachment{})
+		deps := setupRoomUserTest(t, db)
+
+		var listener, speaker role.Role
+		require.NoError(t, db.Where("name = ?", string(role.RoleListener)).First(&listener).Error)
+		require.NoError(t, db.Where("name = ?", string(role.RoleSpeaker)).First(&speaker).Error)
+
+		ru, err := deps.repo.Create(db, deps.admin.ID, deps.roomID, speaker.ID)
+		require.NoError(t, err)
+
+		require.NoError(t, deps.repo.Block(deps.roomID, deps.admin.ID, deps.owner.ID, listener.ID))
+
+		require.NoError(t, db.First(ru, ru.ID).Error)
+		require.True(t, ru.IsBlocked)
+		require.NotNil(t, ru.BlockedByID)
+		require.Equal(t, deps.owner.ID, *ru.BlockedByID)
+		require.False(t, ru.IsOnline)
+		require.Equal(t, listener.ID, ru.RoleID)
+	})
+}
+
+func TestRepo_Unblock_Integration(t *testing.T) {
+	t.Run("unblocks the user and clears blocked_by", func(t *testing.T) {
+		db := testutil.NewIntegrationDB(t, &RoomUser{}, &user.User{}, &role.Role{}, &fileattachment.FileAttachment{})
+		deps := setupRoomUserTest(t, db)
+
+		var listener role.Role
+		require.NoError(t, db.Where("name = ?", string(role.RoleListener)).First(&listener).Error)
+
+		ru, err := deps.repo.Create(db, deps.admin.ID, deps.roomID, listener.ID)
+		require.NoError(t, err)
+
+		require.NoError(t, deps.repo.Block(deps.roomID, deps.admin.ID, deps.owner.ID, listener.ID))
+		require.NoError(t, deps.repo.Unblock(deps.roomID, deps.admin.ID))
+
+		require.NoError(t, db.First(ru, ru.ID).Error)
+		require.False(t, ru.IsBlocked)
+		require.Nil(t, ru.BlockedByID)
+	})
+}
+
+func TestRepo_ListBlockedByRoomID_Integration(t *testing.T) {
+	t.Run("returns only blocked users of the room", func(t *testing.T) {
+		db := testutil.NewIntegrationDB(t, &RoomUser{}, &user.User{}, &role.Role{}, &fileattachment.FileAttachment{})
+		deps := setupRoomUserTest(t, db)
+
+		var listener role.Role
+		require.NoError(t, db.Where("name = ?", string(role.RoleListener)).First(&listener).Error)
+
+		_, err := deps.repo.Create(db, deps.owner.ID, deps.roomID, listener.ID)
+		require.NoError(t, err)
+		_, err = deps.repo.Create(db, deps.admin.ID, deps.roomID, listener.ID)
+		require.NoError(t, err)
+
+		require.NoError(t, deps.repo.Block(deps.roomID, deps.admin.ID, deps.owner.ID, listener.ID))
+
+		got, err := deps.repo.ListBlockedByRoomID(deps.roomID, RoomUserFilter{}, listopts.Pagination{Page: 1, PageSize: 10})
+		require.NoError(t, err)
+		require.Len(t, got, 1)
+		require.Equal(t, deps.admin.ID, got[0].UserID)
+		require.Equal(t, deps.admin.Email, got[0].User.Email)
+
+		count, err := deps.repo.CountBlockedByRoomID(deps.roomID, RoomUserFilter{})
+		require.NoError(t, err)
+		require.Equal(t, int64(1), count)
 	})
 }

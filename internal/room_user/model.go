@@ -37,6 +37,7 @@ func (RoomUser) TableName() string {
 type RoomUserFilter struct {
 	Roles    []string `form:"roles"`
 	IsOnline *bool    `form:"isOnline"`
+	Query    string   `form:"query"`
 }
 
 type RoomUserResponse struct {
@@ -96,11 +97,25 @@ func FilterByIsOnline(isOnline *bool) func(*gorm.DB) *gorm.DB {
 	}
 }
 
+func FilterByQuery(query string) func(*gorm.DB) *gorm.DB {
+	return func(db *gorm.DB) *gorm.DB {
+		query = strings.TrimSpace(query)
+		if query == "" {
+			return db
+		}
+		pattern := "%" + query + "%"
+		return db.
+			Joins("JOIN users ON users.id = room_users.user_id").
+			Where("(users.first_name || ' ' || COALESCE(users.last_name, '')) ILIKE ?", pattern)
+	}
+}
+
 func Filters(f RoomUserFilter) func(*gorm.DB) *gorm.DB {
 	return func(db *gorm.DB) *gorm.DB {
 		return db.Scopes(
 			FilterByRoles(f.Roles),
 			FilterByIsOnline(f.IsOnline),
+			FilterByQuery(f.Query),
 		)
 	}
 }
@@ -115,7 +130,7 @@ func Sort(s listopts.Sort) func(*gorm.DB) *gorm.DB {
 		if order != "asc" && order != "desc" {
 			order = "desc"
 		}
-		return db.Order(col + " " + order)
+		return db.Order(col + " " + order).Order("room_users.id " + order)
 	}
 }
 

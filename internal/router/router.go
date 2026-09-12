@@ -91,7 +91,7 @@ func Setup(cfg *config.Config, handlers *Handlers, tokenValidator middleware.Tok
 		rooms.DELETE("/:id/users/:userId", handlers.RoomUser.DeleteUser)
 		rooms.PATCH("/:id/private-code", handlers.Room.UpdatePrivateCode)
 		rooms.GET("/:id/blocks", handlers.RoomUser.ListBlockedUsers)
-		rooms.POST("/:id/blocks", handlers.RoomUser.BlockUser)
+		rooms.PATCH("/:id/blocks/:userId", handlers.RoomUser.BlockUser)
 		rooms.DELETE("/:id/blocks/:userId", handlers.RoomUser.UnblockUser)
 		rooms.GET("/:id/messages", handlers.ChatMessage.List)
 	}

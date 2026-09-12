@@ -41,10 +41,10 @@ type repo interface {
 	Delete(roomID uint, userID uint) error
 	MapByUserAndRoomIDs(userID uint, roomIDs []uint) (map[uint]*RoomUser, error)
 	IsBlocked(roomID, userID uint) (bool, error)
-	Block(roomID, userID, blockedByID uint) error
+	Block(roomID, userID, blockedByID, listenerRoleID uint) error
 	Unblock(roomID, userID uint) error
-	ListBlockedByRoomID(roomID uint, p listopts.Pagination) ([]RoomUser, error)
-	CountBlockedByRoomID(roomID uint) (int64, error)
+	ListBlockedByRoomID(roomID uint, filter RoomUserFilter, p listopts.Pagination) ([]RoomUser, error)
+	CountBlockedByRoomID(roomID uint, filter RoomUserFilter) (int64, error)
 }
 
 type authorizer interface {
@@ -104,7 +104,12 @@ func (s *Service) Block(roomID, userID, actorID uint) error {
 		return err
 	}
 
-	if err := s.repo.Block(roomID, userID, actorID); err != nil {
+	listenerRole, err := s.roleService.FindByName(role.RoleListener)
+	if err != nil {
+		return err
+	}
+
+	if err := s.repo.Block(roomID, userID, actorID, listenerRole.ID); err != nil {
 		return err
 	}
 
@@ -121,16 +126,16 @@ func (s *Service) Unblock(roomID, userID, actorID uint) error {
 	return s.repo.Unblock(roomID, userID)
 }
 
-func (s *Service) ListBlockedByRoomID(roomID, actorID uint, p listopts.Pagination) ([]RoomUser, int64, error) {
+func (s *Service) ListBlockedByRoomID(roomID, actorID uint, filter RoomUserFilter, p listopts.Pagination) ([]RoomUser, int64, error) {
 	if err := s.authz.CanListBlocked(roomID, actorID); err != nil {
 		return nil, 0, err
 	}
 
-	users, err := s.repo.ListBlockedByRoomID(roomID, p)
+	users, err := s.repo.ListBlockedByRoomID(roomID, filter, p)
 	if err != nil {
 		return nil, 0, err
 	}
-	count, err := s.repo.CountBlockedByRoomID(roomID)
+	count, err := s.repo.CountBlockedByRoomID(roomID, filter)
 	if err != nil {
 		return nil, 0, err
 	}

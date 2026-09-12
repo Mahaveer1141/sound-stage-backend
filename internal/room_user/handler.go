@@ -23,7 +23,7 @@ type roomUserService interface {
 	DeleteUser(ctx context.Context, roomID, userID, actorID uint) error
 	Block(roomID, userID, actorID uint) error
 	Unblock(roomID, userID, actorID uint) error
-	ListBlockedByRoomID(roomID, actorID uint, p listopts.Pagination) ([]RoomUser, int64, error)
+	ListBlockedByRoomID(roomID, actorID uint, filter RoomUserFilter, p listopts.Pagination) ([]RoomUser, int64, error)
 	SetMuted(ctx context.Context, roomID, userID, actorID uint, isMuted bool) error
 }
 
@@ -52,10 +52,6 @@ type updateUserRoleInput struct {
 
 type addRoomUserInput struct {
 	PrivateCode string `json:"privateCode"`
-}
-
-type blockUserInput struct {
-	UserID uint `json:"userId" validate:"required"`
 }
 
 func (h *Handler) ListUsers(c *gin.Context) {
@@ -312,8 +308,14 @@ func (h *Handler) ListBlockedUsers(c *gin.Context) {
 		return
 	}
 
+	var filter RoomUserFilter
+	if err := c.ShouldBindQuery(&filter); err != nil {
+		httpx.ErrorResponse(c, http.StatusBadRequest, "Invalid filter")
+		return
+	}
+
 	actorID, _ := current.UserID(c)
-	users, count, err := h.service.ListBlockedByRoomID(uint(roomID), actorID, p)
+	users, count, err := h.service.ListBlockedByRoomID(uint(roomID), actorID, filter, p)
 	if err != nil {
 		if errors.Is(err, httpx.ErrForbidden) {
 			httpx.ErrorResponse(c, http.StatusForbidden, httpx.ErrForbidden.Error())
@@ -333,19 +335,15 @@ func (h *Handler) BlockUser(c *gin.Context) {
 		httpx.ErrorResponse(c, http.StatusBadRequest, "Invalid room ID")
 		return
 	}
-
-	var input blockUserInput
-	if err := c.ShouldBindJSON(&input); err != nil {
-		httpx.ErrorResponse(c, http.StatusBadRequest, "Invalid request payload")
-		return
-	}
-	if err := h.validate.Struct(input); err != nil {
-		httpx.ErrorResponse(c, http.StatusUnprocessableEntity, "Validation error: "+err.Error())
+	userIDStr := c.Param("userId")
+	userID, err := strconv.Atoi(userIDStr)
+	if err != nil {
+		httpx.ErrorResponse(c, http.StatusBadRequest, "Invalid user ID")
 		return
 	}
 
 	actorID, _ := current.UserID(c)
-	if err := h.service.Block(uint(roomID), input.UserID, actorID); err != nil {
+	if err := h.service.Block(uint(roomID), uint(userID), actorID); err != nil {
 		if errors.Is(err, httpx.ErrForbidden) {
 			httpx.ErrorResponse(c, http.StatusForbidden, httpx.ErrForbidden.Error())
 			return
@@ -358,7 +356,7 @@ func (h *Handler) BlockUser(c *gin.Context) {
 		return
 	}
 
-	h.hub.BroadcastToRoom(uint(roomID), ws.EventUserKickedOut, gin.H{"userId": input.UserID, "blocked": true})
+	h.hub.BroadcastToRoom(uint(roomID), ws.EventUserKickedOut, gin.H{"userId": userID, "blocked": true})
 
 	httpx.SuccessResponse(c, http.StatusOK, "User blocked from room", nil)
 }

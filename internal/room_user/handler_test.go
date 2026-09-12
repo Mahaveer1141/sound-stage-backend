@@ -53,8 +53,8 @@ func (m *mockRoomUserService) Unblock(roomID, userID, actorID uint) error {
 	args := m.Called(roomID, userID, actorID)
 	return args.Error(0)
 }
-func (m *mockRoomUserService) ListBlockedByRoomID(roomID, actorID uint, p listopts.Pagination) ([]RoomUser, int64, error) {
-	args := m.Called(roomID, actorID, p)
+func (m *mockRoomUserService) ListBlockedByRoomID(roomID, actorID uint, filter RoomUserFilter, p listopts.Pagination) ([]RoomUser, int64, error) {
+	args := m.Called(roomID, actorID, filter, p)
 	rus, _ := args.Get(0).([]RoomUser)
 	return rus, args.Get(1).(int64), args.Error(2)
 }
@@ -544,5 +544,141 @@ func TestHandler_ListRaisedHands(t *testing.T) {
 
 		assert.Equal(t, http.StatusInternalServerError, w.Code)
 		h.svc.AssertExpectations(t)
+	})
+}
+
+func TestHandler_ListBlockedUsers(t *testing.T) {
+	t.Run("success: returns 200 and passes bound filter to service", func(t *testing.T) {
+		h := newHandlerHarness(t)
+		users := []RoomUser{{UserID: 7, IsBlocked: true}}
+		h.svc.On(
+			"ListBlockedByRoomID",
+			uint(4), uint(1),
+			RoomUserFilter{Query: "alice"},
+			listopts.Pagination{Page: 1, PageSize: 10},
+		).Return(users, int64(1), nil)
+
+		w, c := testutil.NewTestContext(http.MethodGet, "/rooms/4/blocks?page=1&pageSize=10&query=alice", nil)
+		c.Params = gin.Params{{Key: "id", Value: "4"}}
+		c.Set("userId", uint(1))
+
+		h.handler.ListBlockedUsers(c)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		h.svc.AssertExpectations(t)
+	})
+
+	t.Run("failure: non-numeric room ID returns 400 before service is called", func(t *testing.T) {
+		h := newHandlerHarness(t)
+
+		w, c := testutil.NewTestContext(http.MethodGet, "/rooms/abc/blocks?page=1&pageSize=10", nil)
+		c.Params = gin.Params{{Key: "id", Value: "abc"}}
+
+		h.handler.ListBlockedUsers(c)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		h.svc.AssertNotCalled(t, "ListBlockedByRoomID", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+	})
+
+	t.Run("failure: invalid pagination returns 400", func(t *testing.T) {
+		h := newHandlerHarness(t)
+
+		w, c := testutil.NewTestContext(http.MethodGet, "/rooms/4/blocks?page=0&pageSize=10", nil)
+		c.Params = gin.Params{{Key: "id", Value: "4"}}
+
+		h.handler.ListBlockedUsers(c)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		h.svc.AssertNotCalled(t, "ListBlockedByRoomID", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+	})
+
+	t.Run("failure: forbidden error from service returns 403", func(t *testing.T) {
+		h := newHandlerHarness(t)
+		h.svc.On("ListBlockedByRoomID", uint(4), uint(1), mock.Anything, mock.Anything).Return(nil, int64(0), httpx.ErrForbidden)
+
+		w, c := testutil.NewTestContext(http.MethodGet, "/rooms/4/blocks?page=1&pageSize=10", nil)
+		c.Params = gin.Params{{Key: "id", Value: "4"}}
+		c.Set("userId", uint(1))
+
+		h.handler.ListBlockedUsers(c)
+
+		assert.Equal(t, http.StatusForbidden, w.Code)
+		h.svc.AssertExpectations(t)
+	})
+
+	t.Run("failure: service error returns 500", func(t *testing.T) {
+		h := newHandlerHarness(t)
+		h.svc.On("ListBlockedByRoomID", uint(4), uint(1), mock.Anything, mock.Anything).Return(nil, int64(0), assert.AnError)
+
+		w, c := testutil.NewTestContext(http.MethodGet, "/rooms/4/blocks?page=1&pageSize=10", nil)
+		c.Params = gin.Params{{Key: "id", Value: "4"}}
+		c.Set("userId", uint(1))
+
+		h.handler.ListBlockedUsers(c)
+
+		assert.Equal(t, http.StatusInternalServerError, w.Code)
+		h.svc.AssertExpectations(t)
+	})
+}
+
+func TestHandler_BlockUser(t *testing.T) {
+	t.Run("success: blocks user, broadcasts, returns 200", func(t *testing.T) {
+		h := newHandlerHarness(t)
+		h.svc.On("Block", uint(4), uint(7), uint(1)).Return(nil)
+		h.hub.On("BroadcastToRoom", uint(4), ws.EventUserKickedOut, mock.MatchedBy(func(payload any) bool {
+			gh, ok := payload.(gin.H)
+			return ok && gh["userId"] == 7 && gh["blocked"] == true
+		})).Return()
+
+		w, c := testutil.NewTestContext(http.MethodPatch, "/rooms/4/blocks/7", nil)
+		c.Params = gin.Params{{Key: "id", Value: "4"}, {Key: "userId", Value: "7"}}
+		c.Set("userId", uint(1))
+
+		h.handler.BlockUser(c)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		h.svc.AssertExpectations(t)
+		h.hub.AssertExpectations(t)
+	})
+
+	t.Run("failure: non-numeric room ID returns 400 before service is called", func(t *testing.T) {
+		h := newHandlerHarness(t)
+
+		w, c := testutil.NewTestContext(http.MethodPatch, "/rooms/abc/blocks/7", nil)
+		c.Params = gin.Params{{Key: "id", Value: "abc"}, {Key: "userId", Value: "7"}}
+		c.Set("userId", uint(1))
+
+		h.handler.BlockUser(c)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		h.svc.AssertNotCalled(t, "Block", mock.Anything, mock.Anything, mock.Anything)
+	})
+
+	t.Run("failure: non-numeric user ID returns 400 before service is called", func(t *testing.T) {
+		h := newHandlerHarness(t)
+
+		w, c := testutil.NewTestContext(http.MethodPatch, "/rooms/4/blocks/abc", nil)
+		c.Params = gin.Params{{Key: "id", Value: "4"}, {Key: "userId", Value: "abc"}}
+		c.Set("userId", uint(1))
+
+		h.handler.BlockUser(c)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		h.svc.AssertNotCalled(t, "Block", mock.Anything, mock.Anything, mock.Anything)
+	})
+
+	t.Run("failure: forbidden error from service returns 403, no broadcast", func(t *testing.T) {
+		h := newHandlerHarness(t)
+		h.svc.On("Block", uint(4), uint(7), uint(1)).Return(httpx.ErrForbidden)
+
+		w, c := testutil.NewTestContext(http.MethodPatch, "/rooms/4/blocks/7", nil)
+		c.Params = gin.Params{{Key: "id", Value: "4"}, {Key: "userId", Value: "7"}}
+		c.Set("userId", uint(1))
+
+		h.handler.BlockUser(c)
+
+		assert.Equal(t, http.StatusForbidden, w.Code)
+		h.svc.AssertExpectations(t)
+		h.hub.AssertNotCalled(t, "BroadcastToRoom", mock.Anything, mock.Anything, mock.Anything)
 	})
 }

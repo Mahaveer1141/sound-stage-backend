@@ -29,7 +29,7 @@ func (r *Repo) Create(tx *gorm.DB, userID uint, roomID uint, roleID uint) (*Room
 		tx = r.db
 	}
 
-	ru := RoomUser{RoomID: roomID, UserID: userID, RoleID: roleID, LastJoinedAt: time.Now(), LastLeftAt: time.Now()}
+	ru := RoomUser{RoomID: roomID, UserID: userID, RoleID: roleID, LastJoinedAt: time.Now(), LastLeftAt: time.Now(), IsOnline: true}
 	if err := tx.Create(&ru).Error; err != nil {
 		return nil, err
 	}
@@ -39,14 +39,14 @@ func (r *Repo) Create(tx *gorm.DB, userID uint, roomID uint, roleID uint) (*Room
 func (r *Repo) FindBy(userID uint, roomID uint) (*RoomUser, error) {
 	var ru RoomUser
 	result := r.db.Where("user_id = ? AND room_id = ? AND is_blocked = ?", userID, roomID, false).
-		Preload("User").Preload("Role").First(&ru)
+		Preload("User.ProfilePicture").Preload("Role").First(&ru)
 	return gormutil.NilIfNotFound(&ru, result.Error)
 }
 
 func (r *Repo) FindAnyBy(userID uint, roomID uint) (*RoomUser, error) {
 	var ru RoomUser
 	result := r.db.Where("user_id = ? AND room_id = ?", userID, roomID).
-		Preload("User").Preload("Role").First(&ru)
+		Preload("User.ProfilePicture").Preload("Role").First(&ru)
 	return gormutil.NilIfNotFound(&ru, result.Error)
 }
 
@@ -83,7 +83,7 @@ func (r *Repo) HasRoles(userID, roomID uint, roles []role.RoleName) (bool, error
 func (r *Repo) ListByRoomID(roomID uint, filter RoomUserFilter, sort listopts.Sort, p listopts.Pagination) ([]RoomUser, error) {
 	var roomUsers []RoomUser
 	err := r.db.
-		Preload("User").
+		Preload("User.ProfilePicture").
 		Preload("Role").
 		Where("room_users.room_id = ? AND room_users.is_blocked = ?", roomID, false).
 		Scopes(Filters(filter), Sort(sort), p.Scope()).
@@ -97,7 +97,7 @@ func (r *Repo) ListByUserIDs(roomID uint, userIDs []uint) ([]RoomUser, error) {
 		return roomUsers, nil
 	}
 	err := r.db.
-		Preload("User").
+		Preload("User.ProfilePicture").
 		Preload("Role").
 		Where("room_id = ? AND user_id IN ? AND is_blocked = ?", roomID, userIDs, false).
 		Scopes(SortByUserIDs(userIDs)).
@@ -156,7 +156,7 @@ func (r *Repo) Delete(roomID uint, userID uint) error {
 func (r *Repo) MapByUserAndRoomIDs(userID uint, roomIDs []uint) (map[uint]*RoomUser, error) {
 	var roomUsers []RoomUser
 	err := r.db.
-		Preload("User").
+		Preload("User.ProfilePicture").
 		Preload("Role").
 		Where("user_id = ? AND room_id IN ? AND is_blocked = ?", userID, roomIDs, false).
 		Find(&roomUsers).Error
@@ -178,7 +178,7 @@ func (r *Repo) IsBlocked(roomID, userID uint) (bool, error) {
 	return count > 0, err
 }
 
-func (r *Repo) Block(roomID, userID, blockedByID uint) error {
+func (r *Repo) Block(roomID, userID, blockedByID, listenerRoleID uint) error {
 	return r.db.Model(&RoomUser{}).
 		Where("room_id = ? AND user_id = ?", roomID, userID).
 		Updates(map[string]any{
@@ -186,6 +186,7 @@ func (r *Repo) Block(roomID, userID, blockedByID uint) error {
 			"blocked_by_id": blockedByID,
 			"last_left_at":  time.Now(),
 			"is_online":     false,
+			"role_id":       listenerRoleID,
 		}).Error
 }
 
@@ -198,21 +199,22 @@ func (r *Repo) Unblock(roomID, userID uint) error {
 		}).Error
 }
 
-func (r *Repo) ListBlockedByRoomID(roomID uint, p listopts.Pagination) ([]RoomUser, error) {
+func (r *Repo) ListBlockedByRoomID(roomID uint, filter RoomUserFilter, p listopts.Pagination) ([]RoomUser, error) {
 	var roomUsers []RoomUser
 	err := r.db.
-		Preload("User").
+		Preload("User.ProfilePicture").
 		Where("room_id = ? AND is_blocked = ?", roomID, true).
 		Order("id DESC").
-		Scopes(p.Scope()).
+		Scopes(Filters(filter), p.Scope()).
 		Find(&roomUsers).Error
 	return roomUsers, err
 }
 
-func (r *Repo) CountBlockedByRoomID(roomID uint) (int64, error) {
+func (r *Repo) CountBlockedByRoomID(roomID uint, filter RoomUserFilter) (int64, error) {
 	var count int64
 	err := r.db.Model(&RoomUser{}).
 		Where("room_id = ? AND is_blocked = ?", roomID, true).
+		Scopes(Filters(filter)).
 		Count(&count).Error
 	return count, err
 }
