@@ -93,7 +93,9 @@ func Setup(cfg *config.Config, handlers *Handlers, tokenValidator middleware.Tok
 		rooms.GET("/:id/blocks", handlers.RoomUser.ListBlockedUsers)
 		rooms.PATCH("/:id/blocks/:userId", handlers.RoomUser.BlockUser)
 		rooms.DELETE("/:id/blocks/:userId", handlers.RoomUser.UnblockUser)
+		rooms.POST("/:id/messages", handlers.ChatMessage.Create)
 		rooms.GET("/:id/messages", handlers.ChatMessage.List)
+		rooms.PATCH("/:id/messages/:messageId/pin", handlers.ChatMessage.SetPinned)
 	}
 
 	router.GET("/ws/rooms/:roomId", middleware.AuthMiddleware(tokenValidator), handlers.WS.ServeWS)

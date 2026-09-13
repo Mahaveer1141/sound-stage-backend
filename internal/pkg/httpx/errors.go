@@ -35,6 +35,11 @@ var (
 	ErrUserBlocked = errors.New("user is blocked from this room")
 )
 
+// Chat message errors
+var (
+	ErrPinnedLimitReached = errors.New("pinned messages limit reached")
+)
+
 // WebRTC errors
 var (
 	ErrPeerConnectionNotFound = errors.New("peer connection not found")

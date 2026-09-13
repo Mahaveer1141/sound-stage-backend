@@ -23,6 +23,8 @@ func (ChatMessage) TableName() string {
 	return "chat_messages"
 }
 
+const MaxPinnedMessages = 20
+
 type CreateChatMessageParams struct {
 	RoomID   uint   `json:"roomID" validate:"required"`
 	UserID   uint   `json:"userID" validate:"required"`
@@ -38,7 +40,6 @@ type ChatMessageFilter struct {
 type ChatMessageResponse struct {
 	ID        uint               `json:"id"`
 	RoomID    uint               `json:"roomID"`
-	UserID    uint               `json:"userID"`
 	Content   string             `json:"content"`
 	IsPinned  bool               `json:"isPinned"`
 	CreatedAt string             `json:"createdAt"`

@@ -15,7 +15,6 @@ func BuildChatMessageResponse(m *ChatMessage) ChatMessageResponse {
 
 	return ChatMessageResponse{
 		ID:        m.ID,
-		UserID:    m.UserID,
 		Content:   m.Content,
 		IsPinned:  m.IsPinned,
 		CreatedAt: m.CreatedAt.Format(time.RFC3339),

@@ -14,6 +14,9 @@ import (
 )
 
 func TestRepo_Create_Unit(t *testing.T) {
+	now := time.Now()
+	userCols := []string{"id", "created_at", "updated_at", "email", "first_name", "last_name", "last_login_at", "deleted_at"}
+
 	t.Run("creates a chat message", func(t *testing.T) {
 		gdb, mock := testutil.NewMockDB(t)
 		repo := NewRepo(gdb)
@@ -25,6 +28,24 @@ func TestRepo_Create_Unit(t *testing.T) {
 			WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
 		mock.ExpectCommit()
 
+		mock.ExpectQuery(
+			`SELECT \* FROM "chat_messages" WHERE "chat_messages"\."id" = \$1 AND "chat_messages"\."id" = \$2 ORDER BY "chat_messages"\."id" LIMIT \$3`,
+		).
+			WithArgs(1, 1, 1).
+			WillReturnRows(
+				sqlmock.NewRows([]string{"id", "created_at", "updated_at", "room_id", "user_id", "content", "is_pinned"}).
+					AddRow(1, now, now, 1, 2, "hello", false),
+			)
+
+		mock.ExpectQuery(
+			`SELECT \* FROM "users" WHERE "users"\."id" = \$1`,
+		).
+			WithArgs(2).
+			WillReturnRows(
+				sqlmock.NewRows(userCols).
+					AddRow(2, now, now, "user@example.com", "Test", "User", nil, nil),
+			)
+
 		got, err := repo.Create(&CreateChatMessageParams{RoomID: 1, UserID: 2, Content: "hello"})
 
 		require.NoError(t, err)
@@ -34,6 +55,7 @@ func TestRepo_Create_Unit(t *testing.T) {
 		assert.Equal(t, uint(2), got.UserID)
 		assert.Equal(t, "hello", got.Content)
 		assert.False(t, got.IsPinned)
+		assert.Equal(t, uint(2), got.User.ID)
 		assert.NoError(t, mock.ExpectationsWereMet())
 	})
 

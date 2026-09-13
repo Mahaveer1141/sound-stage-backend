@@ -7,10 +7,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 
 	"sound-stage-backend/internal/pkg/httpx"
 	"sound-stage-backend/internal/pkg/listopts"
 	"sound-stage-backend/internal/role"
+	"sound-stage-backend/internal/room"
 	roomuser "sound-stage-backend/internal/room_user"
 )
 
@@ -28,9 +30,20 @@ func (m *mockRepository) List(filter ChatMessageFilter, p listopts.Pagination) (
 	return msgs, args.Error(1)
 }
 
+func (m *mockRepository) FindByID(id uint) (*ChatMessage, error) {
+	args := m.Called(id)
+	msg, _ := args.Get(0).(*ChatMessage)
+	return msg, args.Error(1)
+}
+
 func (m *mockRepository) Count(filter ChatMessageFilter) (int64, error) {
 	args := m.Called(filter)
 	return args.Get(0).(int64), args.Error(1)
+}
+
+func (m *mockRepository) SetPinned(id uint, pinned bool) error {
+	args := m.Called(id, pinned)
+	return args.Error(0)
 }
 
 type mockRoomUserService struct{ mock.Mock }
@@ -41,9 +54,22 @@ func (m *mockRoomUserService) FindBy(userID, roomID uint) (*roomuser.RoomUser, e
 	return ru, args.Error(1)
 }
 
+type mockRoomFinder struct{ mock.Mock }
+
+func (m *mockRoomFinder) FindByID(id uint) (*room.Room, error) {
+	args := m.Called(id)
+	rm, _ := args.Get(0).(*room.Room)
+	return rm, args.Error(1)
+}
+
+func (m *mockRoomFinder) expectChatEnabled(roomID uint) {
+	m.On("FindByID", roomID).Return(&room.Room{IsChatEnabled: true}, nil)
+}
+
 type harness struct {
 	repo      *mockRepository
 	roomUsers *mockRoomUserService
+	rooms     *mockRoomFinder
 	svc       *Service
 }
 
@@ -51,10 +77,12 @@ func newHarness(t *testing.T) *harness {
 	t.Helper()
 	repo := new(mockRepository)
 	ru := new(mockRoomUserService)
+	rooms := new(mockRoomFinder)
 	return &harness{
 		repo:      repo,
 		roomUsers: ru,
-		svc:       NewService(repo, NewAuthz(ru)),
+		rooms:     rooms,
+		svc:       NewService(repo, NewAuthz(ru, rooms)),
 	}
 }
 
@@ -65,6 +93,7 @@ func TestService_Create(t *testing.T) {
 		created := &ChatMessage{RoomID: 1, UserID: 2, Content: "hello"}
 
 		h.roomUsers.On("FindBy", uint(2), uint(1)).Return(&roomuser.RoomUser{Role: role.Role{Name: role.RoleListener}}, nil)
+		h.rooms.expectChatEnabled(1)
 		h.repo.On("Create", input).Return(created, nil)
 
 		got, err := h.svc.Create(input)
@@ -81,6 +110,7 @@ func TestService_Create(t *testing.T) {
 		created := &ChatMessage{RoomID: 1, UserID: 2, Content: "pinned", IsPinned: true}
 
 		h.roomUsers.On("FindBy", uint(2), uint(1)).Return(&roomuser.RoomUser{Role: role.Role{Name: role.RoleAdmin}}, nil)
+		h.rooms.expectChatEnabled(1)
 		h.repo.On("Create", input).Return(created, nil)
 
 		got, err := h.svc.Create(input)
@@ -110,6 +140,7 @@ func TestService_Create(t *testing.T) {
 		input := &CreateChatMessageParams{RoomID: 1, UserID: 2, Content: "pinned", IsPinned: true}
 
 		h.roomUsers.On("FindBy", uint(2), uint(1)).Return(&roomuser.RoomUser{Role: role.Role{Name: role.RoleListener}}, nil)
+		h.rooms.expectChatEnabled(1)
 
 		got, err := h.svc.Create(input)
 
@@ -119,12 +150,27 @@ func TestService_Create(t *testing.T) {
 		h.repo.AssertNotCalled(t, "Create", mock.Anything)
 	})
 
+	t.Run("failure: chat disabled is forbidden", func(t *testing.T) {
+		h := newHarness(t)
+		input := &CreateChatMessageParams{RoomID: 1, UserID: 2, Content: "hello"}
+
+		h.roomUsers.On("FindBy", uint(2), uint(1)).Return(&roomuser.RoomUser{Role: role.Role{Name: role.RoleListener}}, nil)
+		h.rooms.On("FindByID", uint(1)).Return(&room.Room{IsChatEnabled: false}, nil)
+
+		got, err := h.svc.Create(input)
+
+		require.Nil(t, got)
+		require.ErrorIs(t, err, httpx.ErrForbidden)
+		h.repo.AssertNotCalled(t, "Create", mock.Anything)
+	})
+
 	t.Run("failure: repo error is propagated", func(t *testing.T) {
 		h := newHarness(t)
 		input := &CreateChatMessageParams{RoomID: 1, UserID: 2, Content: "hello"}
 		repoErr := errors.New("db down")
 
 		h.roomUsers.On("FindBy", uint(2), uint(1)).Return(&roomuser.RoomUser{Role: role.Role{Name: role.RoleListener}}, nil)
+		h.rooms.expectChatEnabled(1)
 		h.repo.On("Create", input).Return(nil, repoErr)
 
 		got, err := h.svc.Create(input)
@@ -144,6 +190,7 @@ func TestService_List(t *testing.T) {
 		messages := []ChatMessage{{Content: "hi"}}
 
 		h.roomUsers.On("FindBy", uint(2), uint(1)).Return(&roomuser.RoomUser{Role: role.Role{Name: role.RoleListener}}, nil)
+		h.rooms.expectChatEnabled(1)
 		h.repo.On("List", filter, p).Return(messages, nil)
 		h.repo.On("Count", filter).Return(int64(1), nil)
 
@@ -172,6 +219,22 @@ func TestService_List(t *testing.T) {
 		h.repo.AssertNotCalled(t, "List", mock.Anything, mock.Anything)
 	})
 
+	t.Run("failure: chat disabled is forbidden", func(t *testing.T) {
+		h := newHarness(t)
+		filter := ChatMessageFilter{RoomID: 1}
+		p := listopts.Pagination{Page: 1, PageSize: 10}
+
+		h.roomUsers.On("FindBy", uint(2), uint(1)).Return(&roomuser.RoomUser{Role: role.Role{Name: role.RoleListener}}, nil)
+		h.rooms.On("FindByID", uint(1)).Return(&room.Room{IsChatEnabled: false}, nil)
+
+		got, count, err := h.svc.List(2, filter, p)
+
+		require.Nil(t, got)
+		require.Zero(t, count)
+		require.ErrorIs(t, err, httpx.ErrForbidden)
+		h.repo.AssertNotCalled(t, "List", mock.Anything, mock.Anything)
+	})
+
 	t.Run("failure: repo List error is propagated", func(t *testing.T) {
 		h := newHarness(t)
 		filter := ChatMessageFilter{RoomID: 1}
@@ -179,6 +242,7 @@ func TestService_List(t *testing.T) {
 		listErr := errors.New("list failed")
 
 		h.roomUsers.On("FindBy", uint(2), uint(1)).Return(&roomuser.RoomUser{Role: role.Role{Name: role.RoleListener}}, nil)
+		h.rooms.expectChatEnabled(1)
 		h.repo.On("List", filter, p).Return(nil, listErr)
 
 		got, count, err := h.svc.List(2, filter, p)
@@ -197,6 +261,7 @@ func TestService_List(t *testing.T) {
 		messages := []ChatMessage{{Content: "hi"}}
 
 		h.roomUsers.On("FindBy", uint(2), uint(1)).Return(&roomuser.RoomUser{Role: role.Role{Name: role.RoleListener}}, nil)
+		h.rooms.expectChatEnabled(1)
 		h.repo.On("List", filter, p).Return(messages, nil)
 		h.repo.On("Count", filter).Return(int64(0), countErr)
 
@@ -206,5 +271,167 @@ func TestService_List(t *testing.T) {
 		require.Zero(t, count)
 		require.ErrorIs(t, err, countErr)
 		h.repo.AssertExpectations(t)
+	})
+}
+
+func TestService_SetPinned(t *testing.T) {
+	admin := &roomuser.RoomUser{Role: role.Role{Name: role.RoleAdmin}}
+
+	t.Run("success: admin pins a message", func(t *testing.T) {
+		h := newHarness(t)
+		msg := &ChatMessage{RoomID: 1, Content: "hi"}
+		msg.ID = 7
+		isPinned := true
+
+		h.roomUsers.On("FindBy", uint(2), uint(1)).Return(admin, nil)
+		h.rooms.expectChatEnabled(1)
+		h.repo.On("FindByID", uint(7)).Return(msg, nil)
+		h.repo.On("Count", ChatMessageFilter{RoomID: 1, IsPinned: &isPinned}).Return(int64(3), nil)
+		h.repo.On("SetPinned", uint(7), true).Return(nil)
+
+		got, err := h.svc.SetPinned(2, 1, 7, true)
+
+		require.NoError(t, err)
+		assert.Same(t, msg, got)
+		assert.True(t, got.IsPinned)
+		h.repo.AssertExpectations(t)
+	})
+
+	t.Run("success: admin unpins a message", func(t *testing.T) {
+		h := newHarness(t)
+		msg := &ChatMessage{RoomID: 1, Content: "hi", IsPinned: true}
+		msg.ID = 7
+
+		h.roomUsers.On("FindBy", uint(2), uint(1)).Return(admin, nil)
+		h.rooms.expectChatEnabled(1)
+		h.repo.On("FindByID", uint(7)).Return(msg, nil)
+		h.repo.On("SetPinned", uint(7), false).Return(nil)
+
+		got, err := h.svc.SetPinned(2, 1, 7, false)
+
+		require.NoError(t, err)
+		assert.Same(t, msg, got)
+		assert.False(t, got.IsPinned)
+		h.repo.AssertNotCalled(t, "Count", mock.Anything)
+	})
+
+	t.Run("success: pinning an already pinned message skips the limit check", func(t *testing.T) {
+		h := newHarness(t)
+		msg := &ChatMessage{RoomID: 1, Content: "hi", IsPinned: true}
+		msg.ID = 7
+
+		h.roomUsers.On("FindBy", uint(2), uint(1)).Return(admin, nil)
+		h.rooms.expectChatEnabled(1)
+		h.repo.On("FindByID", uint(7)).Return(msg, nil)
+		h.repo.On("SetPinned", uint(7), true).Return(nil)
+
+		got, err := h.svc.SetPinned(2, 1, 7, true)
+
+		require.NoError(t, err)
+		assert.Same(t, msg, got)
+		h.repo.AssertNotCalled(t, "Count", mock.Anything)
+	})
+
+	t.Run("failure: non-admin is forbidden", func(t *testing.T) {
+		h := newHarness(t)
+
+		h.roomUsers.On("FindBy", uint(2), uint(1)).Return(&roomuser.RoomUser{Role: role.Role{Name: role.RoleListener}}, nil)
+		h.rooms.expectChatEnabled(1)
+
+		got, err := h.svc.SetPinned(2, 1, 7, false)
+
+		require.Nil(t, got)
+		require.ErrorIs(t, err, httpx.ErrForbidden)
+		h.repo.AssertNotCalled(t, "SetPinned", mock.Anything, mock.Anything)
+	})
+
+	t.Run("failure: non-member is forbidden", func(t *testing.T) {
+		h := newHarness(t)
+
+		h.roomUsers.On("FindBy", uint(2), uint(1)).Return(nil, nil)
+
+		got, err := h.svc.SetPinned(2, 1, 7, false)
+
+		require.Nil(t, got)
+		require.ErrorIs(t, err, httpx.ErrForbidden)
+		h.repo.AssertNotCalled(t, "SetPinned", mock.Anything, mock.Anything)
+	})
+
+	t.Run("failure: chat disabled is forbidden", func(t *testing.T) {
+		h := newHarness(t)
+
+		h.roomUsers.On("FindBy", uint(2), uint(1)).Return(admin, nil)
+		h.rooms.On("FindByID", uint(1)).Return(&room.Room{IsChatEnabled: false}, nil)
+
+		got, err := h.svc.SetPinned(2, 1, 7, false)
+
+		require.Nil(t, got)
+		require.ErrorIs(t, err, httpx.ErrForbidden)
+		h.repo.AssertNotCalled(t, "SetPinned", mock.Anything, mock.Anything)
+	})
+
+	t.Run("failure: missing message returns not found", func(t *testing.T) {
+		h := newHarness(t)
+
+		h.roomUsers.On("FindBy", uint(2), uint(1)).Return(admin, nil)
+		h.rooms.expectChatEnabled(1)
+		h.repo.On("FindByID", uint(7)).Return(nil, gorm.ErrRecordNotFound)
+
+		got, err := h.svc.SetPinned(2, 1, 7, false)
+
+		require.Nil(t, got)
+		require.ErrorIs(t, err, httpx.ErrRecordNotFound)
+		h.repo.AssertNotCalled(t, "SetPinned", mock.Anything, mock.Anything)
+	})
+
+	t.Run("failure: message from another room returns not found", func(t *testing.T) {
+		h := newHarness(t)
+		msg := &ChatMessage{RoomID: 99, Content: "hi"}
+		msg.ID = 7
+
+		h.roomUsers.On("FindBy", uint(2), uint(1)).Return(admin, nil)
+		h.rooms.expectChatEnabled(1)
+		h.repo.On("FindByID", uint(7)).Return(msg, nil)
+
+		got, err := h.svc.SetPinned(2, 1, 7, false)
+
+		require.Nil(t, got)
+		require.ErrorIs(t, err, httpx.ErrRecordNotFound)
+		h.repo.AssertNotCalled(t, "SetPinned", mock.Anything, mock.Anything)
+	})
+
+	t.Run("failure: pin limit reached", func(t *testing.T) {
+		h := newHarness(t)
+		msg := &ChatMessage{RoomID: 1, Content: "hi"}
+		msg.ID = 7
+		isPinned := true
+
+		h.roomUsers.On("FindBy", uint(2), uint(1)).Return(admin, nil)
+		h.rooms.expectChatEnabled(1)
+		h.repo.On("FindByID", uint(7)).Return(msg, nil)
+		h.repo.On("Count", ChatMessageFilter{RoomID: 1, IsPinned: &isPinned}).Return(int64(MaxPinnedMessages), nil)
+
+		got, err := h.svc.SetPinned(2, 1, 7, true)
+
+		require.Nil(t, got)
+		require.ErrorIs(t, err, httpx.ErrPinnedLimitReached)
+		h.repo.AssertNotCalled(t, "SetPinned", mock.Anything, mock.Anything)
+	})
+
+	t.Run("failure: repo SetPinned error is propagated", func(t *testing.T) {
+		h := newHarness(t)
+		msg := &ChatMessage{RoomID: 1, Content: "hi", IsPinned: true}
+		msg.ID = 7
+		repoErr := errors.New("db down")
+
+		h.roomUsers.On("FindBy", uint(2), uint(1)).Return(admin, nil)
+		h.rooms.expectChatEnabled(1)
+		h.repo.On("FindByID", uint(7)).Return(msg, nil)
+		h.repo.On("SetPinned", uint(7), false).Return(repoErr)
+
+		got, err := h.svc.SetPinned(2, 1, 7, false)
+
+		require.Nil(t, got)
+		require.ErrorIs(t, err, repoErr)
 	})
 }

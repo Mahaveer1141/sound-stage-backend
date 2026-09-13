@@ -26,7 +26,27 @@ func (r *Repo) Create(input *CreateChatMessageParams) (*ChatMessage, error) {
 		return nil, err
 	}
 
+	if err := r.db.Preload("User").First(&msg, msg.ID).Error; err != nil {
+		return nil, err
+	}
+
 	return &msg, nil
+}
+
+func (r *Repo) FindByID(id uint) (*ChatMessage, error) {
+	var msg ChatMessage
+
+	if err := r.db.Preload("User").First(&msg, id).Error; err != nil {
+		return nil, err
+	}
+
+	return &msg, nil
+}
+
+func (r *Repo) SetPinned(id uint, pinned bool) error {
+	return r.db.Model(&ChatMessage{}).
+		Where("id = ?", id).
+		Update("is_pinned", pinned).Error
 }
 
 func (r *Repo) List(filter ChatMessageFilter, p listopts.Pagination) ([]ChatMessage, error) {

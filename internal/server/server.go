@@ -97,14 +97,12 @@ func (s *Server) Run() error {
 	roomService := room.NewService(roomRepo, roomUserService, roomUserFavouriteService, db, roomAuthz, fileAttachmentService)
 	categoryService := category.NewService(categoryRepo)
 	tagService := tag.NewService(tagRepo)
-	chatMessageAuthz := chatmessage.NewAuthz(roomUserService)
+	chatMessageAuthz := chatmessage.NewAuthz(roomUserService, roomRepo)
 	chatMessageService := chatmessage.NewService(chatMessageRepo, chatMessageAuthz)
 
 	wsHandler := ws.NewHandler(hub, s.cfg, roomUserAuthz.CanJoinRoom)
 	roomWsHandler := roomuser.NewWSHandler(hub, roomUserService, roomUserAuthz, mediaRouter, s.cfg, s.logger)
 	roomWsHandler.Register(wsHandler)
-	chatMessageWsHandler := chatmessage.NewWSHandler(chatMessageService, hub)
-	chatMessageWsHandler.Register(wsHandler)
 
 	registrar := worker.NewTaskRegistrar(pool, s.logger)
 	registrar.RegisterAll(worker.TaskDeps{
@@ -125,7 +123,7 @@ func (s *Server) Run() error {
 	categoryHandler := category.NewHandler(categoryService)
 	tagHandler := tag.NewHandler(tagService)
 	roomUserFavouriteHandler := roomuserfavourite.NewHandler(roomUserFavouriteService)
-	chatMessageHandler := chatmessage.NewHandler(chatMessageService)
+	chatMessageHandler := chatmessage.NewHandler(chatMessageService, hub)
 
 	handlers := &router.Handlers{
 		Health:            healthHandler,
