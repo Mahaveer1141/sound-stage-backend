@@ -112,6 +112,29 @@ func (r *RedisRepo) DeleteParticipantState(ctx context.Context, roomID, userID u
 	return nil
 }
 
+func (r *RedisRepo) DeleteRoomState(ctx context.Context, roomID uint) error {
+	pattern := fmt.Sprintf("room:%d:user:*", roomID)
+	keys := []string{raisedHandsKey(roomID)}
+
+	var cursor uint64
+	for {
+		found, next, err := r.rdb.Scan(ctx, cursor, pattern, 500).Result()
+		if err != nil {
+			return fmt.Errorf("roomstate: delete room state: %w", err)
+		}
+		keys = append(keys, found...)
+		cursor = next
+		if cursor == 0 {
+			break
+		}
+	}
+
+	if err := r.rdb.Del(ctx, keys...).Err(); err != nil {
+		return fmt.Errorf("roomstate: delete room state: %w", err)
+	}
+	return nil
+}
+
 func (r *RedisRepo) GetRaisedHands(ctx context.Context, roomID uint, p listopts.Pagination) ([]uint, error) {
 	start := int64(p.Offset())
 	end := start + int64(p.PageSize) - 1

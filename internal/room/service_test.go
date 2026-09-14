@@ -40,6 +40,10 @@ func (m *mockRepository) FindByID(id uint) (*Room, error) {
 	r, _ := args.Get(0).(*Room)
 	return r, args.Error(1)
 }
+func (m *mockRepository) Delete(id uint) error {
+	args := m.Called(id)
+	return args.Error(0)
+}
 func (m *mockRepository) List(filter RoomFilter, sort listopts.Sort, p listopts.Pagination) ([]Room, error) {
 	args := m.Called(filter, sort, p)
 	rooms, _ := args.Get(0).([]Room)
@@ -116,6 +120,13 @@ func (m *mockFavouriteService) FavouritedRoomIDs(userID uint, roomIDs []uint) (m
 	return res, args.Error(1)
 }
 
+type mockRoomStateService struct{ mock.Mock }
+
+func (m *mockRoomStateService) DeleteRoomState(ctx context.Context, roomID uint) error {
+	args := m.Called(ctx, roomID)
+	return args.Error(0)
+}
+
 type mockFileAttachmentService struct{ mock.Mock }
 
 func (m *mockFileAttachmentService) UploadOrReplaceFile(ctx context.Context, existing *fileattachment.FileAttachment,
@@ -134,6 +145,7 @@ type harness struct {
 	repo      *mockRepository
 	roomUser  *mockRoomUserService
 	favourite *mockFavouriteService
+	roomState *mockRoomStateService
 	file      *mockFileAttachmentService
 	svc       *Service
 }
@@ -144,13 +156,15 @@ func newHarness(t *testing.T) *harness {
 	repo := new(mockRepository)
 	ru := new(mockRoomUserService)
 	fav := new(mockFavouriteService)
+	roomState := new(mockRoomStateService)
 	file := new(mockFileAttachmentService)
 	return &harness{
 		repo:      repo,
 		roomUser:  ru,
 		favourite: fav,
+		roomState: roomState,
 		file:      file,
-		svc:       NewService(repo, ru, fav, db, NewAuthz(ru), file),
+		svc:       NewService(repo, ru, fav, roomState, db, NewAuthz(ru), file),
 	}
 }
 
@@ -597,5 +611,108 @@ func TestService_AddRoomUser(t *testing.T) {
 		require.ErrorIs(t, err, findErr)
 		h.repo.AssertExpectations(t)
 		h.roomUser.AssertExpectations(t)
+	})
+}
+
+func TestService_Delete(t *testing.T) {
+	t.Run("success: owner deletes room and all related resources", func(t *testing.T) {
+		h := newHarness(t)
+		h.repo.On("FindByID", uint(4)).Return(&Room{Name: "Stage"}, nil)
+		h.roomUser.On("HasRoles", uint(1), uint(4), []role.RoleName{role.RoleOwner}).Return(true, nil)
+		h.repo.On("Delete", uint(4)).Return(nil)
+		h.roomState.On("DeleteRoomState", mock.Anything, uint(4)).Return(nil)
+
+		err := h.svc.Delete(context.Background(), 4, 1)
+
+		require.NoError(t, err)
+		h.repo.AssertExpectations(t)
+		h.roomUser.AssertExpectations(t)
+		h.roomState.AssertExpectations(t)
+	})
+
+	t.Run("success: deletes room images before removing records", func(t *testing.T) {
+		h := newHarness(t)
+		roomWithImages := &Room{
+			Name:       "Stage",
+			CoverImage: &fileattachment.FileAttachment{PublicID: "cover"},
+			LogoImage:  &fileattachment.FileAttachment{PublicID: "logo"},
+		}
+		roomWithImages.CoverImage.ID = 11
+		roomWithImages.LogoImage.ID = 12
+		h.repo.On("FindByID", uint(4)).Return(roomWithImages, nil)
+		h.roomUser.On("HasRoles", uint(1), uint(4), []role.RoleName{role.RoleOwner}).Return(true, nil)
+		h.file.On("DeleteFile", mock.Anything, uint(11)).Return(nil)
+		h.file.On("DeleteFile", mock.Anything, uint(12)).Return(nil)
+		h.repo.On("Delete", uint(4)).Return(nil)
+		h.roomState.On("DeleteRoomState", mock.Anything, uint(4)).Return(nil)
+
+		err := h.svc.Delete(context.Background(), 4, 1)
+
+		require.NoError(t, err)
+		h.file.AssertExpectations(t)
+		h.repo.AssertExpectations(t)
+	})
+
+	t.Run("failure: missing room propagates lookup error", func(t *testing.T) {
+		h := newHarness(t)
+		h.repo.On("FindByID", uint(99)).Return(nil, gorm.ErrRecordNotFound)
+
+		err := h.svc.Delete(context.Background(), 99, 1)
+
+		require.ErrorIs(t, err, gorm.ErrRecordNotFound)
+		h.roomUser.AssertNotCalled(t, "HasRoles", mock.Anything, mock.Anything, mock.Anything)
+		h.repo.AssertNotCalled(t, "Delete", mock.Anything, mock.Anything)
+	})
+
+	t.Run("failure: non-owner gets ErrForbidden", func(t *testing.T) {
+		h := newHarness(t)
+		h.repo.On("FindByID", uint(4)).Return(&Room{Name: "Stage"}, nil)
+		h.roomUser.On("HasRoles", uint(2), uint(4), []role.RoleName{role.RoleOwner}).Return(false, nil)
+
+		err := h.svc.Delete(context.Background(), 4, 2)
+
+		require.ErrorIs(t, err, httpx.ErrForbidden)
+		h.repo.AssertNotCalled(t, "Delete", mock.Anything, mock.Anything)
+	})
+
+	t.Run("failure: file deletion error aborts before db changes", func(t *testing.T) {
+		h := newHarness(t)
+		roomWithCover := &Room{Name: "Stage", CoverImage: &fileattachment.FileAttachment{PublicID: "cover"}}
+		roomWithCover.CoverImage.ID = 11
+		h.repo.On("FindByID", uint(4)).Return(roomWithCover, nil)
+		h.roomUser.On("HasRoles", uint(1), uint(4), []role.RoleName{role.RoleOwner}).Return(true, nil)
+		fileErr := errors.New("cloudinary down")
+		h.file.On("DeleteFile", mock.Anything, uint(11)).Return(fileErr)
+
+		err := h.svc.Delete(context.Background(), 4, 1)
+
+		require.ErrorIs(t, err, fileErr)
+		h.repo.AssertNotCalled(t, "Delete", mock.Anything, mock.Anything)
+	})
+
+	t.Run("failure: repo delete error propagates and skips redis cleanup", func(t *testing.T) {
+		h := newHarness(t)
+		h.repo.On("FindByID", uint(4)).Return(&Room{Name: "Stage"}, nil)
+		h.roomUser.On("HasRoles", uint(1), uint(4), []role.RoleName{role.RoleOwner}).Return(true, nil)
+		delErr := errors.New("delete failed")
+		h.repo.On("Delete", uint(4)).Return(delErr)
+
+		err := h.svc.Delete(context.Background(), 4, 1)
+
+		require.ErrorIs(t, err, delErr)
+		h.roomState.AssertNotCalled(t, "DeleteRoomState", mock.Anything, mock.Anything)
+	})
+
+	t.Run("failure: room state cleanup error is propagated", func(t *testing.T) {
+		h := newHarness(t)
+		h.repo.On("FindByID", uint(4)).Return(&Room{Name: "Stage"}, nil)
+		h.roomUser.On("HasRoles", uint(1), uint(4), []role.RoleName{role.RoleOwner}).Return(true, nil)
+		h.repo.On("Delete", uint(4)).Return(nil)
+		redisErr := errors.New("redis down")
+		h.roomState.On("DeleteRoomState", mock.Anything, uint(4)).Return(redisErr)
+
+		err := h.svc.Delete(context.Background(), 4, 1)
+
+		require.ErrorIs(t, err, redisErr)
 	})
 }

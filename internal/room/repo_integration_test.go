@@ -555,3 +555,43 @@ func TestRepo_UpdatePrivateCode_Integration(t *testing.T) {
 		require.ErrorIs(t, err, gorm.ErrRecordNotFound)
 	})
 }
+
+func TestRepo_Delete_Integration(t *testing.T) {
+	t.Run("removes room with its taggings and attachments", func(t *testing.T) {
+		db := testutil.NewIntegrationDB(t, &user.User{}, &category.Category{}, &roomcategory.RoomCategory{}, &tag.Tag{}, &tagging.Tagging{}, &Room{}, &fileattachment.FileAttachment{})
+		repo := NewRepo(db)
+
+		c := user.User{Email: "creator@example.com", FirstName: "Creator"}
+		require.NoError(t, db.Create(&c).Error)
+
+		cat := category.Category{Name: "Concert"}
+		require.NoError(t, db.Create(&cat).Error)
+		tg := tag.Tag{Name: "jazz"}
+		require.NoError(t, db.Create(&tg).Error)
+
+		room := Room{Name: "Doomed Room", CreatorID: c.ID}
+		require.NoError(t, db.Create(&room).Error)
+		require.NoError(t, db.Create(&tagging.Tagging{TagID: tg.ID, TaggableID: room.ID, TaggableType: "rooms"}).Error)
+		require.NoError(t, db.Create(&fileattachment.FileAttachment{
+			OwnerType: "rooms", OwnerID: room.ID, Context: fileattachment.ContextRoomCover,
+			PublicID: "pub-1", URL: "https://example.com/img.png", ResourceType: "image",
+		}).Error)
+
+		other := Room{Name: "Safe Room", CreatorID: c.ID}
+		require.NoError(t, db.Create(&other).Error)
+		require.NoError(t, db.Create(&roomcategory.RoomCategory{RoomID: other.ID, CategoryID: cat.ID}).Error)
+
+		require.NoError(t, repo.Delete(room.ID))
+
+		var count int64
+		require.NoError(t, db.Model(&Room{}).Where("id = ?", room.ID).Count(&count).Error)
+		require.Zero(t, count)
+		require.NoError(t, db.Model(&tagging.Tagging{}).Where("taggable_type = ? AND taggable_id = ?", "rooms", room.ID).Count(&count).Error)
+		require.Zero(t, count)
+		require.NoError(t, db.Model(&fileattachment.FileAttachment{}).Where("owner_type = ? AND owner_id = ?", "rooms", room.ID).Count(&count).Error)
+		require.Zero(t, count)
+
+		require.NoError(t, db.Model(&roomcategory.RoomCategory{}).Where("room_id = ?", other.ID).Count(&count).Error)
+		require.Equal(t, int64(1), count)
+	})
+}

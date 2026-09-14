@@ -114,6 +114,22 @@ func (r *Repo) UpdatePrivateCode(id uint, code string) error {
 	return nil
 }
 
+func (r *Repo) Delete(id uint) error {
+	err := r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("taggable_type = 'rooms' AND taggable_id = ?", id).Delete(&tagging.Tagging{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("owner_type = 'rooms' AND owner_id = ?", id).Delete(&fileattachment.FileAttachment{}).Error; err != nil {
+			return err
+		}
+		return tx.Delete(&Room{}, id).Error
+	})
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func (r *Repo) Count(filter RoomFilter) (int64, error) {
 	var count int64
 	err := r.db.Model(&Room{}).Scopes(Filters(filter)).Count(&count).Error

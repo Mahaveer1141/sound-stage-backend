@@ -94,7 +94,7 @@ func (s *Server) Run() error {
 	roomUserFavouriteAuthz := roomuserfavourite.NewAuthz(roomUserService)
 	roomUserFavouriteService := roomuserfavourite.NewService(roomUserFavouriteRepo, roomUserFavouriteAuthz)
 	roomAuthz := room.NewAuthz(roomUserService)
-	roomService := room.NewService(roomRepo, roomUserService, roomUserFavouriteService, db, roomAuthz, fileAttachmentService)
+	roomService := room.NewService(roomRepo, roomUserService, roomUserFavouriteService, roomStateService, db, roomAuthz, fileAttachmentService)
 	categoryService := category.NewService(categoryRepo)
 	tagService := tag.NewService(tagRepo)
 	chatMessageAuthz := chatmessage.NewAuthz(roomUserService, roomRepo)

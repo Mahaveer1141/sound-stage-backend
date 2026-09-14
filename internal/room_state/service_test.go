@@ -36,6 +36,10 @@ func (m *mockRepository) DeleteParticipantState(ctx context.Context, roomID, use
 	args := m.Called(ctx, roomID, userID)
 	return args.Error(0)
 }
+func (m *mockRepository) DeleteRoomState(ctx context.Context, roomID uint) error {
+	args := m.Called(ctx, roomID)
+	return args.Error(0)
+}
 func (m *mockRepository) GetRaisedHands(ctx context.Context, roomID uint, p listopts.Pagination) ([]uint, error) {
 	args := m.Called(ctx, roomID, p)
 	ids, _ := args.Get(0).([]uint)
@@ -249,6 +253,29 @@ func TestService_GetParticipantStates(t *testing.T) {
 		got, err := h.svc.GetParticipantStates(context.Background(), 4, []uint{42})
 
 		require.Nil(t, got)
+		require.ErrorIs(t, err, repoErr)
+		h.repo.AssertExpectations(t)
+	})
+}
+
+func TestService_DeleteRoomState(t *testing.T) {
+	t.Run("success: clears all room state keys", func(t *testing.T) {
+		h := newServiceHarness(t)
+		h.repo.On("DeleteRoomState", mock.Anything, uint(4)).Return(nil)
+
+		err := h.svc.DeleteRoomState(context.Background(), 4)
+
+		require.NoError(t, err)
+		h.repo.AssertExpectations(t)
+	})
+
+	t.Run("failure: repo error is propagated", func(t *testing.T) {
+		h := newServiceHarness(t)
+		repoErr := errors.New("redis down")
+		h.repo.On("DeleteRoomState", mock.Anything, uint(4)).Return(repoErr)
+
+		err := h.svc.DeleteRoomState(context.Background(), 4)
+
 		require.ErrorIs(t, err, repoErr)
 		h.repo.AssertExpectations(t)
 	})

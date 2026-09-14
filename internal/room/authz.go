@@ -53,3 +53,14 @@ func (a *Authz) CanUpdate(roomID, userID uint) error {
 	}
 	return nil
 }
+
+func (a *Authz) CanDelete(roomID, userID uint) error {
+	ok, err := a.roomUsers.HasRoles(userID, roomID, []role.RoleName{role.RoleOwner})
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return httpx.ErrForbidden
+	}
+	return nil
+}

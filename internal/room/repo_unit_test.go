@@ -24,8 +24,8 @@ func TestRepo_Create_Unit(t *testing.T) {
 		require.NoError(t, tx.Error)
 
 		mock.ExpectQuery(regexp.QuoteMeta(
-			`INSERT INTO "rooms" ("created_at","updated_at","name","description","creator_id","type","private_code","is_chat_enabled","deleted_at") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING "id"`)).
-			WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), "Room A", "Description A", 1, "public", sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).
+			`INSERT INTO "rooms" ("created_at","updated_at","name","description","creator_id","type","private_code","is_chat_enabled") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "id"`)).
+			WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), "Room A", "Description A", 1, "public", sqlmock.AnyArg(), sqlmock.AnyArg()).
 			WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
 
 		got, err := repo.Create(tx, &CreateRoomParams{
@@ -55,8 +55,8 @@ func TestRepo_Create_Unit(t *testing.T) {
 		require.NoError(t, tx.Error)
 
 		mock.ExpectQuery(regexp.QuoteMeta(
-			`INSERT INTO "rooms" ("created_at","updated_at","name","description","creator_id","type","private_code","is_chat_enabled","deleted_at") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING "id"`)).
-			WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), "Room B", "", 2, "public", sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).
+			`INSERT INTO "rooms" ("created_at","updated_at","name","description","creator_id","type","private_code","is_chat_enabled") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "id"`)).
+			WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), "Room B", "", 2, "public", sqlmock.AnyArg(), sqlmock.AnyArg()).
 			WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(2))
 
 		got, err := repo.Create(tx, &CreateRoomParams{
@@ -84,8 +84,8 @@ func TestRepo_Create_Unit(t *testing.T) {
 		require.NoError(t, tx.Error)
 
 		mock.ExpectQuery(regexp.QuoteMeta(
-			`INSERT INTO "rooms" ("created_at","updated_at","name","description","creator_id","type","private_code","is_chat_enabled","deleted_at") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING "id"`)).
-			WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), "Room A", "Description A", 1, "public", sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).
+			`INSERT INTO "rooms" ("created_at","updated_at","name","description","creator_id","type","private_code","is_chat_enabled") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "id"`)).
+			WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), "Room A", "Description A", 1, "public", sqlmock.AnyArg(), sqlmock.AnyArg()).
 			WillReturnError(assert.AnError)
 
 		got, err := repo.Create(tx, &CreateRoomParams{
@@ -109,7 +109,7 @@ func TestRepo_List_Unit(t *testing.T) {
 		repo := NewRepo(gdb)
 
 		mock.ExpectQuery(
-			`SELECT \* FROM "rooms" WHERE "rooms"\."deleted_at" IS NULL ORDER BY rooms\.created_at desc LIMIT \$1`,
+			`SELECT \* FROM "rooms" ORDER BY rooms\.created_at desc LIMIT \$1`,
 		).
 			WithArgs(10).
 			WillReturnRows(sqlmock.NewRows([]string{"id", "created_at", "updated_at", "name", "description", "creator_id"}))
@@ -144,7 +144,7 @@ func TestRepo_List_Unit(t *testing.T) {
 		mock.ExpectQuery(`SELECT \* FROM "users" WHERE "users"\."id" = \$1.*`).
 			WithArgs(1).
 			WillReturnRows(
-				sqlmock.NewRows([]string{"id", "created_at", "updated_at", "email", "first_name", "last_name", "last_login_at", "deleted_at"}),
+				sqlmock.NewRows([]string{"id", "created_at", "updated_at", "email", "first_name", "last_name", "last_login_at"}),
 			)
 
 		mock.ExpectQuery(`SELECT \* FROM "file_attachments" WHERE "owner_type" = \$1 AND "file_attachments"\."owner_id" = \$2 AND context = \$3`).
@@ -176,7 +176,7 @@ func TestRepo_List_Unit(t *testing.T) {
 		repo := NewRepo(gdb)
 
 		mock.ExpectQuery(
-			`SELECT \* FROM "rooms" WHERE "rooms"\."deleted_at" IS NULL ORDER BY rooms\.created_at desc LIMIT \$1 OFFSET \$2`,
+			`SELECT \* FROM "rooms" ORDER BY rooms\.created_at desc LIMIT \$1 OFFSET \$2`,
 		).
 			WithArgs(2, 2).
 			WillReturnRows(sqlmock.NewRows([]string{"id", "created_at", "updated_at", "name", "description", "creator_id"}))
@@ -193,7 +193,7 @@ func TestRepo_List_Unit(t *testing.T) {
 		repo := NewRepo(gdb)
 
 		mock.ExpectQuery(
-			`SELECT .* FROM "rooms" JOIN room_categories ON room_categories\.room_id = rooms\.id WHERE room_categories\.category_id IN \(\$1,\$2\) AND "rooms"\."deleted_at" IS NULL ORDER BY rooms\.created_at desc LIMIT \$3`,
+			`SELECT .* FROM "rooms" JOIN room_categories ON room_categories\.room_id = rooms\.id WHERE room_categories\.category_id IN \(\$1,\$2\) ORDER BY rooms\.created_at desc LIMIT \$3`,
 		).
 			WithArgs(uint(1), uint(2), 10).
 			WillReturnRows(sqlmock.NewRows([]string{"id", "created_at", "updated_at", "name", "description", "creator_id"}))
@@ -214,7 +214,7 @@ func TestRepo_List_Unit(t *testing.T) {
 		repo := NewRepo(gdb)
 
 		mock.ExpectQuery(
-			`SELECT .* FROM "rooms" JOIN taggables ON taggables\.taggable_type = \$1 AND taggables\.taggable_id = rooms\.id WHERE taggables\.tag_id IN \(\$2,\$3\) AND "rooms"\."deleted_at" IS NULL ORDER BY rooms\.created_at desc LIMIT \$4`,
+			`SELECT .* FROM "rooms" JOIN taggables ON taggables\.taggable_type = \$1 AND taggables\.taggable_id = rooms\.id WHERE taggables\.tag_id IN \(\$2,\$3\) ORDER BY rooms\.created_at desc LIMIT \$4`,
 		).
 			WithArgs("rooms", uint(3), uint(4), 10).
 			WillReturnRows(sqlmock.NewRows([]string{"id", "created_at", "updated_at", "name", "description", "creator_id"}))
@@ -236,7 +236,7 @@ func TestRepo_List_Unit(t *testing.T) {
 
 		roomType := RoomTypePrivate
 		mock.ExpectQuery(
-			`SELECT \* FROM "rooms" WHERE type = \$1 AND "rooms"\."deleted_at" IS NULL ORDER BY rooms\.created_at desc LIMIT \$2`,
+			`SELECT \* FROM "rooms" WHERE type = \$1 ORDER BY rooms\.created_at desc LIMIT \$2`,
 		).
 			WithArgs(roomType, 10).
 			WillReturnRows(sqlmock.NewRows([]string{"id", "created_at", "updated_at", "name", "description", "creator_id"}))
@@ -280,7 +280,7 @@ func TestRepo_Count_Unit(t *testing.T) {
 		repo := NewRepo(gdb)
 
 		mock.ExpectQuery(
-			`SELECT count\(\*\) FROM "rooms" WHERE "rooms"\."deleted_at" IS NULL`,
+			`SELECT count\(\*\) FROM "rooms"`,
 		).
 			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(42))
 
@@ -313,7 +313,7 @@ func TestRepo_Count_Unit(t *testing.T) {
 		repo := NewRepo(gdb)
 
 		mock.ExpectQuery(
-			`SELECT count\(\*\) FROM "rooms" JOIN room_categories ON room_categories\.room_id = rooms\.id WHERE room_categories\.category_id IN \(\$1,\$2\) AND "rooms"\."deleted_at" IS NULL`,
+			`SELECT count\(\*\) FROM "rooms" JOIN room_categories ON room_categories\.room_id = rooms\.id WHERE room_categories\.category_id IN \(\$1,\$2\)`,
 		).
 			WithArgs(uint(1), uint(2)).
 			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(3))
@@ -330,7 +330,7 @@ func TestRepo_Count_Unit(t *testing.T) {
 		repo := NewRepo(gdb)
 
 		mock.ExpectQuery(
-			`SELECT count\(\*\) FROM "rooms" JOIN taggables ON taggables\.taggable_type = \$1 AND taggables\.taggable_id = rooms\.id WHERE taggables\.tag_id IN \(\$2,\$3\) AND "rooms"\."deleted_at" IS NULL`,
+			`SELECT count\(\*\) FROM "rooms" JOIN taggables ON taggables\.taggable_type = \$1 AND taggables\.taggable_id = rooms\.id WHERE taggables\.tag_id IN \(\$2,\$3\)`,
 		).
 			WithArgs("rooms", uint(3), uint(4)).
 			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(2))
@@ -348,7 +348,7 @@ func TestRepo_Count_Unit(t *testing.T) {
 
 		roomType := RoomTypePrivate
 		mock.ExpectQuery(
-			`SELECT count\(\*\) FROM "rooms" WHERE type = \$1 AND "rooms"\."deleted_at" IS NULL`,
+			`SELECT count\(\*\) FROM "rooms" WHERE type = \$1`,
 		).
 			WithArgs(roomType).
 			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(7))
@@ -384,7 +384,7 @@ func TestRepo_FindByID_Unit(t *testing.T) {
 		repo := NewRepo(gdb)
 
 		mock.ExpectQuery(
-			`(?s)SELECT \* FROM "rooms" WHERE "rooms"\."id" = \$1 AND "rooms"\."deleted_at" IS NULL ORDER BY "rooms"\."id" LIMIT \$2`,
+			`(?s)SELECT \* FROM "rooms" WHERE "rooms"\."id" = \$1 ORDER BY "rooms"\."id" LIMIT \$2`,
 		).
 			WithArgs(1, 1).
 			WillReturnError(gorm.ErrRecordNotFound)
@@ -402,7 +402,7 @@ func TestRepo_FindByID_Unit(t *testing.T) {
 		repo := NewRepo(gdb)
 
 		mock.ExpectQuery(
-			`(?s)SELECT \* FROM "rooms" WHERE "rooms"\."id" = \$1 AND "rooms"\."deleted_at" IS NULL ORDER BY "rooms"\."id" LIMIT \$2`,
+			`(?s)SELECT \* FROM "rooms" WHERE "rooms"\."id" = \$1 ORDER BY "rooms"\."id" LIMIT \$2`,
 		).
 			WithArgs(1, 1).
 			WillReturnError(assert.AnError)
@@ -422,7 +422,7 @@ func TestRepo_Update_Unit(t *testing.T) {
 		repo := NewRepo(gdb)
 
 		mock.ExpectQuery(
-			`(?s)SELECT \* FROM "rooms" WHERE "rooms"\."id" = \$1 AND "rooms"\."deleted_at" IS NULL ORDER BY "rooms"\."id" LIMIT \$2`,
+			`(?s)SELECT \* FROM "rooms" WHERE "rooms"\."id" = \$1 ORDER BY "rooms"\."id" LIMIT \$2`,
 		).
 			WithArgs(1, 1).
 			WillReturnError(gorm.ErrRecordNotFound)
@@ -500,14 +500,14 @@ func TestRepo_LoadTagsForRooms_Unit(t *testing.T) {
 }
 
 func TestRepo_UpdatePrivateCode_Unit(t *testing.T) {
-	const selectRoomSQL = `SELECT * FROM "rooms" WHERE "rooms"."id" = $1 AND "rooms"."deleted_at" IS NULL ORDER BY "rooms"."id" LIMIT $2`
-	const updateRoomSQL = `UPDATE "rooms" SET "created_at"=$1,"updated_at"=$2,"name"=$3,"description"=$4,"creator_id"=$5,"type"=$6,"private_code"=$7,"is_chat_enabled"=$8,"deleted_at"=$9 WHERE "rooms"."deleted_at" IS NULL AND "id" = $10`
+	const selectRoomSQL = `SELECT * FROM "rooms" WHERE "rooms"."id" = $1 ORDER BY "rooms"."id" LIMIT $2`
+	const updateRoomSQL = `UPDATE "rooms" SET "created_at"=$1,"updated_at"=$2,"name"=$3,"description"=$4,"creator_id"=$5,"type"=$6,"private_code"=$7,"is_chat_enabled"=$8 WHERE "id" = $9`
 
 	expectRoomFound := func(mock sqlmock.Sqlmock, id uint64) {
 		mock.ExpectQuery(regexp.QuoteMeta(selectRoomSQL)).
 			WithArgs(id, 1).
-			WillReturnRows(sqlmock.NewRows([]string{"id", "created_at", "updated_at", "name", "description", "creator_id", "type", "private_code", "is_chat_enabled", "deleted_at"}).
-				AddRow(id, time.Now(), time.Now(), "Room A", "Description A", 5, "private", "old-code", true, nil))
+			WillReturnRows(sqlmock.NewRows([]string{"id", "created_at", "updated_at", "name", "description", "creator_id", "type", "private_code", "is_chat_enabled"}).
+				AddRow(id, time.Now(), time.Now(), "Room A", "Description A", 5, "private", "old-code", true))
 	}
 
 	t.Run("updates the private code of an existing room", func(t *testing.T) {
@@ -518,7 +518,7 @@ func TestRepo_UpdatePrivateCode_Unit(t *testing.T) {
 
 		mock.ExpectBegin()
 		mock.ExpectExec(regexp.QuoteMeta(updateRoomSQL)).
-			WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), "Room A", "Description A", 5, "private", "new-code", sqlmock.AnyArg(), sqlmock.AnyArg(), 1).
+			WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), "Room A", "Description A", 5, "private", "new-code", sqlmock.AnyArg(), 1).
 			WillReturnResult(sqlmock.NewResult(0, 1))
 		mock.ExpectCommit()
 
@@ -550,7 +550,7 @@ func TestRepo_UpdatePrivateCode_Unit(t *testing.T) {
 
 		mock.ExpectBegin()
 		mock.ExpectExec(regexp.QuoteMeta(updateRoomSQL)).
-			WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), "Room A", "Description A", 5, "private", "new-code", sqlmock.AnyArg(), sqlmock.AnyArg(), 1).
+			WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), "Room A", "Description A", 5, "private", "new-code", sqlmock.AnyArg(), 1).
 			WillReturnError(assert.AnError)
 		mock.ExpectRollback()
 

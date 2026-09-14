@@ -26,11 +26,16 @@ type roomUserFavouriteService interface {
 	FavouritedRoomIDs(userID uint, roomIDs []uint) (map[uint]bool, error)
 }
 
+type roomStateService interface {
+	DeleteRoomState(ctx context.Context, roomID uint) error
+}
+
 type repository interface {
 	Create(tx *gorm.DB, input *CreateRoomParams) (*Room, error)
 	Update(id uint, input *UpdateRoomParams) (*Room, error)
 	UpdatePrivateCode(id uint, code string) error
 	FindByID(id uint) (*Room, error)
+	Delete(id uint) error
 	List(filter RoomFilter, sort listopts.Sort, p listopts.Pagination) ([]Room, error)
 	Count(filter RoomFilter) (int64, error)
 	LoadTagsForRooms(roomIds []uint) (map[uint][]tag.Tag, error)
@@ -40,6 +45,7 @@ type authorizer interface {
 	CanView(roomID, userID uint) error
 	CanUpdate(roomID, userID uint) error
 	CanAddRoomUser(roomID, userID uint) error
+	CanDelete(roomID, userID uint) error
 }
 
 type fileAttachmentService interface {
@@ -52,17 +58,20 @@ type Service struct {
 	repo             repository
 	roomUserService  roomUserService
 	favouriteService roomUserFavouriteService
+	roomState        roomStateService
 	authz            authorizer
 	file             fileAttachmentService
 	db               *gorm.DB
 }
 
 func NewService(r repository, roomUserSvc roomUserService,
-	favouriteSvc roomUserFavouriteService, db *gorm.DB, authz authorizer, file fileAttachmentService) *Service {
+	favouriteSvc roomUserFavouriteService, roomStateSvc roomStateService,
+	db *gorm.DB, authz authorizer, file fileAttachmentService) *Service {
 	return &Service{
 		repo:             r,
 		roomUserService:  roomUserSvc,
 		favouriteService: favouriteSvc,
+		roomState:        roomStateSvc,
 		authz:            authz,
 		file:             file,
 		db:               db,
@@ -282,6 +291,34 @@ func (s *Service) List(filter RoomFilter, sort listopts.Sort, p listopts.Paginat
 	}
 
 	return rooms, count, nil
+}
+
+func (s *Service) Delete(ctx context.Context, id, userID uint) error {
+	room, err := s.repo.FindByID(id)
+	if err != nil {
+		return err
+	}
+
+	if err := s.authz.CanDelete(id, userID); err != nil {
+		return err
+	}
+
+	if room.CoverImage != nil {
+		if err := s.file.DeleteFile(ctx, room.CoverImage.ID); err != nil {
+			return err
+		}
+	}
+	if room.LogoImage != nil {
+		if err := s.file.DeleteFile(ctx, room.LogoImage.ID); err != nil {
+			return err
+		}
+	}
+
+	if err := s.repo.Delete(id); err != nil {
+		return err
+	}
+
+	return s.roomState.DeleteRoomState(ctx, id)
 }
 
 func (s *Service) ViewerContext(roomID, userID uint) (*RoomViewer, error) {

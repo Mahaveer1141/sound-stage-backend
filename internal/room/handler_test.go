@@ -1,12 +1,14 @@
 package room
 
 import (
+	"context"
 	"net/http"
 	"testing"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"gorm.io/gorm"
 
 	"sound-stage-backend/internal/pkg/httpx"
 	"sound-stage-backend/internal/pkg/listopts"
@@ -41,6 +43,10 @@ func (m *mockRoomService) Update(id, userID uint, input *UpdateRoomParams) (*Roo
 	args := m.Called(id, userID, input)
 	r, _ := args.Get(0).(*Room)
 	return r, args.Error(1)
+}
+func (m *mockRoomService) Delete(ctx context.Context, id, userID uint) error {
+	args := m.Called(ctx, id, userID)
+	return args.Error(0)
 }
 func (m *mockRoomService) ViewerContext(roomID, userID uint) (*RoomViewer, error) {
 	args := m.Called(roomID, userID)
@@ -347,5 +353,81 @@ func TestHandler_FindByID(t *testing.T) {
 
 		assert.Equal(t, http.StatusForbidden, w.Code)
 		h.svc.AssertExpectations(t)
+	})
+}
+
+func TestHandler_Delete(t *testing.T) {
+	t.Run("success: deletes room and broadcasts room_deleted", func(t *testing.T) {
+		h := newHandlerHarness(t)
+		h.svc.On("Delete", mock.Anything, uint(5), uint(42)).Return(nil)
+		h.hub.On("BroadcastToRoom", uint(5), ws.EventRoomDeleted, mock.MatchedBy(func(payload any) bool {
+			gh, ok := payload.(gin.H)
+			return ok && gh["roomId"] == 5
+		})).Return()
+
+		w, c := testutil.NewTestContext(http.MethodDelete, "/rooms/5", nil)
+		c.Params = gin.Params{{Key: "id", Value: "5"}}
+		c.Set("userId", uint(42))
+
+		h.handler.Delete(c)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		h.svc.AssertExpectations(t)
+		h.hub.AssertExpectations(t)
+	})
+
+	t.Run("failure: non-numeric room ID returns 400 before service is called", func(t *testing.T) {
+		h := newHandlerHarness(t)
+
+		w, c := testutil.NewTestContext(http.MethodDelete, "/rooms/abc", nil)
+		c.Params = gin.Params{{Key: "id", Value: "abc"}}
+		c.Set("userId", uint(42))
+
+		h.handler.Delete(c)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		h.svc.AssertNotCalled(t, "Delete", mock.Anything, mock.Anything, mock.Anything)
+	})
+
+	t.Run("failure: forbidden returns 403 and does not broadcast", func(t *testing.T) {
+		h := newHandlerHarness(t)
+		h.svc.On("Delete", mock.Anything, uint(5), uint(42)).Return(httpx.ErrForbidden)
+
+		w, c := testutil.NewTestContext(http.MethodDelete, "/rooms/5", nil)
+		c.Params = gin.Params{{Key: "id", Value: "5"}}
+		c.Set("userId", uint(42))
+
+		h.handler.Delete(c)
+
+		assert.Equal(t, http.StatusForbidden, w.Code)
+		h.hub.AssertNotCalled(t, "BroadcastToRoom", mock.Anything, mock.Anything, mock.Anything)
+	})
+
+	t.Run("failure: not found returns 404", func(t *testing.T) {
+		h := newHandlerHarness(t)
+		h.svc.On("Delete", mock.Anything, uint(99), uint(42)).Return(gorm.ErrRecordNotFound)
+
+		w, c := testutil.NewTestContext(http.MethodDelete, "/rooms/99", nil)
+		c.Params = gin.Params{{Key: "id", Value: "99"}}
+		c.Set("userId", uint(42))
+
+		h.handler.Delete(c)
+
+		assert.Equal(t, http.StatusNotFound, w.Code)
+		h.hub.AssertNotCalled(t, "BroadcastToRoom", mock.Anything, mock.Anything, mock.Anything)
+	})
+
+	t.Run("failure: service error returns 422", func(t *testing.T) {
+		h := newHandlerHarness(t)
+		h.svc.On("Delete", mock.Anything, uint(5), uint(42)).Return(assert.AnError)
+
+		w, c := testutil.NewTestContext(http.MethodDelete, "/rooms/5", nil)
+		c.Params = gin.Params{{Key: "id", Value: "5"}}
+		c.Set("userId", uint(42))
+
+		h.handler.Delete(c)
+
+		assert.Equal(t, http.StatusUnprocessableEntity, w.Code)
+		h.hub.AssertNotCalled(t, "BroadcastToRoom", mock.Anything, mock.Anything, mock.Anything)
 	})
 }

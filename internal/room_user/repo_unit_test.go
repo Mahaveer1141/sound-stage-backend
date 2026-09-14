@@ -107,8 +107,8 @@ func TestRepo_FindBy_Unit(t *testing.T) {
 		mock.ExpectQuery(`SELECT \* FROM "users" WHERE "users"\."id" = \$1.*`).
 			WithArgs(1).
 			WillReturnRows(
-				sqlmock.NewRows([]string{"id", "created_at", "updated_at", "email", "first_name", "last_name", "last_login_at", "deleted_at"}).
-					AddRow(1, time.Now(), time.Now(), "user@example.com", "U", "ser", nil, nil),
+				sqlmock.NewRows([]string{"id", "created_at", "updated_at", "email", "first_name", "last_name", "last_login_at"}).
+					AddRow(1, time.Now(), time.Now(), "user@example.com", "U", "ser", nil),
 			)
 
 		mock.ExpectQuery(`SELECT \* FROM "file_attachments" WHERE "owner_type" = \$1 AND "file_attachments"\."owner_id" = \$2`).
@@ -466,8 +466,8 @@ func TestRepo_ListByUserIDs_Unit(t *testing.T) {
 		mock.ExpectQuery(`SELECT \* FROM "users" WHERE "users"\."id" = \$1.*`).
 			WithArgs(7).
 			WillReturnRows(
-				sqlmock.NewRows([]string{"id", "created_at", "updated_at", "email", "first_name", "last_name", "last_login_at", "deleted_at"}).
-					AddRow(7, time.Now(), time.Now(), "u7@example.com", "U", "Seven", nil, nil),
+				sqlmock.NewRows([]string{"id", "created_at", "updated_at", "email", "first_name", "last_name", "last_login_at"}).
+					AddRow(7, time.Now(), time.Now(), "u7@example.com", "U", "Seven", nil),
 			)
 
 		mock.ExpectQuery(`SELECT \* FROM "file_attachments" WHERE "owner_type" = \$1 AND "file_attachments"\."owner_id" = \$2`).

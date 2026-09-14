@@ -15,7 +15,7 @@ import (
 
 func TestRepo_Create_Unit(t *testing.T) {
 	now := time.Now()
-	userCols := []string{"id", "created_at", "updated_at", "email", "first_name", "last_name", "last_login_at", "deleted_at"}
+	userCols := []string{"id", "created_at", "updated_at", "email", "first_name", "last_name", "last_login_at"}
 
 	t.Run("creates a chat message", func(t *testing.T) {
 		gdb, mock := testutil.NewMockDB(t)
@@ -43,7 +43,7 @@ func TestRepo_Create_Unit(t *testing.T) {
 			WithArgs(2).
 			WillReturnRows(
 				sqlmock.NewRows(userCols).
-					AddRow(2, now, now, "user@example.com", "Test", "User", nil, nil),
+					AddRow(2, now, now, "user@example.com", "Test", "User", nil),
 			)
 
 		got, err := repo.Create(&CreateChatMessageParams{RoomID: 1, UserID: 2, Content: "hello"})
@@ -80,7 +80,7 @@ func TestRepo_Create_Unit(t *testing.T) {
 
 func TestRepo_List_Unit(t *testing.T) {
 	now := time.Now()
-	userCols := []string{"id", "created_at", "updated_at", "email", "first_name", "last_name", "last_login_at", "deleted_at"}
+	userCols := []string{"id", "created_at", "updated_at", "email", "first_name", "last_name", "last_login_at"}
 
 	t.Run("returns messages with preloaded user", func(t *testing.T) {
 		gdb, mock := testutil.NewMockDB(t)
@@ -101,7 +101,7 @@ func TestRepo_List_Unit(t *testing.T) {
 			WithArgs(2).
 			WillReturnRows(
 				sqlmock.NewRows(userCols).
-					AddRow(2, now, now, "user@example.com", "Test", "User", nil, nil),
+					AddRow(2, now, now, "user@example.com", "Test", "User", nil),
 			)
 
 		got, err := repo.List(ChatMessageFilter{RoomID: 1}, listopts.Pagination{Page: 1, PageSize: 10})

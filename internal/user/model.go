@@ -6,8 +6,6 @@ import (
 	model "sound-stage-backend/internal/model"
 	"sound-stage-backend/internal/pkg/httpx"
 	"time"
-
-	"gorm.io/gorm"
 )
 
 type User struct {
@@ -17,7 +15,6 @@ type User struct {
 	LastName       *string                        `validate:"omitempty,max=255"`
 	LastLoginAt    *time.Time                     `validate:"omitempty"`
 	ProfilePicture *fileattachment.FileAttachment `gorm:"polymorphic:Owner;"`
-	DeletedAt      gorm.DeletedAt
 }
 
 func (User) TableName() string {

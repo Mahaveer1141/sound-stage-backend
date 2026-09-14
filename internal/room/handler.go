@@ -1,6 +1,7 @@
 package room
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"sound-stage-backend/internal/pkg/current"
@@ -13,6 +14,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/binding"
 	"github.com/go-playground/validator/v10"
+	"gorm.io/gorm"
 )
 
 type roomService interface {
@@ -20,6 +22,7 @@ type roomService interface {
 	FindByID(id, userID uint) (*Room, error)
 	Create(input *CreateRoomParams) (*Room, error)
 	Update(id, userID uint, input *UpdateRoomParams) (*Room, error)
+	Delete(ctx context.Context, id, userID uint) error
 	ViewerContext(roomID, userID uint) (*RoomViewer, error)
 	ViewerContexts(roomIDs []uint, userID uint) (map[uint]*RoomViewer, error)
 	UpdatePrivateCode(roomID, userID uint) error
@@ -161,6 +164,33 @@ func (h *Handler) FindByID(c *gin.Context) {
 	viewer, _ := h.service.ViewerContext(room.ID, currentUserID)
 
 	httpx.SuccessResponse(c, http.StatusOK, "Room fetched successfully", BuildRoomResponse(room, viewer))
+}
+
+func (h *Handler) Delete(c *gin.Context) {
+	id := c.Param("id")
+	roomId, err := strconv.Atoi(id)
+	if err != nil {
+		httpx.ErrorResponse(c, http.StatusBadRequest, "Invalid room ID")
+		return
+	}
+	userId, _ := current.UserID(c)
+
+	if err := h.service.Delete(c.Request.Context(), uint(roomId), userId); err != nil {
+		if errors.Is(err, httpx.ErrForbidden) {
+			httpx.ErrorResponse(c, http.StatusForbidden, "Only the room owner can delete this room")
+			return
+		}
+		if errors.Is(err, gorm.ErrRecordNotFound) || errors.Is(err, httpx.ErrRecordNotFound) {
+			httpx.ErrorResponse(c, http.StatusNotFound, "Room not found")
+			return
+		}
+		httpx.ErrorResponse(c, http.StatusUnprocessableEntity, "Failed to delete room")
+		return
+	}
+
+	h.hub.BroadcastToRoom(uint(roomId), ws.EventRoomDeleted, gin.H{"roomId": roomId})
+
+	httpx.SuccessResponse(c, http.StatusOK, "Room deleted successfully", nil)
 }
 
 func (h *Handler) UpdatePrivateCode(c *gin.Context) {

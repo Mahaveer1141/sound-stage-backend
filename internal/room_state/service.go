@@ -13,6 +13,7 @@ type Repository interface {
 	SetHandRaised(ctx context.Context, roomID, userID uint, isHandRaised bool) (*ParticipantState, error)
 	GetParticipantStates(ctx context.Context, roomID uint, userIDs []uint) (map[uint]*ParticipantState, error)
 	DeleteParticipantState(ctx context.Context, roomID, userID uint) error
+	DeleteRoomState(ctx context.Context, roomID uint) error
 	GetRaisedHands(ctx context.Context, roomID uint, p listopts.Pagination) ([]uint, error)
 	CountRaisedHands(ctx context.Context, roomID uint) (int64, error)
 }
@@ -54,6 +55,13 @@ func (s *Service) SetHandRaised(ctx context.Context, roomID, userID uint, isHand
 
 	if err := s.pub.Publish(ctx, roomID, userID, ws.EventSetHandRaised, state); err != nil {
 		return fmt.Errorf("roomstate: set hand raised: %w", err)
+	}
+	return nil
+}
+
+func (s *Service) DeleteRoomState(ctx context.Context, roomID uint) error {
+	if err := s.repo.DeleteRoomState(ctx, roomID); err != nil {
+		return fmt.Errorf("roomstate: delete room state: %w", err)
 	}
 	return nil
 }

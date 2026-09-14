@@ -8,6 +8,7 @@ const (
 	EventJoinRoom      EventName = "join_room"
 	EventLeaveRoom     EventName = "leave_room"
 	EventUserKickedOut EventName = "user_kicked_out"
+	EventRoomDeleted   EventName = "room_deleted"
 
 	EventError EventName = "error"
 

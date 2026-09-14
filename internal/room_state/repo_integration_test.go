@@ -192,3 +192,32 @@ func TestRedisRepo_GetParticipantStates_Integration(t *testing.T) {
 		assert.Nil(t, got[99])
 	})
 }
+
+func TestRedisRepo_DeleteRoomState_Integration(t *testing.T) {
+	t.Run("removes participant keys and raised hands for the room only", func(t *testing.T) {
+		_, rdb, repo := newRedisRepoHarness(t)
+		ctx := context.Background()
+		require.NoError(t, rdb.HSet(ctx, participantKey(4, 42), fieldIsMuted, true).Err())
+		require.NoError(t, rdb.HSet(ctx, participantKey(4, 7), fieldIsHandRaised, true).Err())
+		require.NoError(t, rdb.ZAdd(ctx, raisedHandsKey(4), redis.Z{Score: 1, Member: 7}).Err())
+		require.NoError(t, rdb.HSet(ctx, participantKey(9, 1), fieldIsMuted, false).Err())
+		require.NoError(t, rdb.ZAdd(ctx, raisedHandsKey(9), redis.Z{Score: 1, Member: 1}).Err())
+
+		err := repo.DeleteRoomState(ctx, 4)
+
+		require.NoError(t, err)
+		exists, err := rdb.Exists(ctx, participantKey(4, 42), participantKey(4, 7), raisedHandsKey(4)).Result()
+		require.NoError(t, err)
+		assert.Zero(t, exists)
+
+		other, err := rdb.Exists(ctx, participantKey(9, 1), raisedHandsKey(9)).Result()
+		require.NoError(t, err)
+		assert.Equal(t, int64(2), other)
+	})
+
+	t.Run("succeeds when room has no state", func(t *testing.T) {
+		_, _, repo := newRedisRepoHarness(t)
+
+		require.NoError(t, repo.DeleteRoomState(context.Background(), 4))
+	})
+}

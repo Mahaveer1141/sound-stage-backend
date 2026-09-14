@@ -38,7 +38,6 @@ type Room struct {
 	IsChatEnabled bool                           `gorm:"default:true" validate:"boolean"`
 	TotalUsers    int64                          `gorm:"-"`
 	LiveUsers     int64                          `gorm:"-"`
-	DeletedAt     gorm.DeletedAt
 }
 
 func (Room) TableName() string {

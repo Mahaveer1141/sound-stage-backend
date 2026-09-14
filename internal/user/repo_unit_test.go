@@ -20,8 +20,8 @@ func TestRepo_Create_Unit(t *testing.T) {
 
 		mock.ExpectBegin()
 		mock.ExpectQuery(regexp.QuoteMeta(
-			`INSERT INTO "users" ("created_at","updated_at","email","first_name","last_name","last_login_at","deleted_at") VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING "id"`)).
-			WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), "user@example.com", "First", "Last", nil, sqlmock.AnyArg()).
+			`INSERT INTO "users" ("created_at","updated_at","email","first_name","last_name","last_login_at") VALUES ($1,$2,$3,$4,$5,$6) RETURNING "id"`)).
+			WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), "user@example.com", "First", "Last", nil).
 			WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
 		mock.ExpectCommit()
 
@@ -47,8 +47,8 @@ func TestRepo_Create_Unit(t *testing.T) {
 
 		mock.ExpectBegin()
 		mock.ExpectQuery(regexp.QuoteMeta(
-			`INSERT INTO "users" ("created_at","updated_at","email","first_name","last_name","last_login_at","deleted_at") VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING "id"`)).
-			WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), "user@example.com", "First", "", nil, sqlmock.AnyArg()).
+			`INSERT INTO "users" ("created_at","updated_at","email","first_name","last_name","last_login_at") VALUES ($1,$2,$3,$4,$5,$6) RETURNING "id"`)).
+			WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), "user@example.com", "First", "", nil).
 			WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
 		mock.ExpectCommit()
 
@@ -69,8 +69,8 @@ func TestRepo_Create_Unit(t *testing.T) {
 
 		mock.ExpectBegin()
 		mock.ExpectQuery(regexp.QuoteMeta(
-			`INSERT INTO "users" ("created_at","updated_at","email","first_name","last_name","last_login_at","deleted_at") VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING "id"`)).
-			WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), "user@example.com", "First", "Last", nil, sqlmock.AnyArg()).
+			`INSERT INTO "users" ("created_at","updated_at","email","first_name","last_name","last_login_at") VALUES ($1,$2,$3,$4,$5,$6) RETURNING "id"`)).
+			WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), "user@example.com", "First", "Last", nil).
 			WillReturnError(assert.AnError)
 		mock.ExpectRollback()
 
@@ -93,12 +93,12 @@ func TestRepo_FindByEmail_Unit(t *testing.T) {
 		repo := NewRepo(gdb)
 
 		mock.ExpectQuery(
-			`SELECT \* FROM "users" WHERE email = \$1 AND "users"\."deleted_at" IS NULL ORDER BY "users"\."id" LIMIT \$2`,
+			`SELECT \* FROM "users" WHERE email = \$1 ORDER BY "users"\."id" LIMIT \$2`,
 		).
 			WithArgs("user@example.com", 1).
 			WillReturnRows(
-				sqlmock.NewRows([]string{"id", "created_at", "updated_at", "email", "first_name", "last_name", "last_login_at", "deleted_at"}).
-					AddRow(1, time.Now(), time.Now(), "user@example.com", "First", "Last", nil, nil),
+				sqlmock.NewRows([]string{"id", "created_at", "updated_at", "email", "first_name", "last_name", "last_login_at"}).
+					AddRow(1, time.Now(), time.Now(), "user@example.com", "First", "Last", nil),
 			)
 
 		got, err := repo.FindByEmail("USER@example.com")
@@ -115,7 +115,7 @@ func TestRepo_FindByEmail_Unit(t *testing.T) {
 		repo := NewRepo(gdb)
 
 		mock.ExpectQuery(
-			`SELECT \* FROM "users" WHERE email = \$1 AND "users"\."deleted_at" IS NULL ORDER BY "users"\."id" LIMIT \$2`,
+			`SELECT \* FROM "users" WHERE email = \$1 ORDER BY "users"\."id" LIMIT \$2`,
 		).
 			WithArgs("missing@example.com", 1).
 			WillReturnError(gorm.ErrRecordNotFound)
@@ -134,16 +134,16 @@ func TestRepo_FindByID_Unit(t *testing.T) {
 		repo := NewRepo(gdb)
 
 		mock.ExpectQuery(
-			`SELECT \* FROM "users" WHERE id = \$1 AND "users"\."deleted_at" IS NULL ORDER BY "users"\."id" LIMIT \$2`,
+			`SELECT \* FROM "users" WHERE id = \$1 ORDER BY "users"\."id" LIMIT \$2`,
 		).
 			WithArgs(1, 1).
 			WillReturnRows(
-				sqlmock.NewRows([]string{"id", "created_at", "updated_at", "email", "first_name", "last_name", "last_login_at", "deleted_at"}).
-					AddRow(1, time.Now(), time.Now(), "user@example.com", "First", "Last", nil, nil),
+				sqlmock.NewRows([]string{"id", "created_at", "updated_at", "email", "first_name", "last_name", "last_login_at"}).
+					AddRow(1, time.Now(), time.Now(), "user@example.com", "First", "Last", nil),
 			)
 		mock.ExpectQuery(`SELECT \* FROM "file_attachments"`).
 			WithArgs("users", 1).
-			WillReturnRows(sqlmock.NewRows([]string{"id", "created_at", "updated_at", "deleted_at", "owner_type", "owner_id", "context", "public_id", "url", "resource_type", "format", "bytes", "width", "height"}))
+			WillReturnRows(sqlmock.NewRows([]string{"id", "created_at", "updated_at", "owner_type", "owner_id", "context", "public_id", "url", "resource_type", "format", "bytes", "width", "height"}))
 
 		got, err := repo.FindByID(1)
 
@@ -158,7 +158,7 @@ func TestRepo_FindByID_Unit(t *testing.T) {
 		repo := NewRepo(gdb)
 
 		mock.ExpectQuery(
-			`SELECT \* FROM "users" WHERE id = \$1 AND "users"\."deleted_at" IS NULL ORDER BY "users"\."id" LIMIT \$2`,
+			`SELECT \* FROM "users" WHERE id = \$1 ORDER BY "users"\."id" LIMIT \$2`,
 		).
 			WithArgs(999, 1).
 			WillReturnError(gorm.ErrRecordNotFound)
@@ -219,8 +219,8 @@ func TestRepo_Save_Unit(t *testing.T) {
 
 		mock.ExpectBegin()
 		mock.ExpectExec(regexp.QuoteMeta(
-			`UPDATE "users" SET "created_at"=$1,"updated_at"=$2,"email"=$3,"first_name"=$4,"last_name"=$5,"last_login_at"=$6,"deleted_at"=$7 WHERE "users"."deleted_at" IS NULL AND "id" = $8`)).
-			WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), "user@example.com", "Updated", "New", nil, nil, 1).
+			`UPDATE "users" SET "created_at"=$1,"updated_at"=$2,"email"=$3,"first_name"=$4,"last_name"=$5,"last_login_at"=$6 WHERE "id" = $7`)).
+			WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), "user@example.com", "Updated", "New", nil, 1).
 			WillReturnResult(sqlmock.NewResult(0, 1))
 		mock.ExpectCommit()
 
