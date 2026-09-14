@@ -10,7 +10,7 @@ ARG TARGETARCH
 WORKDIR /app
 
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
-    go install github.com/pressly/goose/v3/cmd/goose@latest
+    go install github.com/pressly/goose/v3/cmd/goose@v3.27.0
 
 COPY go.mod go.sum ./
 RUN go mod download
