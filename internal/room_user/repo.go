@@ -80,15 +80,30 @@ func (r *Repo) HasRoles(userID, roomID uint, roles []role.RoleName) (bool, error
 	return count > 0, err
 }
 
-func (r *Repo) ListByRoomID(roomID uint, filter RoomUserFilter, sort listopts.Sort, p listopts.Pagination) ([]RoomUser, error) {
+func (r *Repo) ListByRoomID(roomID uint, filter RoomUserFilter, sort listopts.Sort, c listopts.Cursor) ([]RoomUser, bool, string, error) {
 	var roomUsers []RoomUser
 	err := r.db.
 		Preload("User.ProfilePicture").
 		Preload("Role").
 		Where("room_users.room_id = ? AND room_users.is_blocked = ?", roomID, false).
-		Scopes(Filters(filter), Sort(sort), p.Scope()).
+		Scopes(Filters(filter), Sort(sort), c.Scope("room_users.last_joined_at", "room_users.id")).
 		Find(&roomUsers).Error
-	return roomUsers, err
+	if err != nil {
+		return nil, false, "", err
+	}
+
+	hasMore := len(roomUsers) > c.Limit
+	if hasMore {
+		roomUsers = roomUsers[:c.Limit]
+	}
+
+	var nextCursor string
+	if len(roomUsers) > 0 {
+		last := roomUsers[len(roomUsers)-1]
+		nextCursor = listopts.EncodeCursor(last.LastJoinedAt, last.ID)
+	}
+
+	return roomUsers, hasMore, nextCursor, nil
 }
 
 func (r *Repo) ListByUserIDs(roomID uint, userIDs []uint) ([]RoomUser, error) {

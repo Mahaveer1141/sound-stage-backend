@@ -146,7 +146,9 @@ func TestRepo_HasRoles_Integration(t *testing.T) {
 }
 
 func TestRepo_ListByRoomID_Integration(t *testing.T) {
-	t.Run("lists users with sort and pagination", func(t *testing.T) {
+	sort := listopts.Sort{Field: "last_joined_at", Order: "asc"}
+
+	t.Run("paginates by id cursor", func(t *testing.T) {
 		db := testutil.NewIntegrationDB(t, &RoomUser{}, &user.User{}, &role.Role{}, &fileattachment.FileAttachment{})
 		deps := setupRoomUserTest(t, db)
 
@@ -168,17 +170,18 @@ func TestRepo_ListByRoomID_Integration(t *testing.T) {
 		_, err = deps.repo.Create(db, u3.ID, deps.roomID, listener.ID)
 		require.NoError(t, err)
 
-		got, err := deps.repo.ListByRoomID(
+		got, hasMore, nextCursor, err := deps.repo.ListByRoomID(
 			deps.roomID,
 			RoomUserFilter{},
-			listopts.Sort{Field: "created_at", Order: "asc"},
-			listopts.Pagination{Page: 2, PageSize: 1},
+			sort,
+			listopts.Cursor{Cursor: "", Limit: 1},
 		)
 
 		require.NoError(t, err)
 		require.Len(t, got, 1)
-		require.Equal(t, u2.ID, got[0].User.ID)
-		require.Equal(t, role.RoleSpeaker, got[0].Role.Name)
+		require.Equal(t, u1.ID, got[0].User.ID)
+		require.True(t, hasMore)
+		require.NotEmpty(t, nextCursor)
 	})
 
 	t.Run("filters room users by role", func(t *testing.T) {
@@ -199,17 +202,18 @@ func TestRepo_ListByRoomID_Integration(t *testing.T) {
 		_, err = deps.repo.Create(db, u2.ID, deps.roomID, speaker.ID)
 		require.NoError(t, err)
 
-		got, err := deps.repo.ListByRoomID(
+		got, hasMore, _, err := deps.repo.ListByRoomID(
 			deps.roomID,
 			RoomUserFilter{Roles: []string{string(role.RoleListener)}},
-			listopts.Sort{Field: "created_at", Order: "asc"},
-			listopts.Pagination{Page: 1, PageSize: 10},
+			sort,
+			listopts.Cursor{Cursor: "", Limit: 10},
 		)
 
 		require.NoError(t, err)
 		require.Len(t, got, 1)
 		require.Equal(t, u1.ID, got[0].User.ID)
 		require.Equal(t, role.RoleListener, got[0].Role.Name)
+		require.False(t, hasMore)
 	})
 }
 

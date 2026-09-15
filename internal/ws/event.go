@@ -6,6 +6,7 @@ type EventName string
 
 const (
 	EventJoinRoom      EventName = "join_room"
+	EventJoinStream    EventName = "join_stream"
 	EventLeaveRoom     EventName = "leave_room"
 	EventUserKickedOut EventName = "user_kicked_out"
 	EventRoomDeleted   EventName = "room_deleted"

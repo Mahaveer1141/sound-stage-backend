@@ -151,7 +151,11 @@ func TestWsHandler_handleUserJoined(t *testing.T) {
 		h.media.On("AddSession", "client-1", mock.AnythingOfType("*webrtc.PeerConnection")).
 			Return(&webrtc.Session{})
 		h.media.On("SubscribeToRoomTracks", c, mock.Anything).Return()
-		h.hub.On("BroadcastToRoom", uint(4), ws.EventJoinRoom, nil).Return()
+		h.roomUser.On("FindBy", uint(42), uint(4)).Return(&RoomUser{UserID: 42, RoomID: 4}, nil)
+		h.hub.On("BroadcastToRoom", uint(4), ws.EventJoinRoom, mock.MatchedBy(func(payload any) bool {
+			_, ok := payload.(RoomUserResponse)
+			return ok
+		})).Return()
 
 		h.wsHandler.handleUserJoined(c, ws.Event{})
 

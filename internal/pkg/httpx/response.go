@@ -26,9 +26,11 @@ type PaginatedResponse struct {
 }
 
 type Pagination struct {
-	Page       int `json:"page"`
-	TotalCount int `json:"totalCount"`
-	TotalPages int `json:"totalPages"`
+	Page       int    `json:"page"`
+	TotalCount int    `json:"totalCount"`
+	TotalPages int    `json:"totalPages"`
+	NextCursor string `json:"nextCursor"`
+	HasMore    bool   `json:"hasMore"`
 }
 
 func SuccessResponse(c *gin.Context, statusCode int, message string, data any) {
@@ -43,6 +45,26 @@ func ErrorResponse(c *gin.Context, statusCode int, message string) {
 	c.JSON(statusCode, Response{
 		Success: false,
 		Message: message,
+	})
+}
+
+func CursorPaginatedSuccessResponse(c *gin.Context, message string, data any, limit int, totalCount int64, nextCursor string, hasMore bool) {
+	totalPages := int(totalCount) / limit
+	if int(totalCount)%limit > 0 {
+		totalPages++
+	}
+
+	c.JSON(http.StatusOK, PaginatedResponse{
+		Success: true,
+		Data:    data,
+		Message: message,
+		Pagination: Pagination{
+			Page:       1,
+			TotalCount: int(totalCount),
+			TotalPages: totalPages,
+			NextCursor: nextCursor,
+			HasMore:    hasMore,
+		},
 	})
 }
 

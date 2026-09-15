@@ -70,7 +70,7 @@ func NewWSHandler(hub webSocketHub, roomUserSvc roomUserWSService, authz wsAutho
 }
 
 func (h *WsHandler) Register(wsh ws.Handler) {
-	wsh.On(ws.EventJoinRoom, h.handleUserJoined)
+	wsh.On(ws.EventJoinStream, h.handleUserJoined)
 	wsh.On(ws.EventLeaveRoom, h.handleUserLeft)
 
 	wsh.On(ws.EventSetMuted, h.handleSetMuted)
@@ -128,7 +128,13 @@ func (h *WsHandler) handleUserJoined(c *ws.Client, evt ws.Event) {
 		h.media.FanOutTrack(c, session, localTrack)
 	})
 
-	h.hub.BroadcastToRoom(c.RoomID, ws.EventJoinRoom, nil)
+	ru, err := h.service.FindBy(c.UserID, c.RoomID)
+	if err != nil || ru == nil {
+		h.hub.ErrorToClient(c, "Failed to find user in room", http.StatusInternalServerError)
+		return
+	}
+
+	h.hub.BroadcastToRoom(c.RoomID, ws.EventJoinRoom, BuildRoomUserResponse(ru, 0))
 }
 
 func (h *WsHandler) handleUserLeft(c *ws.Client, evt ws.Event) {

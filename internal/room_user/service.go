@@ -33,7 +33,7 @@ type repo interface {
 	FindAnyBy(userID uint, roomID uint) (*RoomUser, error)
 	UpdateActivity(ru *RoomUser, activity Activity) error
 	HasRoles(userID uint, roomID uint, permissions []role.RoleName) (bool, error)
-	ListByRoomID(roomID uint, filter RoomUserFilter, sort listopts.Sort, p listopts.Pagination) ([]RoomUser, error)
+	ListByRoomID(roomID uint, filter RoomUserFilter, sort listopts.Sort, c listopts.Cursor) ([]RoomUser, bool, string, error)
 	ListByUserIDs(roomID uint, userIDs []uint) ([]RoomUser, error)
 	CountByRoomID(roomID uint, filter RoomUserFilter) (int64, error)
 	CountByRoomIDs(roomIDs []uint, filter RoomUserFilter) (map[uint]int64, error)
@@ -164,23 +164,24 @@ func (s *Service) RemoveUser(ctx context.Context, userID uint, roomID uint) erro
 	return s.roomState.Leave(ctx, roomID, userID)
 }
 
-func (s *Service) ListByRoomID(ctx context.Context, roomID, userID uint, filter RoomUserFilter, sort listopts.Sort, p listopts.Pagination) ([]RoomUser, int64, error) {
+func (s *Service) ListByRoomID(ctx context.Context, roomID, userID uint, filter RoomUserFilter, c listopts.Cursor) ([]RoomUser, int64, bool, string, error) {
 	if err := s.authz.CanListUsers(roomID, userID); err != nil {
-		return nil, 0, err
+		return nil, 0, false, "", err
 	}
 
-	users, err := s.repo.ListByRoomID(roomID, filter, sort, p)
+	sort := listopts.Sort{Field: "last_joined_at", Order: "asc"}
+	users, hasMore, nextCursor, err := s.repo.ListByRoomID(roomID, filter, sort, c)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, false, "", err
 	}
 	count, err := s.repo.CountByRoomID(roomID, filter)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, false, "", err
 	}
 	if err := s.attachStates(ctx, roomID, users); err != nil {
-		return nil, 0, err
+		return nil, 0, false, "", err
 	}
-	return users, count, nil
+	return users, count, hasMore, nextCursor, nil
 }
 
 func (s *Service) FindByWithState(ctx context.Context, userID, roomID uint) (*RoomUser, error) {
@@ -248,23 +249,30 @@ func (s *Service) HasRoles(userID uint, roomID uint, permissions []role.RoleName
 	return s.repo.HasRoles(userID, roomID, permissions)
 }
 
-func (s *Service) UpdateRole(roomID uint, userID uint, roleName role.RoleName, actorID uint) error {
+func (s *Service) UpdateRole(ctx context.Context, roomID uint, userID uint, roleName role.RoleName, actorID uint) (*RoomUser, error) {
 	if err := s.authz.CanUpdateRole(roomID, actorID, roleName); err != nil {
-		return err
+		return nil, err
 	}
 	r, err := s.roleService.FindByName(roleName)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if err := s.repo.UpdateRole(roomID, userID, r.ID); err != nil {
-		return err
+		return nil, err
 	}
 
 	if roleName == role.RoleListener {
 		s.revoker.RevokePublishing(roomID, userID)
 	}
 
-	return nil
+	ru, err := s.FindByWithState(ctx, userID, roomID)
+	if err != nil {
+		return nil, err
+	}
+	if ru == nil {
+		return nil, httpx.ErrRecordNotFound
+	}
+	return ru, nil
 }
 
 func (s *Service) DeleteUser(ctx context.Context, roomID, userID, actorID uint) error {

@@ -22,10 +22,10 @@ func init() {
 
 type mockRoomUserService struct{ mock.Mock }
 
-func (m *mockRoomUserService) ListByRoomID(ctx context.Context, roomID, userID uint, filter RoomUserFilter, sort listopts.Sort, p listopts.Pagination) ([]RoomUser, int64, error) {
-	args := m.Called(ctx, roomID, userID, filter, sort, p)
+func (m *mockRoomUserService) ListByRoomID(ctx context.Context, roomID, userID uint, filter RoomUserFilter, c listopts.Cursor) ([]RoomUser, int64, bool, string, error) {
+	args := m.Called(ctx, roomID, userID, filter, c)
 	rus, _ := args.Get(0).([]RoomUser)
-	return rus, args.Get(1).(int64), args.Error(2)
+	return rus, args.Get(1).(int64), args.Bool(2), args.Get(3).(string), args.Error(4)
 }
 func (m *mockRoomUserService) FindByWithState(ctx context.Context, userID, roomID uint) (*RoomUser, error) {
 	args := m.Called(ctx, userID, roomID)
@@ -37,9 +37,10 @@ func (m *mockRoomUserService) ListRaisedHands(ctx context.Context, roomID, userI
 	rus, _ := args.Get(0).([]RoomUser)
 	return rus, args.Get(1).(int64), args.Error(2)
 }
-func (m *mockRoomUserService) UpdateRole(roomID, userID uint, roleName role.RoleName, actorID uint) error {
-	args := m.Called(roomID, userID, roleName, actorID)
-	return args.Error(0)
+func (m *mockRoomUserService) UpdateRole(ctx context.Context, roomID, userID uint, roleName role.RoleName, actorID uint) (*RoomUser, error) {
+	args := m.Called(ctx, roomID, userID, roleName, actorID)
+	ru, _ := args.Get(0).(*RoomUser)
+	return ru, args.Error(1)
 }
 func (m *mockRoomUserService) DeleteUser(ctx context.Context, roomID, userID, actorID uint) error {
 	args := m.Called(ctx, roomID, userID, actorID)
@@ -101,9 +102,9 @@ func TestHandler_ListUsers(t *testing.T) {
 	t.Run("success: returns 200 with mapped user responses", func(t *testing.T) {
 		h := newHandlerHarness(t)
 		users := []RoomUser{{UserID: 1}, {UserID: 2}}
-		h.svc.On("ListByRoomID", mock.Anything, uint(4), uint(1), mock.Anything, mock.Anything, mock.Anything).Return(users, int64(2), nil)
+		h.svc.On("ListByRoomID", mock.Anything, uint(4), uint(1), mock.Anything, mock.Anything).Return(users, int64(2), false, "", nil)
 
-		w, c := testutil.NewTestContext(http.MethodGet, "/rooms/4/users?page=1&pageSize=10", nil)
+		w, c := testutil.NewTestContext(http.MethodGet, "/rooms/4/users?cursor=0&limit=10", nil)
 		c.Params = gin.Params{{Key: "id", Value: "4"}}
 		c.Set("userId", uint(1))
 
@@ -122,14 +123,14 @@ func TestHandler_ListUsers(t *testing.T) {
 		h.handler.ListUsers(c)
 
 		assert.Equal(t, http.StatusBadRequest, w.Code)
-		h.svc.AssertNotCalled(t, "ListByRoomID", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+		h.svc.AssertNotCalled(t, "ListByRoomID", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 	})
 
 	t.Run("failure: service error returns 500", func(t *testing.T) {
 		h := newHandlerHarness(t)
-		h.svc.On("ListByRoomID", mock.Anything, uint(4), uint(0), mock.Anything, mock.Anything, mock.Anything).Return(nil, int64(0), assert.AnError)
+		h.svc.On("ListByRoomID", mock.Anything, uint(4), uint(0), mock.Anything, mock.Anything).Return(nil, int64(0), false, "", assert.AnError)
 
-		w, c := testutil.NewTestContext(http.MethodGet, "/rooms/4/users?page=1&pageSize=10", nil)
+		w, c := testutil.NewTestContext(http.MethodGet, "/rooms/4/users?cursor=0&limit=10", nil)
 		c.Params = gin.Params{{Key: "id", Value: "4"}}
 
 		h.handler.ListUsers(c)
@@ -140,9 +141,9 @@ func TestHandler_ListUsers(t *testing.T) {
 
 	t.Run("failure: blocked user gets 403", func(t *testing.T) {
 		h := newHandlerHarness(t)
-		h.svc.On("ListByRoomID", mock.Anything, uint(4), uint(1), mock.Anything, mock.Anything, mock.Anything).Return(nil, int64(0), httpx.ErrUserBlocked)
+		h.svc.On("ListByRoomID", mock.Anything, uint(4), uint(1), mock.Anything, mock.Anything).Return(nil, int64(0), false, "", httpx.ErrUserBlocked)
 
-		w, c := testutil.NewTestContext(http.MethodGet, "/rooms/4/users?page=1&pageSize=10", nil)
+		w, c := testutil.NewTestContext(http.MethodGet, "/rooms/4/users?cursor=0&limit=10", nil)
 		c.Params = gin.Params{{Key: "id", Value: "4"}}
 		c.Set("userId", uint(1))
 
@@ -199,10 +200,11 @@ func TestHandler_CurrentRoomUser(t *testing.T) {
 func TestHandler_UpdateUserRole(t *testing.T) {
 	t.Run("success: updates role, broadcasts, returns 200", func(t *testing.T) {
 		h := newHandlerHarness(t)
-		h.svc.On("UpdateRole", uint(4), uint(7), role.RoleSpeaker, uint(1)).Return(nil)
+		updated := &RoomUser{UserID: 7, RoomID: 4, Role: role.Role{Name: role.RoleSpeaker}}
+		h.svc.On("UpdateRole", mock.Anything, uint(4), uint(7), role.RoleSpeaker, uint(1)).Return(updated, nil)
 		h.hub.On("BroadcastToRoom", uint(4), ws.EventUserRoleUpdated, mock.MatchedBy(func(payload any) bool {
-			gh, ok := payload.(gin.H)
-			return ok && gh["userId"] == 7 && gh["role"] == role.RoleSpeaker
+			ru, ok := payload.(RoomUserResponse)
+			return ok && ru.Role.Name == string(role.RoleSpeaker) && ru.CanSpeak
 		})).Return()
 
 		w, c := testutil.NewTestContext(http.MethodPatch, "/rooms/4/users/7/role", updateUserRoleInput{Role: role.RoleSpeaker})
@@ -218,7 +220,7 @@ func TestHandler_UpdateUserRole(t *testing.T) {
 
 	t.Run("failure: forbidden error from service returns 403, no broadcast", func(t *testing.T) {
 		h := newHandlerHarness(t)
-		h.svc.On("UpdateRole", uint(4), uint(7), role.RoleSpeaker, uint(1)).Return(httpx.ErrForbidden)
+		h.svc.On("UpdateRole", mock.Anything, uint(4), uint(7), role.RoleSpeaker, uint(1)).Return(nil, httpx.ErrForbidden)
 
 		w, c := testutil.NewTestContext(http.MethodPatch, "/rooms/4/users/7/role", updateUserRoleInput{Role: role.RoleSpeaker})
 		c.Params = gin.Params{{Key: "id", Value: "4"}, {Key: "userId", Value: "7"}}
@@ -257,9 +259,24 @@ func TestHandler_UpdateUserRole(t *testing.T) {
 		h.svc.AssertNotCalled(t, "UpdateRole", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 	})
 
+	t.Run("failure: user not found returns 404, no broadcast", func(t *testing.T) {
+		h := newHandlerHarness(t)
+		h.svc.On("UpdateRole", mock.Anything, uint(4), uint(7), role.RoleSpeaker, uint(1)).Return(nil, httpx.ErrRecordNotFound)
+
+		w, c := testutil.NewTestContext(http.MethodPatch, "/rooms/4/users/7/role", updateUserRoleInput{Role: role.RoleSpeaker})
+		c.Params = gin.Params{{Key: "id", Value: "4"}, {Key: "userId", Value: "7"}}
+		c.Set("userId", uint(1))
+
+		h.handler.UpdateUserRole(c)
+
+		assert.Equal(t, http.StatusNotFound, w.Code)
+		h.svc.AssertExpectations(t)
+		h.hub.AssertNotCalled(t, "BroadcastToRoom", mock.Anything, mock.Anything, mock.Anything)
+	})
+
 	t.Run("failure: other service error returns 422", func(t *testing.T) {
 		h := newHandlerHarness(t)
-		h.svc.On("UpdateRole", uint(4), uint(7), role.RoleSpeaker, uint(1)).Return(assert.AnError)
+		h.svc.On("UpdateRole", mock.Anything, uint(4), uint(7), role.RoleSpeaker, uint(1)).Return(nil, assert.AnError)
 
 		w, c := testutil.NewTestContext(http.MethodPatch, "/rooms/4/users/7/role", updateUserRoleInput{Role: role.RoleSpeaker})
 		c.Params = gin.Params{{Key: "id", Value: "4"}, {Key: "userId", Value: "7"}}

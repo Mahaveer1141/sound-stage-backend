@@ -1,6 +1,7 @@
 package roomuser
 
 import (
+	"sound-stage-backend/internal/pkg/listopts"
 	"sound-stage-backend/internal/role"
 	user "sound-stage-backend/internal/user"
 	"time"
@@ -12,7 +13,7 @@ func BuildRoomUserResponse(ru *RoomUser, viewerID uint) RoomUserResponse {
 		ID:           ru.ID,
 		User:         user.BuildUserResponse(&ru.User, showEmail),
 		Role:         role.BuildRoleResponse(&ru.Role),
-		LastJoinedAt: ru.LastJoinedAt.Format(time.RFC3339),
+		LastJoinedAt: ru.LastJoinedAt.UTC().Format(listopts.CursorTimeLayout),
 		LastLeftAt:   ru.LastLeftAt.Format(time.RFC3339),
 		IsOnline:     ru.IsOnline,
 		IsMuted:      ru.IsMuted,

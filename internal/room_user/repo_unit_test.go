@@ -253,38 +253,45 @@ func TestRepo_HasRoles_Unit(t *testing.T) {
 }
 
 func TestRepo_ListByRoomID_Unit(t *testing.T) {
-	t.Run("returns room users with default sort and pagination", func(t *testing.T) {
+	columns := []string{
+		"id", "created_at", "updated_at", "user_id", "room_id",
+		"role_id", "last_joined_at", "last_left_at", "is_online",
+	}
+	sort := listopts.Sort{Field: "last_joined_at", Order: "asc"}
+
+	t.Run("returns room users with default id cursor pagination", func(t *testing.T) {
 		gdb, mock := testutil.NewMockDB(t)
 		repo := NewRepo(gdb)
 
 		mock.ExpectQuery(
-			`SELECT .*FROM "room_users" WHERE room_users\.room_id = \$1 AND room_users\.is_blocked = \$2 ORDER BY room_users\.created_at desc,room_users\.id desc LIMIT \$3`,
+			`SELECT.*FROM "room_users".*WHERE.*room_users\.room_id = \$1.*room_users\.is_blocked = \$2.*ORDER BY room_users\.last_joined_at.*LIMIT \$[0-9]+`,
 		).
-			WithArgs(10, false, 10).
-			WillReturnRows(sqlmock.NewRows([]string{"id", "created_at", "updated_at", "user_id", "room_id", "role_id", "last_joined_at", "last_left_at", "is_online"}))
+			WithArgs(10, false, 11).
+			WillReturnRows(sqlmock.NewRows(columns))
 
-		got, err := repo.ListByRoomID(10, RoomUserFilter{}, listopts.Sort{}, listopts.Pagination{Page: 1, PageSize: 10})
+		got, hasMore, _, err := repo.ListByRoomID(10, RoomUserFilter{}, sort, listopts.Cursor{Cursor: "", Limit: 10})
 
 		require.NoError(t, err)
 		assert.Empty(t, got)
+		assert.False(t, hasMore)
 		assert.NoError(t, mock.ExpectationsWereMet())
 	})
 
-	t.Run("filters by role, sorts, and paginates with offset", func(t *testing.T) {
+	t.Run("filters by role and paginates by id cursor", func(t *testing.T) {
 		gdb, mock := testutil.NewMockDB(t)
 		repo := NewRepo(gdb)
 
 		mock.ExpectQuery(
-			`SELECT .*FROM "room_users" JOIN roles ON roles\.id = room_users\.role_id WHERE \(room_users\.room_id = \$1 AND room_users\.is_blocked = \$2\) AND roles\.name IN \(\$3\) ORDER BY room_users\.created_at asc,room_users\.id asc LIMIT \$4 OFFSET \$5`,
+			`SELECT.*FROM "room_users" JOIN roles ON roles\.id = room_users\.role_id.*WHERE.*room_users\.room_id = \$1.*room_users\.is_blocked = \$2.*roles\.name IN \(\$[0-9]+\).*ORDER BY room_users\.last_joined_at.*LIMIT \$[0-9]+`,
 		).
-			WithArgs(10, false, "listener", 2, 2).
-			WillReturnRows(sqlmock.NewRows([]string{"id", "created_at", "updated_at", "user_id", "room_id", "role_id", "last_joined_at", "last_left_at", "is_online"}))
+			WithArgs(10, false, "listener", 11).
+			WillReturnRows(sqlmock.NewRows(columns))
 
-		got, err := repo.ListByRoomID(
+		got, _, _, err := repo.ListByRoomID(
 			10,
 			RoomUserFilter{Roles: []string{"listener"}},
-			listopts.Sort{Field: "created_at", Order: "asc"},
-			listopts.Pagination{Page: 2, PageSize: 2},
+			sort,
+			listopts.Cursor{Cursor: "", Limit: 10},
 		)
 
 		require.NoError(t, err)
@@ -292,21 +299,21 @@ func TestRepo_ListByRoomID_Unit(t *testing.T) {
 		assert.NoError(t, mock.ExpectationsWereMet())
 	})
 
-	t.Run("filters by search query across name and email", func(t *testing.T) {
+	t.Run("filters by search query and paginates by id cursor", func(t *testing.T) {
 		gdb, mock := testutil.NewMockDB(t)
 		repo := NewRepo(gdb)
 
 		mock.ExpectQuery(
-			`SELECT .*FROM "room_users" JOIN users ON users\.id = room_users\.user_id WHERE \(room_users\.room_id = \$1 AND room_users\.is_blocked = \$2\) AND \(users\.first_name \|\| ' ' \|\| COALESCE\(users\.last_name, ''\)\) ILIKE \$3 ORDER BY room_users\.created_at desc,room_users\.id desc LIMIT \$4`,
+			`SELECT.*FROM "room_users" JOIN users ON users\.id = room_users\.user_id.*WHERE.*room_users\.room_id = \$1.*room_users\.is_blocked = \$2.*ILIKE \$[0-9]+.*ORDER BY room_users\.last_joined_at.*LIMIT \$[0-9]+`,
 		).
-			WithArgs(10, false, "%alice%", 10).
-			WillReturnRows(sqlmock.NewRows([]string{"id", "created_at", "updated_at", "user_id", "room_id", "role_id", "last_joined_at", "last_left_at", "is_online"}))
+			WithArgs(10, false, "%alice%", 11).
+			WillReturnRows(sqlmock.NewRows(columns))
 
-		got, err := repo.ListByRoomID(
+		got, _, _, err := repo.ListByRoomID(
 			10,
 			RoomUserFilter{Query: "alice"},
-			listopts.Sort{},
-			listopts.Pagination{Page: 1, PageSize: 10},
+			sort,
+			listopts.Cursor{Cursor: "", Limit: 10},
 		)
 
 		require.NoError(t, err)

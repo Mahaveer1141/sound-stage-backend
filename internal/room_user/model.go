@@ -56,7 +56,9 @@ type RoomUserResponse struct {
 }
 
 var allowedUserSortFields = map[string]string{
-	"created_at": "room_users.created_at",
+	"created_at":     "room_users.created_at",
+	"id":             "room_users.id",
+	"last_joined_at": "room_users.last_joined_at",
 }
 
 func (ru *RoomUser) IsListener() bool {

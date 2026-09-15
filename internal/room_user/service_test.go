@@ -42,10 +42,10 @@ func (m *mockRepo) HasRoles(userID, roomID uint, permissions []role.RoleName) (b
 	args := m.Called(userID, roomID, permissions)
 	return args.Bool(0), args.Error(1)
 }
-func (m *mockRepo) ListByRoomID(roomID uint, filter RoomUserFilter, sort listopts.Sort, p listopts.Pagination) ([]RoomUser, error) {
-	args := m.Called(roomID, filter, sort, p)
+func (m *mockRepo) ListByRoomID(roomID uint, filter RoomUserFilter, sort listopts.Sort, c listopts.Cursor) ([]RoomUser, bool, string, error) {
+	args := m.Called(roomID, filter, sort, c)
 	rus, _ := args.Get(0).([]RoomUser)
-	return rus, args.Error(1)
+	return rus, args.Bool(1), args.Get(2).(string), args.Error(3)
 }
 func (m *mockRepo) ListByUserIDs(roomID uint, userIDs []uint) ([]RoomUser, error) {
 	args := m.Called(roomID, userIDs)
@@ -355,12 +355,12 @@ func TestService_ListByRoomID(t *testing.T) {
 	t.Run("success: returns users and total count", func(t *testing.T) {
 		h := newHarness()
 		filter := RoomUserFilter{}
-		sort := listopts.Sort{}
-		p := listopts.Pagination{Page: 1, PageSize: 10}
+		sort := listopts.Sort{Field: "last_joined_at", Order: "asc"}
+		cur := listopts.Cursor{Cursor: "", Limit: 10}
 		users := []RoomUser{{UserID: 1}, {UserID: 2}}
 
 		h.repo.On("FindAnyBy", uint(1), uint(4)).Return(&RoomUser{IsBlocked: false}, nil)
-		h.repo.On("ListByRoomID", uint(4), filter, sort, p).Return(users, nil)
+		h.repo.On("ListByRoomID", uint(4), filter, sort, cur).Return(users, false, "", nil)
 		h.repo.On("CountByRoomID", uint(4), filter).Return(int64(2), nil)
 		h.state.On("GetParticipantStates", mock.Anything, uint(4), []uint{1, 2}).
 			Return(map[uint]*roomstate.ParticipantState{
@@ -368,7 +368,7 @@ func TestService_ListByRoomID(t *testing.T) {
 				2: {UserID: 2, IsHandRaised: true},
 			}, nil)
 
-		got, count, err := h.svc.ListByRoomID(context.Background(), 4, 1, filter, sort, p)
+		got, count, _, _, err := h.svc.ListByRoomID(context.Background(), 4, 1, filter, cur)
 
 		require.NoError(t, err)
 		assert.Equal(t, users, got)
@@ -383,17 +383,17 @@ func TestService_ListByRoomID(t *testing.T) {
 	t.Run("failure: state fetch error fails the call", func(t *testing.T) {
 		h := newHarness()
 		filter := RoomUserFilter{}
-		sort := listopts.Sort{}
-		p := listopts.Pagination{Page: 1, PageSize: 10}
+		sort := listopts.Sort{Field: "last_joined_at", Order: "asc"}
+		cur := listopts.Cursor{Cursor: "", Limit: 10}
 		users := []RoomUser{{UserID: 1}}
 		stateErr := errors.New("redis down")
 
 		h.repo.On("FindAnyBy", uint(1), uint(4)).Return(&RoomUser{IsBlocked: false}, nil)
-		h.repo.On("ListByRoomID", uint(4), filter, sort, p).Return(users, nil)
+		h.repo.On("ListByRoomID", uint(4), filter, sort, cur).Return(users, false, "", nil)
 		h.repo.On("CountByRoomID", uint(4), filter).Return(int64(1), nil)
 		h.state.On("GetParticipantStates", mock.Anything, uint(4), []uint{1}).Return(nil, stateErr)
 
-		got, count, err := h.svc.ListByRoomID(context.Background(), 4, 1, filter, sort, p)
+		got, count, _, _, err := h.svc.ListByRoomID(context.Background(), 4, 1, filter, cur)
 
 		require.Nil(t, got)
 		require.Zero(t, count)
@@ -404,13 +404,13 @@ func TestService_ListByRoomID(t *testing.T) {
 	t.Run("failure: List error short-circuits before Count", func(t *testing.T) {
 		h := newHarness()
 		filter := RoomUserFilter{}
-		sort := listopts.Sort{}
-		p := listopts.Pagination{Page: 1, PageSize: 10}
+		sort := listopts.Sort{Field: "last_joined_at", Order: "asc"}
+		cur := listopts.Cursor{Cursor: "", Limit: 10}
 		listErr := errors.New("query failed")
 		h.repo.On("FindAnyBy", uint(1), uint(4)).Return(&RoomUser{IsBlocked: false}, nil)
-		h.repo.On("ListByRoomID", uint(4), filter, sort, p).Return(nil, listErr)
+		h.repo.On("ListByRoomID", uint(4), filter, sort, cur).Return(nil, false, "", listErr)
 
-		got, count, err := h.svc.ListByRoomID(context.Background(), 4, 1, filter, sort, p)
+		got, count, _, _, err := h.svc.ListByRoomID(context.Background(), 4, 1, filter, cur)
 
 		require.Nil(t, got)
 		require.Zero(t, count)
@@ -422,15 +422,15 @@ func TestService_ListByRoomID(t *testing.T) {
 	t.Run("failure: Count error after successful List still fails the call", func(t *testing.T) {
 		h := newHarness()
 		filter := RoomUserFilter{}
-		sort := listopts.Sort{}
-		p := listopts.Pagination{Page: 1, PageSize: 10}
+		sort := listopts.Sort{Field: "last_joined_at", Order: "asc"}
+		cur := listopts.Cursor{Cursor: "", Limit: 10}
 		users := []RoomUser{{UserID: 1}}
 		countErr := errors.New("count failed")
 		h.repo.On("FindAnyBy", uint(1), uint(4)).Return(&RoomUser{IsBlocked: false}, nil)
-		h.repo.On("ListByRoomID", uint(4), filter, sort, p).Return(users, nil)
+		h.repo.On("ListByRoomID", uint(4), filter, sort, cur).Return(users, false, "", nil)
 		h.repo.On("CountByRoomID", uint(4), filter).Return(int64(0), countErr)
 
-		got, count, err := h.svc.ListByRoomID(context.Background(), 4, 1, filter, sort, p)
+		got, count, _, _, err := h.svc.ListByRoomID(context.Background(), 4, 1, filter, cur)
 
 		require.Nil(t, got)
 		require.Zero(t, count)
@@ -441,49 +441,46 @@ func TestService_ListByRoomID(t *testing.T) {
 	t.Run("failure: non-member gets ErrForbidden before repo is called", func(t *testing.T) {
 		h := newHarness()
 		filter := RoomUserFilter{}
-		sort := listopts.Sort{}
-		p := listopts.Pagination{Page: 1, PageSize: 10}
+		cur := listopts.Cursor{Cursor: "", Limit: 10}
 		h.repo.On("FindAnyBy", uint(1), uint(4)).Return(nil, nil)
 
-		got, count, err := h.svc.ListByRoomID(context.Background(), 4, 1, filter, sort, p)
+		got, count, _, _, err := h.svc.ListByRoomID(context.Background(), 4, 1, filter, cur)
 
 		require.Nil(t, got)
 		require.Zero(t, count)
 		require.ErrorIs(t, err, httpx.ErrForbidden)
-		h.repo.AssertNotCalled(t, "ListByRoomID", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+		h.repo.AssertNotCalled(t, "ListByRoomID", mock.Anything, mock.Anything, mock.Anything)
 		h.assertAllExpectations(t)
 	})
 
 	t.Run("failure: blocked user gets ErrUserBlocked before repo is called", func(t *testing.T) {
 		h := newHarness()
 		filter := RoomUserFilter{}
-		sort := listopts.Sort{}
-		p := listopts.Pagination{Page: 1, PageSize: 10}
+		cur := listopts.Cursor{Cursor: "", Limit: 10}
 		h.repo.On("FindAnyBy", uint(1), uint(4)).Return(&RoomUser{IsBlocked: true}, nil)
 
-		got, count, err := h.svc.ListByRoomID(context.Background(), 4, 1, filter, sort, p)
+		got, count, _, _, err := h.svc.ListByRoomID(context.Background(), 4, 1, filter, cur)
 
 		require.Nil(t, got)
 		require.Zero(t, count)
 		require.ErrorIs(t, err, httpx.ErrUserBlocked)
-		h.repo.AssertNotCalled(t, "ListByRoomID", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+		h.repo.AssertNotCalled(t, "ListByRoomID", mock.Anything, mock.Anything, mock.Anything)
 		h.assertAllExpectations(t)
 	})
 
 	t.Run("failure: FindAnyBy error is propagated", func(t *testing.T) {
 		h := newHarness()
 		filter := RoomUserFilter{}
-		sort := listopts.Sort{}
-		p := listopts.Pagination{Page: 1, PageSize: 10}
+		cur := listopts.Cursor{Cursor: "", Limit: 10}
 		findErr := errors.New("find failed")
 		h.repo.On("FindAnyBy", uint(1), uint(4)).Return(nil, findErr)
 
-		got, count, err := h.svc.ListByRoomID(context.Background(), 4, 1, filter, sort, p)
+		got, count, _, _, err := h.svc.ListByRoomID(context.Background(), 4, 1, filter, cur)
 
 		require.Nil(t, got)
 		require.Zero(t, count)
 		require.ErrorIs(t, err, findErr)
-		h.repo.AssertNotCalled(t, "ListByRoomID", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+		h.repo.AssertNotCalled(t, "ListByRoomID", mock.Anything, mock.Anything, mock.Anything)
 		h.assertAllExpectations(t)
 	})
 }
@@ -494,10 +491,15 @@ func TestService_UpdateRole(t *testing.T) {
 		h.repo.On("HasRoles", uint(1), uint(2), role.RoleAssignmentPermissions[role.RoleSpeaker]).Return(true, nil)
 		h.roles.On("FindByName", role.RoleSpeaker).Return(&role.Role{BaseModel: model.BaseModel{ID: 9}, Name: role.RoleSpeaker}, nil)
 		h.repo.On("UpdateRole", uint(2), uint(3), uint(9)).Return(nil)
+		h.repo.On("FindBy", uint(3), uint(2)).Return(&RoomUser{UserID: 3, RoomID: 2, Role: role.Role{Name: role.RoleSpeaker}}, nil)
+		h.state.On("GetParticipantStates", mock.Anything, uint(2), []uint{3}).
+			Return(map[uint]*roomstate.ParticipantState{3: {UserID: 3, IsMuted: true}}, nil)
 
-		err := h.svc.UpdateRole(2, 3, role.RoleSpeaker, 1)
+		ru, err := h.svc.UpdateRole(context.Background(), 2, 3, role.RoleSpeaker, 1)
 
 		require.NoError(t, err)
+		require.Equal(t, role.RoleSpeaker, ru.Role.Name)
+		require.True(t, ru.IsMuted)
 		h.revoker.AssertNotCalled(t, "RevokePublishing", mock.Anything, mock.Anything)
 		h.assertAllExpectations(t)
 	})
@@ -508,10 +510,14 @@ func TestService_UpdateRole(t *testing.T) {
 		h.roles.On("FindByName", role.RoleListener).Return(&role.Role{BaseModel: model.BaseModel{ID: 3}, Name: role.RoleListener}, nil)
 		h.repo.On("UpdateRole", uint(2), uint(3), uint(3)).Return(nil)
 		h.revoker.On("RevokePublishing", uint(2), uint(3)).Return()
+		h.repo.On("FindBy", uint(3), uint(2)).Return(&RoomUser{UserID: 3, RoomID: 2, Role: role.Role{Name: role.RoleListener}}, nil)
+		h.state.On("GetParticipantStates", mock.Anything, uint(2), []uint{3}).
+			Return(map[uint]*roomstate.ParticipantState{}, nil)
 
-		err := h.svc.UpdateRole(2, 3, role.RoleListener, 1)
+		ru, err := h.svc.UpdateRole(context.Background(), 2, 3, role.RoleListener, 1)
 
 		require.NoError(t, err)
+		require.Equal(t, role.RoleListener, ru.Role.Name)
 		h.assertAllExpectations(t)
 	})
 
@@ -519,8 +525,9 @@ func TestService_UpdateRole(t *testing.T) {
 		h := newHarness()
 		h.repo.On("HasRoles", uint(1), uint(2), role.RoleAssignmentPermissions[role.RoleSpeaker]).Return(false, nil)
 
-		err := h.svc.UpdateRole(2, 3, role.RoleSpeaker, 1)
+		ru, err := h.svc.UpdateRole(context.Background(), 2, 3, role.RoleSpeaker, 1)
 
+		require.Nil(t, ru)
 		require.ErrorIs(t, err, httpx.ErrForbidden)
 		h.roles.AssertNotCalled(t, "FindByName", mock.Anything)
 		h.repo.AssertNotCalled(t, "UpdateRole", mock.Anything, mock.Anything, mock.Anything)
@@ -532,7 +539,7 @@ func TestService_UpdateRole(t *testing.T) {
 		permErr := errors.New("permission check failed")
 		h.repo.On("HasRoles", uint(1), uint(2), role.RoleAssignmentPermissions[role.RoleSpeaker]).Return(false, permErr)
 
-		err := h.svc.UpdateRole(2, 3, role.RoleSpeaker, 1)
+		_, err := h.svc.UpdateRole(context.Background(), 2, 3, role.RoleSpeaker, 1)
 
 		require.ErrorIs(t, err, permErr)
 		h.assertAllExpectations(t)
@@ -544,10 +551,24 @@ func TestService_UpdateRole(t *testing.T) {
 		roleErr := errors.New("unknown role")
 		h.roles.On("FindByName", role.RoleSpeaker).Return(nil, roleErr)
 
-		err := h.svc.UpdateRole(2, 3, role.RoleSpeaker, 1)
+		_, err := h.svc.UpdateRole(context.Background(), 2, 3, role.RoleSpeaker, 1)
 
 		require.ErrorIs(t, err, roleErr)
 		h.repo.AssertNotCalled(t, "UpdateRole", mock.Anything, mock.Anything, mock.Anything)
+		h.assertAllExpectations(t)
+	})
+
+	t.Run("failure: user not found returns ErrRecordNotFound", func(t *testing.T) {
+		h := newHarness()
+		h.repo.On("HasRoles", uint(1), uint(2), role.RoleAssignmentPermissions[role.RoleSpeaker]).Return(true, nil)
+		h.roles.On("FindByName", role.RoleSpeaker).Return(&role.Role{BaseModel: model.BaseModel{ID: 9}, Name: role.RoleSpeaker}, nil)
+		h.repo.On("UpdateRole", uint(2), uint(3), uint(9)).Return(nil)
+		h.repo.On("FindBy", uint(3), uint(2)).Return(nil, nil)
+
+		ru, err := h.svc.UpdateRole(context.Background(), 2, 3, role.RoleSpeaker, 1)
+
+		require.Nil(t, ru)
+		require.ErrorIs(t, err, httpx.ErrRecordNotFound)
 		h.assertAllExpectations(t)
 	})
 
@@ -558,10 +579,11 @@ func TestService_UpdateRole(t *testing.T) {
 		updateErr := errors.New("update failed")
 		h.repo.On("UpdateRole", uint(2), uint(3), uint(3)).Return(updateErr)
 
-		err := h.svc.UpdateRole(2, 3, role.RoleListener, 1)
+		_, err := h.svc.UpdateRole(context.Background(), 2, 3, role.RoleListener, 1)
 
 		require.ErrorIs(t, err, updateErr)
 		h.revoker.AssertNotCalled(t, "RevokePublishing", mock.Anything, mock.Anything)
+		h.repo.AssertNotCalled(t, "FindBy", mock.Anything, mock.Anything)
 		h.assertAllExpectations(t)
 	})
 }
