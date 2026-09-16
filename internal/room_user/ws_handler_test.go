@@ -14,6 +14,7 @@ import (
 
 	"sound-stage-backend/internal/config"
 	"sound-stage-backend/internal/pkg/httpx"
+	"sound-stage-backend/internal/role"
 	webrtc "sound-stage-backend/internal/web_rtc"
 	"sound-stage-backend/internal/ws"
 )
@@ -25,9 +26,15 @@ func (m *mockRoomUserWSService) FindBy(userID uint, roomID uint) (*RoomUser, err
 	ru, _ := args.Get(0).(*RoomUser)
 	return ru, args.Error(1)
 }
-func (m *mockRoomUserWSService) RemoveUser(ctx context.Context, userID uint, roomID uint) error {
+func (m *mockRoomUserWSService) RemoveUser(ctx context.Context, userID uint, roomID uint) (*RoomUser, error) {
 	args := m.Called(ctx, userID, roomID)
-	return args.Error(0)
+	ru, _ := args.Get(0).(*RoomUser)
+	return ru, args.Error(1)
+}
+func (m *mockRoomUserWSService) CountsByRoomID(roomID uint) (RoomUserCounts, error) {
+	args := m.Called(roomID)
+	counts, _ := args.Get(0).(RoomUserCounts)
+	return counts, args.Error(1)
 }
 func (m *mockRoomUserWSService) SetMuted(ctx context.Context, roomID, userID, actorID uint, isMuted bool) error {
 	args := m.Called(ctx, roomID, userID, actorID, isMuted)
@@ -152,9 +159,13 @@ func TestWsHandler_handleUserJoined(t *testing.T) {
 			Return(&webrtc.Session{})
 		h.media.On("SubscribeToRoomTracks", c, mock.Anything).Return()
 		h.roomUser.On("FindBy", uint(42), uint(4)).Return(&RoomUser{UserID: 42, RoomID: 4}, nil)
+		h.roomUser.On("CountsByRoomID", uint(4)).Return(RoomUserCounts{
+			TotalUsersCount: 6,
+			Online:          OnlineCounts{ListenerCount: 4, SpeakerCount: 2},
+		}, nil)
 		h.hub.On("BroadcastToRoom", uint(4), ws.EventJoinRoom, mock.MatchedBy(func(payload any) bool {
-			_, ok := payload.(RoomUserResponse)
-			return ok
+			p, ok := payload.(RoomUserEventPayload)
+			return ok && p.TotalUsersCount == 6 && p.Online.ListenerCount == 4 && p.Online.SpeakerCount == 2
 		})).Return()
 
 		h.wsHandler.handleUserJoined(c, ws.Event{})
@@ -183,10 +194,18 @@ func TestWsHandler_handleUserLeft(t *testing.T) {
 	t.Run("success: removes user, stops publishing, closes session, broadcasts leave", func(t *testing.T) {
 		h := newWSHarness(t)
 		c := testClient()
-		h.roomUser.On("RemoveUser", mock.Anything, uint(42), uint(4)).Return(nil)
+		h.roomUser.On("RemoveUser", mock.Anything, uint(42), uint(4)).
+			Return(&RoomUser{UserID: 42, RoomID: 4, Role: role.Role{Name: role.RoleSpeaker}}, nil)
+		h.roomUser.On("CountsByRoomID", uint(4)).Return(RoomUserCounts{
+			TotalUsersCount: 5,
+			Online:          OnlineCounts{ListenerCount: 4, SpeakerCount: 1},
+		}, nil)
 		h.media.On("StopPublishing", c).Return()
 		h.media.On("CloseSession", "client-1").Return(nil)
-		h.hub.On("BroadcastToRoom", uint(4), ws.EventLeaveRoom, nil).Return()
+		h.hub.On("BroadcastToRoom", uint(4), ws.EventLeaveRoom, mock.MatchedBy(func(payload any) bool {
+			p, ok := payload.(RoomUserRemovedPayload)
+			return ok && p.UserID == 42 && p.CanSpeak && p.TotalUsersCount == 5 && p.Online.SpeakerCount == 1
+		})).Return()
 
 		h.wsHandler.handleUserLeft(c, ws.Event{})
 
@@ -198,7 +217,7 @@ func TestWsHandler_handleUserLeft(t *testing.T) {
 	t.Run("failure: RemoveUser error sends error to client, no cleanup or broadcast", func(t *testing.T) {
 		h := newWSHarness(t)
 		c := testClient()
-		h.roomUser.On("RemoveUser", mock.Anything, uint(42), uint(4)).Return(errLike("failed to remove user"))
+		h.roomUser.On("RemoveUser", mock.Anything, uint(42), uint(4)).Return(nil, errLike("failed to remove user"))
 		h.hub.On("ErrorToClient", c, "Failed to remove user from room", http.StatusUnprocessableEntity).Return()
 
 		h.wsHandler.handleUserLeft(c, ws.Event{})
@@ -215,10 +234,18 @@ func TestWsHandler_handleClientDisconnected(t *testing.T) {
 	t.Run("success: cleans up and broadcasts leave with no errors", func(t *testing.T) {
 		h := newWSHarness(t)
 		c := testClient()
-		h.roomUser.On("RemoveUser", mock.Anything, uint(42), uint(4)).Return(nil)
+		h.roomUser.On("RemoveUser", mock.Anything, uint(42), uint(4)).
+			Return(&RoomUser{UserID: 42, RoomID: 4, Role: role.Role{Name: role.RoleListener}}, nil)
+		h.roomUser.On("CountsByRoomID", uint(4)).Return(RoomUserCounts{
+			TotalUsersCount: 5,
+			Online:          OnlineCounts{ListenerCount: 3, SpeakerCount: 2},
+		}, nil)
 		h.media.On("StopPublishing", c).Return()
 		h.media.On("CloseSession", "client-1").Return(nil)
-		h.hub.On("BroadcastToRoom", uint(4), ws.EventLeaveRoom, nil).Return()
+		h.hub.On("BroadcastToRoom", uint(4), ws.EventLeaveRoom, mock.MatchedBy(func(payload any) bool {
+			p, ok := payload.(RoomUserRemovedPayload)
+			return ok && p.UserID == 42 && !p.CanSpeak && p.Online.ListenerCount == 3
+		})).Return()
 
 		h.wsHandler.handleClientDisconnected(c)
 
@@ -230,10 +257,14 @@ func TestWsHandler_handleClientDisconnected(t *testing.T) {
 	t.Run("failure: RemoveUser and CloseSession errors are only logged, cleanup and broadcast still run", func(t *testing.T) {
 		h := newWSHarness(t)
 		c := testClient()
-		h.roomUser.On("RemoveUser", mock.Anything, uint(42), uint(4)).Return(errLike("db down"))
+		h.roomUser.On("RemoveUser", mock.Anything, uint(42), uint(4)).Return(nil, errLike("db down"))
+		h.roomUser.On("CountsByRoomID", uint(4)).Return(RoomUserCounts{}, nil)
 		h.media.On("StopPublishing", c).Return()
 		h.media.On("CloseSession", "client-1").Return(errLike("close failed"))
-		h.hub.On("BroadcastToRoom", uint(4), ws.EventLeaveRoom, nil).Return()
+		h.hub.On("BroadcastToRoom", uint(4), ws.EventLeaveRoom, mock.MatchedBy(func(payload any) bool {
+			p, ok := payload.(RoomUserRemovedPayload)
+			return ok && p.UserID == 42 && !p.CanSpeak
+		})).Return()
 
 		h.wsHandler.handleClientDisconnected(c)
 

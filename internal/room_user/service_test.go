@@ -308,9 +308,10 @@ func TestService_RemoveUser(t *testing.T) {
 		h.repo.On("UpdateActivity", existing, ActivityLeave).Return(nil)
 		h.state.On("Leave", mock.Anything, uint(2), uint(1)).Return(nil)
 
-		err := h.svc.RemoveUser(context.Background(), 1, 2)
+		got, err := h.svc.RemoveUser(context.Background(), 1, 2)
 
 		require.NoError(t, err)
+		assert.Same(t, existing, got)
 		h.assertAllExpectations(t)
 	})
 
@@ -318,8 +319,9 @@ func TestService_RemoveUser(t *testing.T) {
 		h := newHarness()
 		h.repo.On("FindBy", uint(1), uint(2)).Return(nil, nil)
 
-		err := h.svc.RemoveUser(context.Background(), 1, 2)
+		got, err := h.svc.RemoveUser(context.Background(), 1, 2)
 
+		require.Nil(t, got)
 		require.ErrorIs(t, err, httpx.ErrRecordNotFound)
 		h.repo.AssertNotCalled(t, "UpdateActivity", mock.Anything, mock.Anything)
 		h.assertAllExpectations(t)
@@ -330,8 +332,9 @@ func TestService_RemoveUser(t *testing.T) {
 		findErr := errors.New("db down")
 		h.repo.On("FindBy", uint(1), uint(2)).Return(nil, findErr)
 
-		err := h.svc.RemoveUser(context.Background(), 1, 2)
+		got, err := h.svc.RemoveUser(context.Background(), 1, 2)
 
+		require.Nil(t, got)
 		require.ErrorIs(t, err, findErr)
 		h.assertAllExpectations(t)
 	})
@@ -343,8 +346,9 @@ func TestService_RemoveUser(t *testing.T) {
 		h.repo.On("FindBy", uint(1), uint(2)).Return(existing, nil)
 		h.repo.On("UpdateActivity", existing, ActivityLeave).Return(updateErr)
 
-		err := h.svc.RemoveUser(context.Background(), 1, 2)
+		got, err := h.svc.RemoveUser(context.Background(), 1, 2)
 
+		require.Nil(t, got)
 		require.ErrorIs(t, err, updateErr)
 		h.state.AssertNotCalled(t, "Leave", mock.Anything, mock.Anything, mock.Anything)
 		h.assertAllExpectations(t)
@@ -591,26 +595,30 @@ func TestService_UpdateRole(t *testing.T) {
 func TestService_DeleteUser(t *testing.T) {
 	t.Run("success: owner deletes an admin", func(t *testing.T) {
 		h := newHarness()
+		target := &RoomUser{UserID: 3, Role: role.Role{Name: role.RoleAdmin}}
 		h.repo.On("FindBy", uint(1), uint(2)).Return(&RoomUser{Role: role.Role{Name: role.RoleOwner}}, nil)
-		h.repo.On("FindAnyBy", uint(3), uint(2)).Return(&RoomUser{Role: role.Role{Name: role.RoleAdmin}}, nil)
+		h.repo.On("FindAnyBy", uint(3), uint(2)).Return(target, nil)
 		h.repo.On("Delete", uint(2), uint(3)).Return(nil)
 		h.state.On("Leave", mock.Anything, uint(2), uint(3)).Return(nil)
 
-		err := h.svc.DeleteUser(context.Background(), 2, 3, 1)
+		got, err := h.svc.DeleteUser(context.Background(), 2, 3, 1)
 
 		require.NoError(t, err)
+		assert.Same(t, target, got)
 		h.assertAllExpectations(t)
 	})
 
 	t.Run("success: non-owner can delete themselves", func(t *testing.T) {
 		h := newHarness()
-		h.repo.On("FindBy", uint(1), uint(2)).Return(&RoomUser{Role: role.Role{Name: role.RoleAdmin}}, nil)
+		self := &RoomUser{UserID: 1, Role: role.Role{Name: role.RoleAdmin}}
+		h.repo.On("FindBy", uint(1), uint(2)).Return(self, nil)
 		h.repo.On("Delete", uint(2), uint(1)).Return(nil)
 		h.state.On("Leave", mock.Anything, uint(2), uint(1)).Return(nil)
 
-		err := h.svc.DeleteUser(context.Background(), 2, 1, 1)
+		got, err := h.svc.DeleteUser(context.Background(), 2, 1, 1)
 
 		require.NoError(t, err)
+		assert.Same(t, self, got)
 		h.assertAllExpectations(t)
 	})
 
@@ -618,8 +626,9 @@ func TestService_DeleteUser(t *testing.T) {
 		h := newHarness()
 		h.repo.On("FindBy", uint(1), uint(2)).Return(&RoomUser{Role: role.Role{Name: role.RoleOwner}}, nil)
 
-		err := h.svc.DeleteUser(context.Background(), 2, 1, 1)
+		got, err := h.svc.DeleteUser(context.Background(), 2, 1, 1)
 
+		require.Nil(t, got)
 		require.ErrorIs(t, err, httpx.ErrForbidden)
 		h.repo.AssertNotCalled(t, "Delete", mock.Anything, mock.Anything)
 		h.state.AssertNotCalled(t, "Leave", mock.Anything, mock.Anything, mock.Anything)
@@ -631,8 +640,9 @@ func TestService_DeleteUser(t *testing.T) {
 		h.repo.On("FindBy", uint(1), uint(2)).Return(&RoomUser{Role: role.Role{Name: role.RoleAdmin}}, nil)
 		h.repo.On("FindAnyBy", uint(3), uint(2)).Return(&RoomUser{Role: role.Role{Name: role.RoleOwner}}, nil)
 
-		err := h.svc.DeleteUser(context.Background(), 2, 3, 1)
+		got, err := h.svc.DeleteUser(context.Background(), 2, 3, 1)
 
+		require.Nil(t, got)
 		require.ErrorIs(t, err, httpx.ErrForbidden)
 		h.repo.AssertNotCalled(t, "Delete", mock.Anything, mock.Anything)
 		h.assertAllExpectations(t)
@@ -643,8 +653,9 @@ func TestService_DeleteUser(t *testing.T) {
 		h.repo.On("FindBy", uint(1), uint(2)).Return(&RoomUser{Role: role.Role{Name: role.RoleSpeaker}}, nil)
 		h.repo.On("FindAnyBy", uint(3), uint(2)).Return(&RoomUser{Role: role.Role{Name: role.RoleListener}}, nil)
 
-		err := h.svc.DeleteUser(context.Background(), 2, 3, 1)
+		got, err := h.svc.DeleteUser(context.Background(), 2, 3, 1)
 
+		require.Nil(t, got)
 		require.ErrorIs(t, err, httpx.ErrForbidden)
 		h.repo.AssertNotCalled(t, "Delete", mock.Anything, mock.Anything)
 		h.assertAllExpectations(t)
@@ -654,8 +665,9 @@ func TestService_DeleteUser(t *testing.T) {
 		h := newHarness()
 		h.repo.On("FindBy", uint(1), uint(2)).Return(nil, nil)
 
-		err := h.svc.DeleteUser(context.Background(), 2, 3, 1)
+		got, err := h.svc.DeleteUser(context.Background(), 2, 3, 1)
 
+		require.Nil(t, got)
 		require.ErrorIs(t, err, httpx.ErrForbidden)
 		h.repo.AssertNotCalled(t, "FindAnyBy", uint(3), uint(2))
 		h.repo.AssertNotCalled(t, "Delete", mock.Anything, mock.Anything)
@@ -667,8 +679,9 @@ func TestService_DeleteUser(t *testing.T) {
 		h.repo.On("FindBy", uint(1), uint(2)).Return(&RoomUser{Role: role.Role{Name: role.RoleOwner}}, nil)
 		h.repo.On("FindAnyBy", uint(3), uint(2)).Return(nil, nil)
 
-		err := h.svc.DeleteUser(context.Background(), 2, 3, 1)
+		got, err := h.svc.DeleteUser(context.Background(), 2, 3, 1)
 
+		require.Nil(t, got)
 		require.ErrorIs(t, err, httpx.ErrRecordNotFound)
 		h.repo.AssertNotCalled(t, "Delete", mock.Anything, mock.Anything)
 		h.assertAllExpectations(t)
@@ -679,8 +692,9 @@ func TestService_DeleteUser(t *testing.T) {
 		findErr := errors.New("db down")
 		h.repo.On("FindBy", uint(1), uint(2)).Return(nil, findErr)
 
-		err := h.svc.DeleteUser(context.Background(), 2, 3, 1)
+		got, err := h.svc.DeleteUser(context.Background(), 2, 3, 1)
 
+		require.Nil(t, got)
 		require.ErrorIs(t, err, findErr)
 		h.repo.AssertNotCalled(t, "Delete", mock.Anything, mock.Anything)
 		h.assertAllExpectations(t)
@@ -693,8 +707,9 @@ func TestService_DeleteUser(t *testing.T) {
 		h.repo.On("FindAnyBy", uint(3), uint(2)).Return(&RoomUser{Role: role.Role{Name: role.RoleListener}}, nil)
 		h.repo.On("Delete", uint(2), uint(3)).Return(deleteErr)
 
-		err := h.svc.DeleteUser(context.Background(), 2, 3, 1)
+		got, err := h.svc.DeleteUser(context.Background(), 2, 3, 1)
 
+		require.Nil(t, got)
 		require.ErrorIs(t, err, deleteErr)
 		h.assertAllExpectations(t)
 	})
@@ -704,8 +719,9 @@ func TestService_DeleteUser(t *testing.T) {
 		h.repo.On("FindBy", uint(1), uint(2)).Return(&RoomUser{Role: role.Role{Name: role.RoleOwner}}, nil)
 		h.repo.On("FindAnyBy", uint(3), uint(2)).Return(&RoomUser{Role: role.Role{Name: role.RoleListener}, IsBlocked: true}, nil)
 
-		err := h.svc.DeleteUser(context.Background(), 2, 3, 1)
+		got, err := h.svc.DeleteUser(context.Background(), 2, 3, 1)
 
+		require.Nil(t, got)
 		require.ErrorIs(t, err, httpx.ErrUserBlocked)
 		h.repo.AssertNotCalled(t, "Delete", mock.Anything, mock.Anything)
 		h.assertAllExpectations(t)
@@ -1050,23 +1066,26 @@ func TestService_ListRaisedHands(t *testing.T) {
 func TestService_Block(t *testing.T) {
 	t.Run("success: blocks user, demotes to listener role and revokes publishing", func(t *testing.T) {
 		h := newHarness()
+		target := &RoomUser{UserID: 3, Role: role.Role{Name: role.RoleSpeaker}}
 		h.repo.On("FindBy", uint(1), uint(2)).Return(&RoomUser{Role: role.Role{Name: role.RoleAdmin}}, nil)
-		h.repo.On("FindAnyBy", uint(3), uint(2)).Return(&RoomUser{Role: role.Role{Name: role.RoleSpeaker}}, nil)
+		h.repo.On("FindAnyBy", uint(3), uint(2)).Return(target, nil)
 		h.roles.On("FindByName", role.RoleListener).Return(&role.Role{BaseModel: model.BaseModel{ID: 4}, Name: role.RoleListener}, nil)
 		h.repo.On("Block", uint(2), uint(3), uint(1), uint(4)).Return(nil)
 		h.revoker.On("RevokePublishing", uint(2), uint(3)).Return()
 
-		err := h.svc.Block(2, 3, 1)
+		got, err := h.svc.Block(2, 3, 1)
 
 		require.NoError(t, err)
+		assert.Same(t, target, got)
 		h.assertAllExpectations(t)
 	})
 
 	t.Run("failure: actor cannot block themselves", func(t *testing.T) {
 		h := newHarness()
 
-		err := h.svc.Block(2, 1, 1)
+		got, err := h.svc.Block(2, 1, 1)
 
+		require.Nil(t, got)
 		require.ErrorIs(t, err, httpx.ErrForbidden)
 		h.repo.AssertNotCalled(t, "FindBy", mock.Anything, mock.Anything)
 		h.repo.AssertNotCalled(t, "Block", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
@@ -1078,8 +1097,9 @@ func TestService_Block(t *testing.T) {
 		h.repo.On("FindBy", uint(1), uint(2)).Return(&RoomUser{Role: role.Role{Name: role.RoleModerator}}, nil)
 		h.repo.On("FindAnyBy", uint(3), uint(2)).Return(&RoomUser{Role: role.Role{Name: role.RoleAdmin}}, nil)
 
-		err := h.svc.Block(2, 3, 1)
+		got, err := h.svc.Block(2, 3, 1)
 
+		require.Nil(t, got)
 		require.ErrorIs(t, err, httpx.ErrForbidden)
 		h.roles.AssertNotCalled(t, "FindByName", mock.Anything)
 		h.repo.AssertNotCalled(t, "Block", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
@@ -1091,8 +1111,9 @@ func TestService_Block(t *testing.T) {
 		h.repo.On("FindBy", uint(1), uint(2)).Return(&RoomUser{Role: role.Role{Name: role.RoleAdmin}}, nil)
 		h.repo.On("FindAnyBy", uint(3), uint(2)).Return(nil, nil)
 
-		err := h.svc.Block(2, 3, 1)
+		got, err := h.svc.Block(2, 3, 1)
 
+		require.Nil(t, got)
 		require.ErrorIs(t, err, httpx.ErrRecordNotFound)
 		h.repo.AssertNotCalled(t, "Block", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 		h.assertAllExpectations(t)
@@ -1105,8 +1126,9 @@ func TestService_Block(t *testing.T) {
 		roleErr := errors.New("role not found")
 		h.roles.On("FindByName", role.RoleListener).Return(nil, roleErr)
 
-		err := h.svc.Block(2, 3, 1)
+		got, err := h.svc.Block(2, 3, 1)
 
+		require.Nil(t, got)
 		require.ErrorIs(t, err, roleErr)
 		h.repo.AssertNotCalled(t, "Block", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 		h.revoker.AssertNotCalled(t, "RevokePublishing", mock.Anything, mock.Anything)
@@ -1121,8 +1143,9 @@ func TestService_Block(t *testing.T) {
 		blockErr := errors.New("update failed")
 		h.repo.On("Block", uint(2), uint(3), uint(1), uint(4)).Return(blockErr)
 
-		err := h.svc.Block(2, 3, 1)
+		got, err := h.svc.Block(2, 3, 1)
 
+		require.Nil(t, got)
 		require.ErrorIs(t, err, blockErr)
 		h.revoker.AssertNotCalled(t, "RevokePublishing", mock.Anything, mock.Anything)
 		h.assertAllExpectations(t)

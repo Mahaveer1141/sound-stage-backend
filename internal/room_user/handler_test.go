@@ -42,13 +42,20 @@ func (m *mockRoomUserService) UpdateRole(ctx context.Context, roomID, userID uin
 	ru, _ := args.Get(0).(*RoomUser)
 	return ru, args.Error(1)
 }
-func (m *mockRoomUserService) DeleteUser(ctx context.Context, roomID, userID, actorID uint) error {
+func (m *mockRoomUserService) DeleteUser(ctx context.Context, roomID, userID, actorID uint) (*RoomUser, error) {
 	args := m.Called(ctx, roomID, userID, actorID)
-	return args.Error(0)
+	ru, _ := args.Get(0).(*RoomUser)
+	return ru, args.Error(1)
 }
-func (m *mockRoomUserService) Block(roomID, userID, actorID uint) error {
+func (m *mockRoomUserService) Block(roomID, userID, actorID uint) (*RoomUser, error) {
 	args := m.Called(roomID, userID, actorID)
-	return args.Error(0)
+	ru, _ := args.Get(0).(*RoomUser)
+	return ru, args.Error(1)
+}
+func (m *mockRoomUserService) CountsByRoomID(roomID uint) (RoomUserCounts, error) {
+	args := m.Called(roomID)
+	counts, _ := args.Get(0).(RoomUserCounts)
+	return counts, args.Error(1)
 }
 func (m *mockRoomUserService) Unblock(roomID, userID, actorID uint) error {
 	args := m.Called(roomID, userID, actorID)
@@ -202,9 +209,14 @@ func TestHandler_UpdateUserRole(t *testing.T) {
 		h := newHandlerHarness(t)
 		updated := &RoomUser{UserID: 7, RoomID: 4, Role: role.Role{Name: role.RoleSpeaker}}
 		h.svc.On("UpdateRole", mock.Anything, uint(4), uint(7), role.RoleSpeaker, uint(1)).Return(updated, nil)
+		h.svc.On("CountsByRoomID", uint(4)).Return(RoomUserCounts{
+			TotalUsersCount: 5,
+			Online:          OnlineCounts{ListenerCount: 3, SpeakerCount: 2},
+		}, nil)
 		h.hub.On("BroadcastToRoom", uint(4), ws.EventUserRoleUpdated, mock.MatchedBy(func(payload any) bool {
-			ru, ok := payload.(RoomUserResponse)
-			return ok && ru.Role.Name == string(role.RoleSpeaker) && ru.CanSpeak
+			p, ok := payload.(RoomUserEventPayload)
+			return ok && p.RoomUser.Role.Name == string(role.RoleSpeaker) && p.RoomUser.CanSpeak &&
+				p.TotalUsersCount == 5 && p.Online.ListenerCount == 3 && p.Online.SpeakerCount == 2
 		})).Return()
 
 		w, c := testutil.NewTestContext(http.MethodPatch, "/rooms/4/users/7/role", updateUserRoleInput{Role: role.RoleSpeaker})
@@ -350,10 +362,15 @@ func TestHandler_AddRoomUser(t *testing.T) {
 func TestHandler_DeleteUser(t *testing.T) {
 	t.Run("success: deletes user, broadcasts, returns 200", func(t *testing.T) {
 		h := newHandlerHarness(t)
-		h.svc.On("DeleteUser", mock.Anything, uint(4), uint(7), uint(1)).Return(nil)
+		deleted := &RoomUser{UserID: 7, RoomID: 4, Role: role.Role{Name: role.RoleListener}}
+		h.svc.On("DeleteUser", mock.Anything, uint(4), uint(7), uint(1)).Return(deleted, nil)
+		h.svc.On("CountsByRoomID", uint(4)).Return(RoomUserCounts{
+			TotalUsersCount: 4,
+			Online:          OnlineCounts{ListenerCount: 2, SpeakerCount: 2},
+		}, nil)
 		h.hub.On("BroadcastToRoom", uint(4), ws.EventUserKickedOut, mock.MatchedBy(func(payload any) bool {
-			gh, ok := payload.(gin.H)
-			return ok && gh["userId"] == 7
+			p, ok := payload.(RoomUserRemovedPayload)
+			return ok && p.UserID == 7 && !p.CanSpeak && p.TotalUsersCount == 4
 		})).Return()
 
 		w, c := testutil.NewTestContext(http.MethodDelete, "/rooms/4/users/7", nil)
@@ -395,7 +412,7 @@ func TestHandler_DeleteUser(t *testing.T) {
 
 	t.Run("failure: forbidden error from service returns 403, no broadcast", func(t *testing.T) {
 		h := newHandlerHarness(t)
-		h.svc.On("DeleteUser", mock.Anything, uint(4), uint(7), uint(1)).Return(httpx.ErrForbidden)
+		h.svc.On("DeleteUser", mock.Anything, uint(4), uint(7), uint(1)).Return(nil, httpx.ErrForbidden)
 
 		w, c := testutil.NewTestContext(http.MethodDelete, "/rooms/4/users/7", nil)
 		c.Params = gin.Params{{Key: "id", Value: "4"}, {Key: "userId", Value: "7"}}
@@ -410,7 +427,7 @@ func TestHandler_DeleteUser(t *testing.T) {
 
 	t.Run("failure: other service error returns 422, no broadcast", func(t *testing.T) {
 		h := newHandlerHarness(t)
-		h.svc.On("DeleteUser", mock.Anything, uint(4), uint(7), uint(1)).Return(assert.AnError)
+		h.svc.On("DeleteUser", mock.Anything, uint(4), uint(7), uint(1)).Return(nil, assert.AnError)
 
 		w, c := testutil.NewTestContext(http.MethodDelete, "/rooms/4/users/7", nil)
 		c.Params = gin.Params{{Key: "id", Value: "4"}, {Key: "userId", Value: "7"}}
@@ -641,10 +658,15 @@ func TestHandler_ListBlockedUsers(t *testing.T) {
 func TestHandler_BlockUser(t *testing.T) {
 	t.Run("success: blocks user, broadcasts, returns 200", func(t *testing.T) {
 		h := newHandlerHarness(t)
-		h.svc.On("Block", uint(4), uint(7), uint(1)).Return(nil)
+		blocked := &RoomUser{UserID: 7, RoomID: 4, Role: role.Role{Name: role.RoleSpeaker}}
+		h.svc.On("Block", uint(4), uint(7), uint(1)).Return(blocked, nil)
+		h.svc.On("CountsByRoomID", uint(4)).Return(RoomUserCounts{
+			TotalUsersCount: 4,
+			Online:          OnlineCounts{ListenerCount: 3, SpeakerCount: 1},
+		}, nil)
 		h.hub.On("BroadcastToRoom", uint(4), ws.EventUserKickedOut, mock.MatchedBy(func(payload any) bool {
-			gh, ok := payload.(gin.H)
-			return ok && gh["userId"] == 7 && gh["blocked"] == true
+			p, ok := payload.(RoomUserRemovedPayload)
+			return ok && p.UserID == 7 && p.CanSpeak && p.TotalUsersCount == 4
 		})).Return()
 
 		w, c := testutil.NewTestContext(http.MethodPatch, "/rooms/4/blocks/7", nil)
@@ -686,7 +708,7 @@ func TestHandler_BlockUser(t *testing.T) {
 
 	t.Run("failure: forbidden error from service returns 403, no broadcast", func(t *testing.T) {
 		h := newHandlerHarness(t)
-		h.svc.On("Block", uint(4), uint(7), uint(1)).Return(httpx.ErrForbidden)
+		h.svc.On("Block", uint(4), uint(7), uint(1)).Return(nil, httpx.ErrForbidden)
 
 		w, c := testutil.NewTestContext(http.MethodPatch, "/rooms/4/blocks/7", nil)
 		c.Params = gin.Params{{Key: "id", Value: "4"}, {Key: "userId", Value: "7"}}

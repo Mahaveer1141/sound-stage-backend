@@ -20,8 +20,9 @@ type roomUserService interface {
 	FindByWithState(ctx context.Context, userID, roomID uint) (*RoomUser, error)
 	ListRaisedHands(ctx context.Context, roomID, userID uint, p listopts.Pagination) ([]RoomUser, int64, error)
 	UpdateRole(ctx context.Context, roomID, userID uint, roleName role.RoleName, actorID uint) (*RoomUser, error)
-	DeleteUser(ctx context.Context, roomID, userID, actorID uint) error
-	Block(roomID, userID, actorID uint) error
+	DeleteUser(ctx context.Context, roomID, userID, actorID uint) (*RoomUser, error)
+	Block(roomID, userID, actorID uint) (*RoomUser, error)
+	CountsByRoomID(roomID uint) (RoomUserCounts, error)
 	Unblock(roomID, userID, actorID uint) error
 	ListBlockedByRoomID(roomID, actorID uint, filter RoomUserFilter, p listopts.Pagination) ([]RoomUser, int64, error)
 	SetMuted(ctx context.Context, roomID, userID, actorID uint, isMuted bool) error
@@ -187,7 +188,16 @@ func (h *Handler) UpdateUserRole(c *gin.Context) {
 		return
 	}
 
-	h.hub.BroadcastToRoom(uint(roomID), ws.EventUserRoleUpdated, BuildRoomUserResponse(ru, actorID))
+	counts, err := h.service.CountsByRoomID(uint(roomID))
+	if err != nil {
+		httpx.ErrorResponse(c, http.StatusInternalServerError, "Failed to fetch room counts")
+		return
+	}
+
+	h.hub.BroadcastToRoom(uint(roomID), ws.EventUserRoleUpdated, RoomUserEventPayload{
+		RoomUserCounts: counts,
+		RoomUser:       BuildRoomUserResponse(ru, 0),
+	})
 
 	httpx.SuccessResponse(c, http.StatusOK, "User role updated successfully", nil)
 }
@@ -207,7 +217,8 @@ func (h *Handler) DeleteUser(c *gin.Context) {
 	}
 	actorID, _ := current.UserID(c)
 
-	if err := h.service.DeleteUser(c.Request.Context(), uint(roomID), uint(userID), actorID); err != nil {
+	ru, err := h.service.DeleteUser(c.Request.Context(), uint(roomID), uint(userID), actorID)
+	if err != nil {
 		if errors.Is(err, httpx.ErrForbidden) {
 			httpx.ErrorResponse(c, http.StatusForbidden, httpx.ErrForbidden.Error())
 			return
@@ -220,7 +231,21 @@ func (h *Handler) DeleteUser(c *gin.Context) {
 		return
 	}
 
-	h.hub.BroadcastToRoom(uint(roomID), ws.EventUserKickedOut, gin.H{"userId": userID})
+	counts, err := h.service.CountsByRoomID(uint(roomID))
+	if err != nil {
+		httpx.ErrorResponse(c, http.StatusInternalServerError, "Failed to fetch room counts")
+		return
+	}
+
+	eventName := ws.EventUserKickedOut
+	if actorID == uint(userID) {
+		eventName = ws.EventLeaveRoom
+	}
+	h.hub.BroadcastToRoom(uint(roomID), eventName, RoomUserRemovedPayload{
+		RoomUserCounts: counts,
+		UserID:         uint(userID),
+		CanSpeak:       ru.CanSpeak(),
+	})
 
 	httpx.SuccessResponse(c, http.StatusOK, "User removed from room", nil)
 }
@@ -345,7 +370,8 @@ func (h *Handler) BlockUser(c *gin.Context) {
 	}
 
 	actorID, _ := current.UserID(c)
-	if err := h.service.Block(uint(roomID), uint(userID), actorID); err != nil {
+	ru, err := h.service.Block(uint(roomID), uint(userID), actorID)
+	if err != nil {
 		if errors.Is(err, httpx.ErrForbidden) {
 			httpx.ErrorResponse(c, http.StatusForbidden, httpx.ErrForbidden.Error())
 			return
@@ -358,7 +384,17 @@ func (h *Handler) BlockUser(c *gin.Context) {
 		return
 	}
 
-	h.hub.BroadcastToRoom(uint(roomID), ws.EventUserKickedOut, gin.H{"userId": userID, "blocked": true})
+	counts, err := h.service.CountsByRoomID(uint(roomID))
+	if err != nil {
+		httpx.ErrorResponse(c, http.StatusInternalServerError, "Failed to fetch room counts")
+		return
+	}
+
+	h.hub.BroadcastToRoom(uint(roomID), ws.EventUserKickedOut, RoomUserRemovedPayload{
+		RoomUserCounts: counts,
+		UserID:         uint(userID),
+		CanSpeak:       ru.CanSpeak(),
+	})
 
 	httpx.SuccessResponse(c, http.StatusOK, "User blocked from room", nil)
 }

@@ -43,7 +43,8 @@ type webSocketHub interface {
 
 type roomUserWSService interface {
 	FindBy(userID uint, roomID uint) (*RoomUser, error)
-	RemoveUser(ctx context.Context, userID uint, roomID uint) error
+	RemoveUser(ctx context.Context, userID uint, roomID uint) (*RoomUser, error)
+	CountsByRoomID(roomID uint) (RoomUserCounts, error)
 	SetMuted(ctx context.Context, roomID, userID, actorID uint, isMuted bool) error
 	SetHandRaised(ctx context.Context, roomID, userID uint, isHandRaised bool) error
 }
@@ -134,11 +135,20 @@ func (h *WsHandler) handleUserJoined(c *ws.Client, evt ws.Event) {
 		return
 	}
 
-	h.hub.BroadcastToRoom(c.RoomID, ws.EventJoinRoom, BuildRoomUserResponse(ru, 0))
+	counts, err := h.service.CountsByRoomID(c.RoomID)
+	if err != nil {
+		h.hub.ErrorToClient(c, "Failed to fetch room counts", http.StatusInternalServerError)
+		return
+	}
+
+	h.hub.BroadcastToRoom(c.RoomID, ws.EventJoinRoom, RoomUserEventPayload{
+		RoomUserCounts: counts,
+		RoomUser:       BuildRoomUserResponse(ru, 0),
+	})
 }
 
 func (h *WsHandler) handleUserLeft(c *ws.Client, evt ws.Event) {
-	err := h.service.RemoveUser(context.Background(), c.UserID, c.RoomID)
+	ru, err := h.service.RemoveUser(context.Background(), c.UserID, c.RoomID)
 	if err != nil {
 		h.hub.ErrorToClient(c, "Failed to remove user from room", http.StatusUnprocessableEntity)
 		return
@@ -147,11 +157,12 @@ func (h *WsHandler) handleUserLeft(c *ws.Client, evt ws.Event) {
 	h.media.StopPublishing(c)
 	_ = h.media.CloseSession(c.ID)
 
-	h.hub.BroadcastToRoom(c.RoomID, ws.EventLeaveRoom, nil)
+	h.broadcastUserLeft(c.RoomID, c.UserID, ru.CanSpeak())
 }
 
 func (h *WsHandler) handleClientDisconnected(c *ws.Client) {
-	if err := h.service.RemoveUser(context.Background(), c.UserID, c.RoomID); err != nil {
+	ru, err := h.service.RemoveUser(context.Background(), c.UserID, c.RoomID)
+	if err != nil {
 		h.logger.Error("Failed to remove disconnected user from room",
 			slog.Uint64("userId", uint64(c.UserID)),
 			slog.Uint64("roomId", uint64(c.RoomID)),
@@ -165,7 +176,23 @@ func (h *WsHandler) handleClientDisconnected(c *ws.Client) {
 			slog.String("clientId", c.ID), slog.Any("error", err))
 	}
 
-	h.hub.BroadcastToRoom(c.RoomID, ws.EventLeaveRoom, nil)
+	h.broadcastUserLeft(c.RoomID, c.UserID, ru != nil && ru.CanSpeak())
+}
+
+func (h *WsHandler) broadcastUserLeft(roomID, userID uint, canSpeak bool) {
+	counts, err := h.service.CountsByRoomID(roomID)
+	if err != nil {
+		h.logger.Error("Failed to fetch room user counts",
+			slog.Uint64("roomId", uint64(roomID)),
+			slog.Any("error", err))
+		return
+	}
+
+	h.hub.BroadcastToRoom(roomID, ws.EventLeaveRoom, RoomUserRemovedPayload{
+		RoomUserCounts: counts,
+		UserID:         userID,
+		CanSpeak:       canSpeak,
+	})
 }
 
 func (h *WsHandler) handleSetMuted(c *ws.Client, evt ws.Event) {

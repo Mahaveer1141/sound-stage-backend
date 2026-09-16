@@ -19,12 +19,15 @@ func NewAuthz(repo roomUserFinder) *Authz {
 	return &Authz{repo: repo}
 }
 
-func (a *Authz) CanBlock(roomID, actorID, targetID uint) error {
+func (a *Authz) CanBlock(roomID, actorID, targetID uint) (*RoomUser, error) {
 	if targetID == actorID {
-		return httpx.ErrForbidden
+		return nil, httpx.ErrForbidden
 	}
-	_, _, err := a.CanModerate(roomID, actorID, targetID)
-	return err
+	_, targetRoomUser, err := a.CanModerate(roomID, actorID, targetID)
+	if err != nil {
+		return nil, err
+	}
+	return targetRoomUser, nil
 }
 
 func (a *Authz) CanUnblock(roomID, actorID, targetID uint) error {
@@ -49,29 +52,29 @@ func (a *Authz) CanListBlocked(roomID, actorID uint) error {
 	return nil
 }
 
-func (a *Authz) CanDeleteUser(roomID, userID, actorID uint) error {
+func (a *Authz) CanDeleteUser(roomID, userID, actorID uint) (*RoomUser, error) {
 	if actorID == userID {
 		actorRoomUser, err := a.repo.FindBy(actorID, roomID)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		if actorRoomUser == nil {
-			return httpx.ErrForbidden
+			return nil, httpx.ErrForbidden
 		}
 		if actorRoomUser.Role.Name == role.RoleOwner {
-			return httpx.ErrForbidden
+			return nil, httpx.ErrForbidden
 		}
-		return nil
+		return actorRoomUser, nil
 	}
 
 	_, targetRoomUser, err := a.CanModerate(roomID, actorID, userID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if targetRoomUser.IsBlocked {
-		return httpx.ErrUserBlocked
+		return nil, httpx.ErrUserBlocked
 	}
-	return nil
+	return targetRoomUser, nil
 }
 
 func (a *Authz) CanUpdateRole(roomID, actorID uint, roleName role.RoleName) error {

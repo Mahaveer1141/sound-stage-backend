@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type Activity string
@@ -30,7 +31,7 @@ func (r *Repo) Create(tx *gorm.DB, userID uint, roomID uint, roleID uint) (*Room
 	}
 
 	ru := RoomUser{RoomID: roomID, UserID: userID, RoleID: roleID, LastJoinedAt: time.Now(), LastLeftAt: time.Now(), IsOnline: true}
-	if err := tx.Create(&ru).Error; err != nil {
+	if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&ru).Error; err != nil {
 		return nil, err
 	}
 	return &ru, nil

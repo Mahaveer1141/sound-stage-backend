@@ -55,6 +55,27 @@ type RoomUserResponse struct {
 	IsOwner      bool              `json:"isOwner"`
 }
 
+type OnlineCounts struct {
+	ListenerCount int64 `json:"listenerCount"`
+	SpeakerCount  int64 `json:"speakerCount"`
+}
+
+type RoomUserCounts struct {
+	TotalUsersCount int64        `json:"totalUsersCount"`
+	Online          OnlineCounts `json:"online"`
+}
+
+type RoomUserEventPayload struct {
+	RoomUserCounts
+	RoomUser RoomUserResponse `json:"roomUser"`
+}
+
+type RoomUserRemovedPayload struct {
+	RoomUserCounts
+	UserID   uint `json:"userId"`
+	CanSpeak bool `json:"canSpeak"`
+}
+
 var allowedUserSortFields = map[string]string{
 	"created_at":     "room_users.created_at",
 	"id":             "room_users.id",

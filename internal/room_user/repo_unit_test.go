@@ -23,7 +23,7 @@ func TestRepo_Create_Unit(t *testing.T) {
 
 		mock.ExpectBegin()
 		mock.ExpectQuery(regexp.QuoteMeta(
-			`INSERT INTO "room_users" ("created_at","updated_at","user_id","room_id","role_id","last_joined_at","last_left_at","is_online","is_blocked","blocked_by_id") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING "id"`)).
+			`INSERT INTO "room_users" ("created_at","updated_at","user_id","room_id","role_id","last_joined_at","last_left_at","is_online","is_blocked","blocked_by_id") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT DO NOTHING RETURNING "id"`)).
 			WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), 1, 10, 100, sqlmock.AnyArg(), sqlmock.AnyArg(), true, false, nil).
 			WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
 		mock.ExpectCommit()
@@ -48,7 +48,7 @@ func TestRepo_Create_Unit(t *testing.T) {
 		require.NoError(t, tx.Error)
 
 		mock.ExpectQuery(regexp.QuoteMeta(
-			`INSERT INTO "room_users" ("created_at","updated_at","user_id","room_id","role_id","last_joined_at","last_left_at","is_online","is_blocked","blocked_by_id") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING "id"`)).
+			`INSERT INTO "room_users" ("created_at","updated_at","user_id","room_id","role_id","last_joined_at","last_left_at","is_online","is_blocked","blocked_by_id") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT DO NOTHING RETURNING "id"`)).
 			WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), 2, 20, 200, sqlmock.AnyArg(), sqlmock.AnyArg(), true, false, nil).
 			WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(2))
 
@@ -69,7 +69,7 @@ func TestRepo_Create_Unit(t *testing.T) {
 
 		mock.ExpectBegin()
 		mock.ExpectQuery(regexp.QuoteMeta(
-			`INSERT INTO "room_users" ("created_at","updated_at","user_id","room_id","role_id","last_joined_at","last_left_at","is_online","is_blocked","blocked_by_id") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING "id"`)).
+			`INSERT INTO "room_users" ("created_at","updated_at","user_id","room_id","role_id","last_joined_at","last_left_at","is_online","is_blocked","blocked_by_id") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT DO NOTHING RETURNING "id"`)).
 			WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), 1, 10, 100, sqlmock.AnyArg(), sqlmock.AnyArg(), true, false, nil).
 			WillReturnError(assert.AnError)
 		mock.ExpectRollback()

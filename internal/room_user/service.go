@@ -48,13 +48,13 @@ type repo interface {
 }
 
 type authorizer interface {
-	CanBlock(roomID, actorID, targetID uint) error
+	CanBlock(roomID, actorID, targetID uint) (*RoomUser, error)
 	CanUnblock(roomID, actorID, targetID uint) error
 	CanListBlocked(roomID, actorID uint) error
 	CanListUsers(roomID, userID uint) error
 	CanListRaisedHands(roomID, userID uint) error
 	CanUpdateRole(roomID, actorID uint, roleName role.RoleName) error
-	CanDeleteUser(roomID, userID, actorID uint) error
+	CanDeleteUser(roomID, userID, actorID uint) (*RoomUser, error)
 	CanSetMuted(roomID, actorID, targetID uint, isMuted bool) error
 	CanSetHandRaised(roomID, userID uint) error
 	CanModerate(roomID, actorID, targetID uint) (*RoomUser, *RoomUser, error)
@@ -99,23 +99,24 @@ func (s *Service) IsBlocked(roomID, userID uint) (bool, error) {
 	return s.repo.IsBlocked(roomID, userID)
 }
 
-func (s *Service) Block(roomID, userID, actorID uint) error {
-	if err := s.authz.CanBlock(roomID, actorID, userID); err != nil {
-		return err
+func (s *Service) Block(roomID, userID, actorID uint) (*RoomUser, error) {
+	ru, err := s.authz.CanBlock(roomID, actorID, userID)
+	if err != nil {
+		return nil, err
 	}
 
 	listenerRole, err := s.roleService.FindByName(role.RoleListener)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if err := s.repo.Block(roomID, userID, actorID, listenerRole.ID); err != nil {
-		return err
+		return nil, err
 	}
 
 	s.revoker.RevokePublishing(roomID, userID)
 
-	return nil
+	return ru, nil
 }
 
 func (s *Service) Unblock(roomID, userID, actorID uint) error {
@@ -150,18 +151,47 @@ func (s *Service) CountByRoomIDs(roomIDs []uint, filter RoomUserFilter) (map[uin
 	return s.repo.CountByRoomIDs(roomIDs, filter)
 }
 
-func (s *Service) RemoveUser(ctx context.Context, userID uint, roomID uint) error {
+func (s *Service) CountsByRoomID(roomID uint) (RoomUserCounts, error) {
+	online := true
+	total, err := s.repo.CountByRoomID(roomID, RoomUserFilter{})
+	if err != nil {
+		return RoomUserCounts{}, err
+	}
+	listenerCount, err := s.repo.CountByRoomID(roomID, RoomUserFilter{
+		Roles:    []string{string(role.RoleListener)},
+		IsOnline: &online,
+	})
+	if err != nil {
+		return RoomUserCounts{}, err
+	}
+	speakerCount, err := s.repo.CountByRoomID(roomID, RoomUserFilter{
+		Roles: []string{
+			string(role.RoleOwner), string(role.RoleAdmin),
+			string(role.RoleModerator), string(role.RoleSpeaker),
+		},
+		IsOnline: &online,
+	})
+	if err != nil {
+		return RoomUserCounts{}, err
+	}
+	return RoomUserCounts{
+		TotalUsersCount: total,
+		Online:          OnlineCounts{ListenerCount: listenerCount, SpeakerCount: speakerCount},
+	}, nil
+}
+
+func (s *Service) RemoveUser(ctx context.Context, userID uint, roomID uint) (*RoomUser, error) {
 	ru, err := s.repo.FindBy(userID, roomID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if ru == nil {
-		return httpx.ErrRecordNotFound
+		return nil, httpx.ErrRecordNotFound
 	}
 	if err := s.repo.UpdateActivity(ru, ActivityLeave); err != nil {
-		return err
+		return nil, err
 	}
-	return s.roomState.Leave(ctx, roomID, userID)
+	return ru, s.roomState.Leave(ctx, roomID, userID)
 }
 
 func (s *Service) ListByRoomID(ctx context.Context, roomID, userID uint, filter RoomUserFilter, c listopts.Cursor) ([]RoomUser, int64, bool, string, error) {
@@ -275,15 +305,16 @@ func (s *Service) UpdateRole(ctx context.Context, roomID uint, userID uint, role
 	return ru, nil
 }
 
-func (s *Service) DeleteUser(ctx context.Context, roomID, userID, actorID uint) error {
-	if err := s.authz.CanDeleteUser(roomID, userID, actorID); err != nil {
-		return err
+func (s *Service) DeleteUser(ctx context.Context, roomID, userID, actorID uint) (*RoomUser, error) {
+	ru, err := s.authz.CanDeleteUser(roomID, userID, actorID)
+	if err != nil {
+		return nil, err
 	}
 
 	if err := s.repo.Delete(roomID, userID); err != nil {
-		return err
+		return nil, err
 	}
-	return s.roomState.Leave(ctx, roomID, userID)
+	return ru, s.roomState.Leave(ctx, roomID, userID)
 }
 
 func (s *Service) SetMuted(ctx context.Context, roomID, userID, actorID uint, isMuted bool) error {
