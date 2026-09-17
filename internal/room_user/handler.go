@@ -199,7 +199,7 @@ func (h *Handler) UpdateUserRole(c *gin.Context) {
 		RoomUser:       BuildRoomUserResponse(ru, 0),
 	})
 
-	httpx.SuccessResponse(c, http.StatusOK, "User role updated successfully", nil)
+	httpx.SuccessResponse(c, http.StatusOK, "User role updated successfully", BuildRoomUserResponse(ru, actorID))
 }
 
 func (h *Handler) DeleteUser(c *gin.Context) {

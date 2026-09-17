@@ -26,6 +26,11 @@ func (m *mockRoomUserWSService) FindBy(userID uint, roomID uint) (*RoomUser, err
 	ru, _ := args.Get(0).(*RoomUser)
 	return ru, args.Error(1)
 }
+func (m *mockRoomUserWSService) FindByWithState(ctx context.Context, userID, roomID uint) (*RoomUser, error) {
+	args := m.Called(ctx, userID, roomID)
+	ru, _ := args.Get(0).(*RoomUser)
+	return ru, args.Error(1)
+}
 func (m *mockRoomUserWSService) RemoveUser(ctx context.Context, userID uint, roomID uint) (*RoomUser, error) {
 	args := m.Called(ctx, userID, roomID)
 	ru, _ := args.Get(0).(*RoomUser)
@@ -158,14 +163,15 @@ func TestWsHandler_handleUserJoined(t *testing.T) {
 		h.media.On("AddSession", "client-1", mock.AnythingOfType("*webrtc.PeerConnection")).
 			Return(&webrtc.Session{})
 		h.media.On("SubscribeToRoomTracks", c, mock.Anything).Return()
-		h.roomUser.On("FindBy", uint(42), uint(4)).Return(&RoomUser{UserID: 42, RoomID: 4}, nil)
+		h.roomUser.On("FindByWithState", mock.Anything, uint(42), uint(4)).
+			Return(&RoomUser{UserID: 42, RoomID: 4, IsMuted: true}, nil)
 		h.roomUser.On("CountsByRoomID", uint(4)).Return(RoomUserCounts{
 			TotalUsersCount: 6,
 			Online:          OnlineCounts{ListenerCount: 4, SpeakerCount: 2},
 		}, nil)
 		h.hub.On("BroadcastToRoom", uint(4), ws.EventJoinRoom, mock.MatchedBy(func(payload any) bool {
 			p, ok := payload.(RoomUserEventPayload)
-			return ok && p.TotalUsersCount == 6 && p.Online.ListenerCount == 4 && p.Online.SpeakerCount == 2
+			return ok && p.TotalUsersCount == 6 && p.Online.ListenerCount == 4 && p.Online.SpeakerCount == 2 && p.RoomUser.IsMuted
 		})).Return()
 
 		h.wsHandler.handleUserJoined(c, ws.Event{})

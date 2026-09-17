@@ -163,10 +163,11 @@ func (r *RedisRepo) CountRaisedHands(ctx context.Context, roomID uint) (int64, e
 }
 
 func parseParticipantState(userID uint, vals map[string]string) *ParticipantState {
-	if len(vals) == 0 {
-		return nil
+	state := &ParticipantState{
+		UserID:       userID,
+		IsMuted:      DefaultIsMuted,
+		IsHandRaised: DefaultIsHandRaised,
 	}
-	state := &ParticipantState{UserID: userID}
 	if v, ok := vals[fieldIsMuted]; ok {
 		state.IsMuted, _ = strconv.ParseBool(v)
 	}

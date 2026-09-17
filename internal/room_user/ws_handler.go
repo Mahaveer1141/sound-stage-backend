@@ -43,6 +43,7 @@ type webSocketHub interface {
 
 type roomUserWSService interface {
 	FindBy(userID uint, roomID uint) (*RoomUser, error)
+	FindByWithState(ctx context.Context, userID, roomID uint) (*RoomUser, error)
 	RemoveUser(ctx context.Context, userID uint, roomID uint) (*RoomUser, error)
 	CountsByRoomID(roomID uint) (RoomUserCounts, error)
 	SetMuted(ctx context.Context, roomID, userID, actorID uint, isMuted bool) error
@@ -129,7 +130,7 @@ func (h *WsHandler) handleUserJoined(c *ws.Client, evt ws.Event) {
 		h.media.FanOutTrack(c, session, localTrack)
 	})
 
-	ru, err := h.service.FindBy(c.UserID, c.RoomID)
+	ru, err := h.service.FindByWithState(context.Background(), c.UserID, c.RoomID)
 	if err != nil || ru == nil {
 		h.hub.ErrorToClient(c, "Failed to find user in room", http.StatusInternalServerError)
 		return

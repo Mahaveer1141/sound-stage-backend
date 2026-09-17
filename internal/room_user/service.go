@@ -23,7 +23,7 @@ type roomStateService interface {
 	GetRaisedHands(ctx context.Context, roomID uint, p listopts.Pagination) ([]uint, error)
 	CountRaisedHands(ctx context.Context, roomID uint) (int64, error)
 	SetMuted(ctx context.Context, roomID, userID uint, isMuted bool) error
-	SetHandRaised(ctx context.Context, roomID, userID uint, isHandRaised bool) error
+	SetHandRaised(ctx context.Context, roomID, userID uint, isHandRaised bool, roomUser any) error
 	Leave(ctx context.Context, roomID, userID uint) error
 }
 
@@ -287,6 +287,11 @@ func (s *Service) UpdateRole(ctx context.Context, roomID uint, userID uint, role
 	if err != nil {
 		return nil, err
 	}
+	if roleName == role.RoleListener {
+		if err := s.roomState.SetMuted(ctx, roomID, userID, true); err != nil {
+			return nil, err
+		}
+	}
 	if err := s.repo.UpdateRole(roomID, userID, r.ID); err != nil {
 		return nil, err
 	}
@@ -329,5 +334,13 @@ func (s *Service) SetHandRaised(ctx context.Context, roomID, userID uint, isHand
 	if err := s.authz.CanSetHandRaised(roomID, userID); err != nil {
 		return err
 	}
-	return s.roomState.SetHandRaised(ctx, roomID, userID, isHandRaised)
+	ru, err := s.FindByWithState(ctx, userID, roomID)
+	if err != nil {
+		return err
+	}
+	if ru == nil {
+		return httpx.ErrRecordNotFound
+	}
+	ru.IsHandRaised = isHandRaised
+	return s.roomState.SetHandRaised(ctx, roomID, userID, isHandRaised, BuildRoomUserResponse(ru, 0))
 }

@@ -47,13 +47,17 @@ func (s *Service) SetMuted(ctx context.Context, roomID, userID uint, isMuted boo
 	return nil
 }
 
-func (s *Service) SetHandRaised(ctx context.Context, roomID, userID uint, isHandRaised bool) error {
+func (s *Service) SetHandRaised(ctx context.Context, roomID, userID uint, isHandRaised bool, roomUser any) error {
 	state, err := s.repo.SetHandRaised(ctx, roomID, userID, isHandRaised)
 	if err != nil {
 		return fmt.Errorf("roomstate: set hand raised: %w", err)
 	}
 
-	if err := s.pub.Publish(ctx, roomID, userID, ws.EventSetHandRaised, state); err != nil {
+	payload := HandRaisedEventPayload{RoomUser: roomUser}
+	if state != nil {
+		payload.ParticipantState = *state
+	}
+	if err := s.pub.Publish(ctx, roomID, userID, ws.EventSetHandRaised, payload); err != nil {
 		return fmt.Errorf("roomstate: set hand raised: %w", err)
 	}
 	return nil

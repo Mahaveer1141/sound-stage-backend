@@ -177,7 +177,7 @@ func TestRedisRepo_GetParticipantStates_Integration(t *testing.T) {
 		assert.Empty(t, got)
 	})
 
-	t.Run("returns per-user states, nil for unknown participants", func(t *testing.T) {
+	t.Run("returns per-user states, defaults for missing state", func(t *testing.T) {
 		_, rdb, repo := newRedisRepoHarness(t)
 		ctx := context.Background()
 		require.NoError(t, rdb.HSet(ctx, participantKey(4, 7), fieldIsMuted, true, fieldIsHandRaised, true).Err())
@@ -189,7 +189,9 @@ func TestRedisRepo_GetParticipantStates_Integration(t *testing.T) {
 		require.NotNil(t, got[7])
 		assert.True(t, got[7].IsMuted)
 		assert.True(t, got[7].IsHandRaised)
-		assert.Nil(t, got[99])
+		require.NotNil(t, got[99])
+		assert.Equal(t, DefaultIsMuted, got[99].IsMuted)
+		assert.Equal(t, DefaultIsHandRaised, got[99].IsHandRaised)
 	})
 }
 

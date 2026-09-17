@@ -130,8 +130,8 @@ func (m *mockStateReader) SetMuted(ctx context.Context, roomID, userID uint, isM
 	args := m.Called(ctx, roomID, userID, isMuted)
 	return args.Error(0)
 }
-func (m *mockStateReader) SetHandRaised(ctx context.Context, roomID, userID uint, isHandRaised bool) error {
-	args := m.Called(ctx, roomID, userID, isHandRaised)
+func (m *mockStateReader) SetHandRaised(ctx context.Context, roomID, userID uint, isHandRaised bool, roomUser any) error {
+	args := m.Called(ctx, roomID, userID, isHandRaised, roomUser)
 	return args.Error(0)
 }
 func (m *mockStateReader) Leave(ctx context.Context, roomID, userID uint) error {
@@ -508,10 +508,11 @@ func TestService_UpdateRole(t *testing.T) {
 		h.assertAllExpectations(t)
 	})
 
-	t.Run("success: demoting to listener revokes publishing", func(t *testing.T) {
+	t.Run("success: demoting to listener mutes and revokes publishing", func(t *testing.T) {
 		h := newHarness()
 		h.repo.On("HasRoles", uint(1), uint(2), role.RoleAssignmentPermissions[role.RoleListener]).Return(true, nil)
 		h.roles.On("FindByName", role.RoleListener).Return(&role.Role{BaseModel: model.BaseModel{ID: 3}, Name: role.RoleListener}, nil)
+		h.state.On("SetMuted", mock.Anything, uint(2), uint(3), true).Return(nil)
 		h.repo.On("UpdateRole", uint(2), uint(3), uint(3)).Return(nil)
 		h.revoker.On("RevokePublishing", uint(2), uint(3)).Return()
 		h.repo.On("FindBy", uint(3), uint(2)).Return(&RoomUser{UserID: 3, RoomID: 2, Role: role.Role{Name: role.RoleListener}}, nil)
@@ -576,10 +577,26 @@ func TestService_UpdateRole(t *testing.T) {
 		h.assertAllExpectations(t)
 	})
 
+	t.Run("failure: SetMuted error on demotion is propagated, UpdateRole never called", func(t *testing.T) {
+		h := newHarness()
+		h.repo.On("HasRoles", uint(1), uint(2), role.RoleAssignmentPermissions[role.RoleListener]).Return(true, nil)
+		h.roles.On("FindByName", role.RoleListener).Return(&role.Role{BaseModel: model.BaseModel{ID: 3}, Name: role.RoleListener}, nil)
+		muteErr := errors.New("state store down")
+		h.state.On("SetMuted", mock.Anything, uint(2), uint(3), true).Return(muteErr)
+
+		_, err := h.svc.UpdateRole(context.Background(), 2, 3, role.RoleListener, 1)
+
+		require.ErrorIs(t, err, muteErr)
+		h.repo.AssertNotCalled(t, "UpdateRole", mock.Anything, mock.Anything, mock.Anything)
+		h.revoker.AssertNotCalled(t, "RevokePublishing", mock.Anything, mock.Anything)
+		h.assertAllExpectations(t)
+	})
+
 	t.Run("failure: UpdateRole error is propagated, revoker never called", func(t *testing.T) {
 		h := newHarness()
 		h.repo.On("HasRoles", uint(1), uint(2), role.RoleAssignmentPermissions[role.RoleListener]).Return(true, nil)
 		h.roles.On("FindByName", role.RoleListener).Return(&role.Role{BaseModel: model.BaseModel{ID: 3}, Name: role.RoleListener}, nil)
+		h.state.On("SetMuted", mock.Anything, uint(2), uint(3), true).Return(nil)
 		updateErr := errors.New("update failed")
 		h.repo.On("UpdateRole", uint(2), uint(3), uint(3)).Return(updateErr)
 
@@ -825,11 +842,39 @@ func TestService_SetHandRaised(t *testing.T) {
 	t.Run("success: user raises their hand", func(t *testing.T) {
 		h := newHarness()
 		h.repo.On("FindAnyBy", uint(1), uint(2)).Return(&RoomUser{IsBlocked: false}, nil)
-		h.state.On("SetHandRaised", mock.Anything, uint(2), uint(1), true).Return(nil)
+		h.repo.On("FindBy", uint(1), uint(2)).Return(&RoomUser{UserID: 1, RoomID: 2}, nil)
+		h.state.On("GetParticipantStates", mock.Anything, uint(2), []uint{1}).
+			Return(map[uint]*roomstate.ParticipantState{1: {UserID: 1, IsMuted: true}}, nil)
+		h.state.On("SetHandRaised", mock.Anything, uint(2), uint(1), true, mock.Anything).Return(nil)
 
 		err := h.svc.SetHandRaised(context.Background(), 2, 1, true)
 
 		require.NoError(t, err)
+		h.assertAllExpectations(t)
+	})
+
+	t.Run("failure: room user not found returns ErrRecordNotFound", func(t *testing.T) {
+		h := newHarness()
+		h.repo.On("FindAnyBy", uint(1), uint(2)).Return(&RoomUser{IsBlocked: false}, nil)
+		h.repo.On("FindBy", uint(1), uint(2)).Return(nil, nil)
+
+		err := h.svc.SetHandRaised(context.Background(), 2, 1, true)
+
+		require.ErrorIs(t, err, httpx.ErrRecordNotFound)
+		h.state.AssertNotCalled(t, "SetHandRaised", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+		h.assertAllExpectations(t)
+	})
+
+	t.Run("failure: room user lookup error is propagated", func(t *testing.T) {
+		h := newHarness()
+		lookupErr := errors.New("db down")
+		h.repo.On("FindAnyBy", uint(1), uint(2)).Return(&RoomUser{IsBlocked: false}, nil)
+		h.repo.On("FindBy", uint(1), uint(2)).Return(nil, lookupErr)
+
+		err := h.svc.SetHandRaised(context.Background(), 2, 1, true)
+
+		require.ErrorIs(t, err, lookupErr)
+		h.state.AssertNotCalled(t, "SetHandRaised", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 		h.assertAllExpectations(t)
 	})
 
@@ -840,7 +885,7 @@ func TestService_SetHandRaised(t *testing.T) {
 		err := h.svc.SetHandRaised(context.Background(), 2, 1, true)
 
 		require.ErrorIs(t, err, httpx.ErrUserBlocked)
-		h.state.AssertNotCalled(t, "SetHandRaised", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+		h.state.AssertNotCalled(t, "SetHandRaised", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 		h.assertAllExpectations(t)
 	})
 
@@ -851,7 +896,7 @@ func TestService_SetHandRaised(t *testing.T) {
 		err := h.svc.SetHandRaised(context.Background(), 2, 1, true)
 
 		require.ErrorIs(t, err, httpx.ErrForbidden)
-		h.state.AssertNotCalled(t, "SetHandRaised", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+		h.state.AssertNotCalled(t, "SetHandRaised", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 		h.assertAllExpectations(t)
 	})
 
@@ -863,7 +908,7 @@ func TestService_SetHandRaised(t *testing.T) {
 		err := h.svc.SetHandRaised(context.Background(), 2, 1, true)
 
 		require.ErrorIs(t, err, lookupErr)
-		h.state.AssertNotCalled(t, "SetHandRaised", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+		h.state.AssertNotCalled(t, "SetHandRaised", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 		h.assertAllExpectations(t)
 	})
 }
@@ -885,18 +930,18 @@ func TestService_FindByWithState(t *testing.T) {
 		h.assertAllExpectations(t)
 	})
 
-	t.Run("success: member without state keeps zero values", func(t *testing.T) {
+	t.Run("success: member without stored state gets muted default", func(t *testing.T) {
 		h := newHarness()
 		ru := &RoomUser{UserID: 1, RoomID: 2}
 		h.repo.On("FindBy", uint(1), uint(2)).Return(ru, nil)
 		h.state.On("GetParticipantStates", mock.Anything, uint(2), []uint{1}).
-			Return(map[uint]*roomstate.ParticipantState{1: nil}, nil)
+			Return(map[uint]*roomstate.ParticipantState{1: {UserID: 1, IsMuted: true}}, nil)
 
 		got, err := h.svc.FindByWithState(context.Background(), 1, 2)
 
 		require.NoError(t, err)
 		assert.Same(t, ru, got)
-		assert.False(t, got.IsMuted)
+		assert.True(t, got.IsMuted)
 		assert.False(t, got.IsHandRaised)
 		h.assertAllExpectations(t)
 	})

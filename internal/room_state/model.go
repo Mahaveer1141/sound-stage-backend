@@ -5,3 +5,8 @@ type ParticipantState struct {
 	IsMuted      bool `json:"isMuted"`
 	IsHandRaised bool `json:"isHandRaised"`
 }
+
+type HandRaisedEventPayload struct {
+	ParticipantState
+	RoomUser any `json:"roomUser,omitempty"`
+}

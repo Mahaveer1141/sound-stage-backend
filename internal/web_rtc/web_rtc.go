@@ -14,7 +14,12 @@ func NewPeerConnection(
 ) (*pion.PeerConnection, error) {
 	webrtcConfig := pion.Configuration{ICEServers: buildIceServers(cfg)}
 
-	pc, err := pion.NewPeerConnection(webrtcConfig)
+	settingEngine := pion.SettingEngine{}
+	if err := settingEngine.SetAnsweringDTLSRole(pion.DTLSRoleServer); err != nil {
+		return nil, err
+	}
+
+	pc, err := pion.NewAPI(pion.WithSettingEngine(settingEngine)).NewPeerConnection(webrtcConfig)
 	if err != nil {
 		return nil, err
 	}

@@ -140,13 +140,15 @@ func TestService_SetMuted(t *testing.T) {
 }
 
 func TestService_SetHandRaised(t *testing.T) {
-	t.Run("success: updates state and publishes set_hand_raised event", func(t *testing.T) {
+	t.Run("success: updates state and publishes set_hand_raised event with room user", func(t *testing.T) {
 		h := newServiceHarness(t)
 		state := &ParticipantState{UserID: 42, IsHandRaised: true}
+		roomUser := map[string]any{"id": 7}
 		h.repo.On("SetHandRaised", mock.Anything, uint(4), uint(42), true).Return(state, nil)
-		h.pub.On("Publish", mock.Anything, uint(4), uint(42), ws.EventSetHandRaised, state).Return(nil)
+		h.pub.On("Publish", mock.Anything, uint(4), uint(42), ws.EventSetHandRaised,
+			HandRaisedEventPayload{ParticipantState: *state, RoomUser: roomUser}).Return(nil)
 
-		err := h.svc.SetHandRaised(context.Background(), 4, 42, true)
+		err := h.svc.SetHandRaised(context.Background(), 4, 42, true, roomUser)
 
 		require.NoError(t, err)
 		h.repo.AssertExpectations(t)
@@ -158,7 +160,7 @@ func TestService_SetHandRaised(t *testing.T) {
 		repoErr := errors.New("redis down")
 		h.repo.On("SetHandRaised", mock.Anything, uint(4), uint(42), true).Return(nil, repoErr)
 
-		err := h.svc.SetHandRaised(context.Background(), 4, 42, true)
+		err := h.svc.SetHandRaised(context.Background(), 4, 42, true, nil)
 
 		require.ErrorIs(t, err, repoErr)
 		h.pub.AssertNotCalled(t, "Publish", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
@@ -170,9 +172,10 @@ func TestService_SetHandRaised(t *testing.T) {
 		state := &ParticipantState{UserID: 42, IsHandRaised: true}
 		pubErr := errors.New("publish failed")
 		h.repo.On("SetHandRaised", mock.Anything, uint(4), uint(42), true).Return(state, nil)
-		h.pub.On("Publish", mock.Anything, uint(4), uint(42), ws.EventSetHandRaised, state).Return(pubErr)
+		h.pub.On("Publish", mock.Anything, uint(4), uint(42), ws.EventSetHandRaised,
+			HandRaisedEventPayload{ParticipantState: *state}).Return(pubErr)
 
-		err := h.svc.SetHandRaised(context.Background(), 4, 42, true)
+		err := h.svc.SetHandRaised(context.Background(), 4, 42, true, nil)
 
 		require.ErrorIs(t, err, pubErr)
 		h.repo.AssertExpectations(t)

@@ -71,8 +71,13 @@ func (s *SessionStore) Add(clientID string, pc *pion.PeerConnection) *Session {
 	session := &Session{PC: pc, senders: make(map[string]*pion.RTPSender)}
 
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	old := s.sessions[clientID]
 	s.sessions[clientID] = session
+	s.mu.Unlock()
+
+	if old != nil {
+		_ = old.close()
+	}
 
 	return session
 }
