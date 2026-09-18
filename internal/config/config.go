@@ -78,6 +78,9 @@ type WebRTCConfig struct {
 	TurnURL        string
 	TurnUsername   string
 	TurnCredential string
+	PublicIP       string
+	UDPPortMin     uint16
+	UDPPortMax     uint16
 }
 
 type CloudinaryConfig struct {
@@ -146,6 +149,9 @@ func Load() *Config {
 			TurnURL:        env.GetEnv("TURN_URL", ""),
 			TurnUsername:   env.GetEnv("TURN_USERNAME", ""),
 			TurnCredential: env.GetEnv("TURN_CREDENTIAL", ""),
+			PublicIP:       env.GetEnv("ICE_PUBLIC_IP", ""),
+			UDPPortMin:     uint16(env.GetEnvInt("ICE_UDP_PORT_MIN", 0)),
+			UDPPortMax:     uint16(env.GetEnvInt("ICE_UDP_PORT_MAX", 0)),
 		},
 		Cloudinary: CloudinaryConfig{
 			CloudName: env.GetEnv("CLOUDINARY_CLOUD_NAME", ""),

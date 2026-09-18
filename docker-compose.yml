@@ -15,6 +15,7 @@ services:
         condition: service_completed_successfully
     ports:
       - "${SERVER_PORT:-8000}:8000"
+      - "${ICE_UDP_PORT_MIN:-50000}-${ICE_UDP_PORT_MAX:-50100}:${ICE_UDP_PORT_MIN:-50000}-${ICE_UDP_PORT_MAX:-50100}/udp"
     env_file: .sound_stage.env
     networks:
       - ms_platforms_network

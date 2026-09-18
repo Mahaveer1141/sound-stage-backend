@@ -18,8 +18,41 @@ func NewPeerConnection(
 	if err := settingEngine.SetAnsweringDTLSRole(pion.DTLSRoleServer); err != nil {
 		return nil, err
 	}
+	if cfg.WebRTC.PublicIP != "" {
+		if err := settingEngine.SetICEAddressRewriteRules(pion.ICEAddressRewriteRule{
+			External:        []string{cfg.WebRTC.PublicIP},
+			AsCandidateType: pion.ICECandidateTypeHost,
+			Mode:            pion.ICEAddressRewriteReplace,
+		}); err != nil {
+			return nil, err
+		}
+	}
+	if cfg.WebRTC.UDPPortMin > 0 && cfg.WebRTC.UDPPortMax >= cfg.WebRTC.UDPPortMin {
+		if err := settingEngine.SetEphemeralUDPPortRange(cfg.WebRTC.UDPPortMin, cfg.WebRTC.UDPPortMax); err != nil {
+			return nil, err
+		}
+	}
 
-	pc, err := pion.NewAPI(pion.WithSettingEngine(settingEngine)).NewPeerConnection(webrtcConfig)
+	mediaEngine := &pion.MediaEngine{}
+	if err := mediaEngine.RegisterCodec(
+		pion.RTPCodecParameters{
+			RTPCodecCapability: pion.RTPCodecCapability{
+				MimeType:    pion.MimeTypeOpus,
+				ClockRate:   48000,
+				Channels:    2,
+				SDPFmtpLine: "minptime=10;useinbandfec=1;usedtx=1",
+			},
+			PayloadType: 111,
+		},
+		pion.RTPCodecTypeAudio,
+	); err != nil {
+		return nil, err
+	}
+
+	pc, err := pion.NewAPI(
+		pion.WithMediaEngine(mediaEngine),
+		pion.WithSettingEngine(settingEngine),
+	).NewPeerConnection(webrtcConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -120,6 +153,11 @@ func buildIceServers(cfg *config.Config) []pion.ICEServer {
 	if cfg.Server.Environment != "development" && cfg.WebRTC.TurnUsername != "" &&
 		cfg.WebRTC.TurnCredential != "" && cfg.WebRTC.TurnURL != "" {
 		iceServers = append(iceServers,
+			pion.ICEServer{
+				URLs:       []string{"turn:" + cfg.WebRTC.TurnURL + ":80"},
+				Username:   cfg.WebRTC.TurnUsername,
+				Credential: cfg.WebRTC.TurnCredential,
+			},
 			pion.ICEServer{
 				URLs:       []string{"turn:" + cfg.WebRTC.TurnURL + ":80?transport=tcp"},
 				Username:   cfg.WebRTC.TurnUsername,

@@ -13,6 +13,34 @@ type Session struct {
 	localTrack *pion.TrackLocalStaticRTP
 	stop       chan struct{}
 	senders    map[string]*pion.RTPSender
+
+	pendingMu sync.Mutex
+	pending   []pion.ICECandidateInit
+}
+
+func (s *Session) AddRemoteCandidate(c pion.ICECandidateInit) error {
+	s.pendingMu.Lock()
+	defer s.pendingMu.Unlock()
+
+	if s.PC.RemoteDescription() == nil {
+		s.pending = append(s.pending, c)
+		return nil
+	}
+	return s.PC.AddICECandidate(c)
+}
+
+func (s *Session) FlushRemoteCandidates() error {
+	s.pendingMu.Lock()
+	defer s.pendingMu.Unlock()
+
+	var firstErr error
+	for _, c := range s.pending {
+		if err := s.PC.AddICECandidate(c); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	s.pending = nil
+	return firstErr
 }
 
 func (s *Session) StartPublishing(track *pion.TrackLocalStaticRTP) <-chan struct{} {

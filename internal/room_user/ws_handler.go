@@ -249,6 +249,9 @@ func (h *WsHandler) handleWebRTCOffer(c *ws.Client, evt ws.Event) {
 		h.hub.ErrorToClient(c, "Failed to create offer answer", http.StatusUnprocessableEntity)
 		return
 	}
+	if err := session.FlushRemoteCandidates(); err != nil {
+		h.hub.ErrorToClient(c, "Failed to add ICE candidate", http.StatusUnprocessableEntity)
+	}
 	h.hub.SendToClient(c, ws.EventWebRTCAnswer, answer)
 }
 
@@ -268,7 +271,7 @@ func (h *WsHandler) handleWebRTCCandidate(c *ws.Client, evt ws.Event) {
 		return
 	}
 
-	if err := webrtc.AddICECandidate(session.PC, ice); err != nil {
+	if err := session.AddRemoteCandidate(ice); err != nil {
 		h.hub.ErrorToClient(c, "Failed to add ICE candidate", http.StatusUnprocessableEntity)
 	}
 }
@@ -291,6 +294,10 @@ func (h *WsHandler) handleWebRTCAnswer(c *ws.Client, evt ws.Event) {
 
 	if err := webrtc.HandleAnswer(session.PC, answer); err != nil {
 		h.hub.ErrorToClient(c, "Failed to handle answer", http.StatusUnprocessableEntity)
+		return
+	}
+	if err := session.FlushRemoteCandidates(); err != nil {
+		h.hub.ErrorToClient(c, "Failed to add ICE candidate", http.StatusUnprocessableEntity)
 	}
 }
 
